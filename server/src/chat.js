@@ -27,11 +27,13 @@ function agentName(id) {
 
 function publicMsg(m) {
   const p = m.payload ? (typeof m.payload === 'string' ? JSON.parse(m.payload) : m.payload) : null;
+  let media = p?.media || [];
+  if (typeof media === 'string') { try { media = JSON.parse(media); } catch { media = []; } }
   return {
     id: m.id, sender: m.sender, body: m.body, created_at: m.created_at,
     agent_name: m.sender === 'agent' ? agentName(m.agent_id) : undefined,
     options: p?.options ? p.options.map((o, i) => ({ i, label: o.label })) : undefined,
-    link: p?.link, link_label: p?.link_label
+    link: p?.link, link_label: p?.link_label, media
   };
 }
 
@@ -69,7 +71,7 @@ function addMessage(conv, sender, body, payload = null, agentId = null) {
   return m;
 }
 
-const botSay = (conv, body, options) => addMessage(conv, 'bot', body, options && options.length ? { options } : null);
+const botSay = (conv, body, options, media) => addMessage(conv, 'bot', body, (options?.length || media?.length) ? { options: options || [], media: media || [] } : null);
 
 function ctxOf(conv) {
   const c = conv.meta?.customer || {};
@@ -85,7 +87,12 @@ const navOptions = () => ([
 
 function sendNode(conv, site, nodeId) {
   const tree = site.tree;
-  const id = (!nodeId || nodeId === '__root') ? tree.root : nodeId;
+  // Keep the configured greeting as the conversation entry point even if an
+  // older flow accidentally marked a branch (for example, a location node)
+  // as the tree root. The greeting node is the stable `root` node.
+  const hasGreeting = tree.nodes.some(n => n.id === 'root');
+  const id = (!nodeId || nodeId === '__root' || (hasGreeting && nodeId === tree.root))
+    ? (hasGreeting ? 'root' : tree.root) : nodeId;
   const node = tree.nodes.find(n => n.id === id) || tree.nodes.find(n => n.id === tree.root) || tree.nodes[0];
   if (!node) return botSay(conv, 'مرحباً! كيف أقدر أساعدك؟');
   saveConv(conv, { state: { ...conv.state, node: node.id, await: null } });
@@ -100,6 +107,17 @@ async function runAction(conv, site, opt, freeText) {
     case 'customer_info': return startLookup(conv, site, 'customer', freeText);
     case 'answer': return botSay(conv, opt.target || '', navOptions());
     case 'url': return addMessage(conv, 'bot', opt.label, { link: opt.target, link_label: 'فتح الرابط ↗', options: navOptions() });
+    case 'company_info': {
+      const a = site.settings.appearance;
+      const lines = [a.company_name ? `عن ${a.company_name}` : 'معلومات النشاط التجاري', a.unified_number ? `الرقم الموحد: ${a.unified_number}` : '', a.company_website ? `الموقع الإلكتروني: ${a.company_website}` : ''].filter(Boolean);
+      return addMessage(conv, 'bot', lines.join('\n'), a.company_website ? { link: a.company_website, link_label: 'زيارة الموقع ↗', options: navOptions() } : { options: navOptions() });
+    }
+    case 'company_location': {
+      const a = site.settings.appearance;
+      const target = a.company_map_url || (a.company_location ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(a.company_location) : '');
+      if (!target) return botSay(conv, 'لم تتم إضافة موقع النشاط التجاري بعد. يرجى التواصل مع خدمة العملاء.', navOptions());
+      return addMessage(conv, 'bot', a.company_location || 'موقع النشاط التجاري', { link: target, link_label: 'فتح الموقع في خرائط Google ↗', options: navOptions() });
+    }
     case 'end': return closeConversation(conv, 'visitor');
     case 'cancel': return sendNode(conv, site, '__root');
     default: return sendNode(conv, site, '__root');
@@ -218,7 +236,9 @@ async function handleVisitorText(conv, site, text) {
   const m = nlp.bestMatch(text, items, Number(b.kb_threshold) || 0.6);
   if (m) {
     db.prepare('UPDATE kb SET hits=hits+1 WHERE id=?').run(m.item.id);
-    return botSay(conv, m.item.answer, navOptions());
+    let media = [];
+    try { media = JSON.parse(m.item.media || '[]'); } catch { /* older/corrupt record: keep text answer */ }
+    return botSay(conv, m.item.answer, navOptions(), media);
   }
 
   // 6) no answer
