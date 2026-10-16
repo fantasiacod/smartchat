@@ -568,6 +568,10 @@
   function renderTree() {
     setTitle('شجرة الردود', true);
     const tree = JSON.parse(JSON.stringify(site().tree));
+    // Existing flows may have accidentally promoted a branch to the start.
+    // Prefer the canonical greeting node so location/info branches stay in
+    // the menu and the visitor always sees the welcome first.
+    if (tree.nodes.some(n => n.id === 'root')) tree.root = 'root';
     if (tree.nodes.some(n => typeof n.x !== 'number')) autoLayout(tree);
     const view = { x: 0, y: 0, z: 1 };
     let sel = null, dirty = false, drag = null;
@@ -586,7 +590,7 @@
         <div class="fe-main">
           <div class="fe-canvas" id="fe-canvas" dir="ltr">
             <div class="fe-world" id="fe-world"><svg class="fe-edges" id="fe-edges"></svg></div>
-          <div class="fe-hint"><b>طريقة الاستخدام:</b> اسحب رأس العقدة لتحريكها · اسحب الدائرة بجانب الزر إلى عقدة لربطه · أفلت الدائرة في مساحة فارغة لإنشاء عقدة مرتبطة · اسحب الخلفية للتنقل، واستخدم أزرار التكبير للتقريب</div>
+          <div class="fe-hint"><b>طريقة الاستخدام:</b> اسحب رأس العقدة لتحريكها · اسحب الدائرة بجانب الزر وأسقطها فوق عقدة موجودة لربطها · لإضافة خطوة جديدة استخدم «إضافة عقدة» أولاً ثم اخترها من إعداد الزر · إسقاط الزر في مساحة فارغة لا ينشئ عقدة تلقائياً · اسحب الخلفية للتنقل</div>
           </div>
           <aside class="fe-side" id="fe-side"></aside>
         </div>
@@ -701,14 +705,15 @@
       if (drag.type === 'link') {
         const o = drag.n.options[drag.i];
         const hit = document.elementsFromPoint(e.clientX, e.clientY).find(el => el.classList?.contains('fe-card'));
-        if (hit && hit.dataset.id !== drag.n.id) { o.action = 'goto'; o.target = hit.dataset.id; }
-        else if (!hit) {
-          const p = toWorld(e);
-          const id = 'node_' + Math.random().toString(36).slice(2, 7);
-          tree.nodes.push({ id, title: o.label || 'عقدة جديدة', message: 'اكتب رسالة البوت هنا', x: Math.round(p.x), y: Math.round(p.y - 20), options: [{ label: '🏠 القائمة الرئيسية', action: 'goto', target: tree.root }] });
-          o.action = 'goto'; o.target = id; sel = id;
+        if (hit && hit.dataset.id !== drag.n.id) {
+          o.action = 'goto'; o.target = hit.dataset.id;
+          setDirty(); drawCards(); renderSide();
+        } else if (hit?.dataset.id === drag.n.id) {
+          err('اختر عقدة أخرى لربط الزر بها.'); drawEdges();
+        } else {
+          err('لم يتم إنشاء ربط. أسقط الزر فوق عقدة موجودة، أو أضف عقدة جديدة أولاً من زر «إضافة عقدة».');
+          drawEdges();
         }
-        setDirty(); drawCards(); renderSide();
       }
       drag = null;
     });
@@ -762,7 +767,7 @@
             <small class="action-help">${esc(ACTION_HELP[o.action] || 'اختر الإجراء الذي سيحدث عند ضغط العميل على هذا الزر.')}</small>
           </div>`).join('')}
         <div class="row" style="margin-top:14px">
-          ${n.id !== tree.root ? '<button class="btn sm" id="fs-root">▶ اجعلها البداية</button><button class="btn sm" id="fs-dup">⧉ نسخ</button><span class="sp"></span><button class="btn sm dan" id="fs-del">حذف العقدة</button>' : '<span class="muted" style="font-size:12.5px">هذه عقدة البداية (أول ما يراه المستفيد)</span><span class="sp"></span><button class="btn sm" id="fs-dup">⧉ نسخ</button>'}
+          ${n.id !== tree.root ? '<button class="btn sm" id="fs-root" title="تظهر هذه العقدة أولاً بدلاً من رسالة الترحيب الحالية">▶ اجعلها البداية</button><button class="btn sm" id="fs-dup">⧉ نسخ</button><span class="sp"></span><button class="btn sm dan" id="fs-del">حذف العقدة</button>' : '<span class="muted" style="font-size:12.5px">هذه عقدة البداية؛ تظهر أولاً عند بدء المحادثة</span><span class="sp"></span><button class="btn sm" id="fs-dup">⧉ نسخ</button>'}
         </div>
         <details style="margin-top:12px"><summary class="muted" style="cursor:pointer;font-size:12.5px">متقدم</summary>
           <label class="f" style="margin-top:8px"><span>المعرّف</span><input id="fs-id" value="${esc(n.id)}" dir="ltr"></label></details>`;
@@ -784,7 +789,10 @@
         $('[data-del]', row).onclick = () => { n.options.splice(i, 1); setDirty(); refreshCard(); renderSide(); };
         $$('[data-mv]', row).forEach(b => b.onclick = () => { const j = i + Number(b.dataset.mv); if (j < 0 || j >= n.options.length) return; [n.options[i], n.options[j]] = [n.options[j], n.options[i]]; setDirty(); refreshCard(); renderSide(); });
       });
-      $('#fs-root')?.addEventListener('click', () => { tree.root = n.id; setDirty(); drawCards(); renderSide(); });
+      $('#fs-root')?.addEventListener('click', () => {
+        if (!confirm('ستظهر هذه العقدة للعميل أولاً بدلاً من الترحيب الحالي. هل تريد تغيير بداية المحادثة؟')) return;
+        tree.root = n.id; setDirty(); drawCards(); renderSide();
+      });
       $('#fs-dup').onclick = () => { const id = 'node_' + Math.random().toString(36).slice(2, 7); tree.nodes.push({ ...JSON.parse(JSON.stringify(n)), id, title: (n.title || '') + ' (نسخة)', x: n.x + 40, y: n.y + 40 }); sel = id; setDirty(); drawCards(); renderSide(); };
       $('#fs-del')?.addEventListener('click', () => {
         if (!confirm('حذف العقدة "' + (n.title || n.id) + '"؟')) return;
@@ -831,18 +839,50 @@
 
   /* ============================ knowledge base ============================ */
   function kbModal(item = {}) {
+    let attachments = [];
+    try { attachments = Array.isArray(item.media) ? item.media.map(m => ({ ...m })) : JSON.parse(item.media || '[]').map(m => ({ ...m })); } catch { attachments = []; }
     modal(`<h3>${item.id ? 'تعديل إجابة' : 'إضافة إجابة إلى قاعدة المعرفة'}</h3>
       <label class="f"><span>السؤال</span><input id="kq" value="${esc(item.question || '')}"></label>
       <label class="f"><span>الإجابة</span><textarea id="ka" rows="4">${esc(item.answer || '')}</textarea></label>
+      <label class="f"><span>مرفقات الإجابة (اختياري)</span><input id="kmfiles" type="file" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/ogg,application/pdf" multiple><small>صور، فيديو أو PDF · حتى 20 ميجابايت للملف و5 ملفات للإجابة</small></label>
+      <div id="kmlist" style="display:grid;gap:6px;margin:-4px 0 12px"></div>
       <label class="f"><span>كلمات مفتاحية (اختياري، مفصولة بفاصلة)</span><input id="kk" value="${esc(item.keywords || '')}" placeholder="شحن، توصيل، مدة"><small>تساعد البوت على مطابقة أسئلة مختلفة الصياغة</small></label>
       <div class="row"><button class="btn pri" id="ks">حفظ</button><button class="btn" data-close>إلغاء</button></div>`, (m, close) => {
+      const list = $('#kmlist', m);
+      const drawAttachments = () => {
+        list.innerHTML = attachments.map((f, i) => `<div class="row" style="justify-content:space-between;border:1px solid var(--line);border-radius:9px;padding:7px 10px"><span style="overflow-wrap:anywhere">${f.type === 'image' ? '🖼️' : f.type === 'video' ? '🎬' : '📄'} ${esc(f.name)}${f.file ? ' <small class="muted">جاهز للرفع</small>' : ''}</span><button type="button" class="btn sm dan" data-km-remove="${i}">إزالة</button></div>`).join('');
+        $$('[data-km-remove]', list).forEach(b => b.onclick = () => { attachments.splice(Number(b.dataset.kmRemove), 1); drawAttachments(); });
+      };
+      $('#kmfiles', m).onchange = (e) => {
+        const files = Array.from(e.target.files || []);
+        const supported = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/ogg', 'application/pdf'];
+        if (files.some(f => !supported.includes(f.type))) err('الصيغ المدعومة: JPG وPNG وGIF وWebP وMP4 وWebM وOGG وPDF.');
+        if (files.some(f => f.size > 20 * 1024 * 1024)) err('حجم الملف الأقصى 20 ميجابايت.');
+        files.filter(f => f.size <= 20 * 1024 * 1024 && supported.includes(f.type)).forEach(file => {
+          if (attachments.length >= 5) return err('يمكن إرفاق 5 ملفات كحد أقصى لكل إجابة.');
+          attachments.push({ name: file.name, type: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'pdf', file });
+        });
+        e.target.value = ''; drawAttachments();
+      };
+      drawAttachments();
       $('#ks', m).onclick = async () => {
-        const body = { question: $('#kq', m).value, answer: $('#ka', m).value, keywords: $('#kk', m).value };
+        const saveButton = $('#ks', m);
+        saveButton.disabled = true; saveButton.textContent = 'جارٍ حفظ الإجابة ومرفقاتها…';
         try {
+          const media = [];
+          for (const a of attachments) {
+            if (!a.file) { media.push({ url: a.url, name: a.name, type: a.type }); continue; }
+            const url = `/api/media?type=${encodeURIComponent(a.file.type)}&name=${encodeURIComponent(a.file.name)}`;
+            const up = await fetch(url, { method: 'POST', headers: { Authorization: 'Bearer ' + S.token, 'Content-Type': 'application/octet-stream' }, body: a.file });
+            const result = await up.json();
+            if (!up.ok) throw new Error(result.error || 'تعذر رفع المرفق');
+            media.push(result);
+          }
+          const body = { question: $('#kq', m).value, answer: $('#ka', m).value, keywords: $('#kk', m).value, media };
           if (item.id) await api('PUT', '/api/kb/' + item.id, body);
           else await api('POST', '/api/kb', { ...body, site_id: item.site_id || S.siteId, conversation_id: item.conversation_id });
           ok('تم الحفظ'); close(); if (page() === 'kb') loadKB();
-        } catch (e) { err(e); }
+        } catch (e) { saveButton.disabled = false; saveButton.textContent = 'حفظ'; err(e); }
       };
     });
   }
@@ -877,10 +917,10 @@
   async function loadKB() {
     const items = await api('GET', `/api/kb?site=${S.siteId}&q=${encodeURIComponent(KBF.q)}&source=${KBF.source}`);
     $('#kbt').innerHTML = items.length ? `<table><thead><tr><th>السؤال</th><th>الإجابة</th><th>المصدر</th><th>استخدام</th><th>مفعّل</th><th></th></tr></thead><tbody>
-      ${items.map(k => `<tr data-id="${k.id}"><td><b>${esc(k.question)}</b>${k.keywords ? `<br><small class="muted">🔑 ${esc(k.keywords)}</small>` : ''}</td><td style="max-width:320px">${esc(k.answer)}</td>
+      ${items.map(k => { let mediaCount = 0; try { mediaCount = (Array.isArray(k.media) ? k.media : JSON.parse(k.media || '[]')).length; } catch {} return `<tr data-id="${k.id}"><td><b>${esc(k.question)}</b>${k.keywords ? `<br><small class="muted">🔑 ${esc(k.keywords)}</small>` : ''}</td><td style="max-width:320px">${esc(k.answer)}${mediaCount ? `<br><small class="muted">📎 ${mediaCount} مرفق</small>` : ''}</td>
         <td><span class="tag ${k.source}">${k.source === 'learned' ? 'متعلَّمة' : 'يدوي'}</span>${k.source_conversation ? `<br><a href="#/conv/${k.source_conversation}" style="font-size:12px">محادثة #${k.source_conversation}</a>` : ''}</td>
         <td>${k.hits}</td><td><input type="checkbox" data-act ${k.active ? 'checked' : ''}></td>
-        <td style="white-space:nowrap"><button class="btn sm" data-ed>تعديل</button>${can('supervisor') ? '<button class="btn sm dan" data-rm>حذف</button>' : ''}</td></tr>`).join('')}</tbody></table>`
+        <td style="white-space:nowrap"><button class="btn sm" data-ed>تعديل</button>${can('supervisor') ? '<button class="btn sm dan" data-rm>حذف</button>' : ''}</td></tr>`; }).join('')}</tbody></table>`
       : '<div class="empty">لا توجد إجابات. أضف إجابات يدوياً، أو ستُحفظ تلقائياً عندما يرد الموظفون على أسئلة لم يعرفها البوت.</div>';
     $$('tr[data-id]', $('#kbt')).forEach(tr => {
       const k = items.find(x => x.id === Number(tr.dataset.id));
