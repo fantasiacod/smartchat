@@ -11,6 +11,7 @@ const { db, now, getSite, getSiteByKey, createSite, getConv, audit, DATA_DIR } =
 const { defaultSettings, defaultTree, deepMerge } = require('./defaults');
 const chat = require('./chat');
 const ds = require('./datasource');
+const persistence = require('./persist');
 
 const PORT = Number(process.env.PORT) || 3000;
 const secretFile = path.join(DATA_DIR, '.jwt_secret');
@@ -63,7 +64,7 @@ app.get('/api/widget/config', cors, (req, res) => {
 });
 
 app.get('/healthz', (req, res) => res.json({ ok: true }));
-app.post('/api/media', auth(), express.raw({ type: 'application/octet-stream', limit: '20mb' }), (req, res) => {
+app.post('/api/media', auth(), express.raw({ type: 'application/octet-stream', limit: '20mb' }), async (req, res) => {
   const mime = String(req.query.type || '').toLowerCase();
   const spec = MEDIA_TYPES[mime];
   const b = req.body;
@@ -79,8 +80,19 @@ app.post('/api/media', auth(), express.raw({ type: 'application/octet-stream', l
   if (!signatureOk) return res.status(400).json({ error: 'محتوى الملف لا يطابق صيغته' });
   const id = crypto.randomUUID();
   const filename = `${id}.${spec.ext}`;
-  fs.writeFileSync(path.join(MEDIA_DIR, filename), b, { flag: 'wx' });
-  res.json({ url: `/media/${filename}`, type: spec.kind, name: String(req.query.name || 'مرفق').slice(0, 120) });
+  const name = String(req.query.name || 'مرفق').replace(/[\r\n\0]/g, '').slice(0, 120);
+  db.prepare('INSERT INTO media_assets(id,extension,mime,name,data,created_at) VALUES(?,?,?,?,?,?)')
+    .run(id, spec.ext, mime, name, b, now());
+  await persistence.save(db, true);
+  res.json({ url: `/media/${filename}`, type: spec.kind, name });
+});
+app.get('/media/:file', (req, res, next) => {
+  const match = /^([a-f0-9-]+)\.(jpg|png|gif|webp|mp4|webm|ogv|pdf)$/i.exec(req.params.file);
+  if (!match) return next();
+  const asset = db.prepare('SELECT mime,name,data FROM media_assets WHERE id=?').get(match[1]);
+  if (!asset) return next();
+  res.set({ 'Content-Type': asset.mime, 'Content-Length': String(asset.data.length), 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(asset.name)}`, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'public, max-age=86400, immutable' });
+  res.send(asset.data);
 });
 app.use('/media', express.static(MEDIA_DIR, { dotfiles: 'deny', index: false, maxAge: '1d', setHeaders: (res) => res.set('X-Content-Type-Options', 'nosniff') }));
 app.get('/', (req, res) => res.redirect('/admin/'));
