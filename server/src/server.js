@@ -21,6 +21,26 @@ const app = express();
 app.set('trust proxy', true);
 app.use(express.json({ limit: '2mb' }));
 const PUB = path.join(__dirname, '..', 'public');
+const MEDIA_DIR = path.join(DATA_DIR, 'media');
+fs.mkdirSync(MEDIA_DIR, { recursive: true });
+const MEDIA_TYPES = {
+  'image/jpeg': { ext: 'jpg', kind: 'image' }, 'image/png': { ext: 'png', kind: 'image' },
+  'image/gif': { ext: 'gif', kind: 'image' }, 'image/webp': { ext: 'webp', kind: 'image' },
+  'video/mp4': { ext: 'mp4', kind: 'video' }, 'video/webm': { ext: 'webm', kind: 'video' },
+  'video/ogg': { ext: 'ogv', kind: 'video' }, 'application/pdf': { ext: 'pdf', kind: 'pdf' }
+};
+
+function cleanKbMedia(value) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 5) throw new Error('يمكن إرفاق 5 ملفات كحد أقصى لكل إجابة');
+  return value.map(m => {
+    if (!m || typeof m.url !== 'string' || !/^\/media\/[a-f0-9-]+\.(jpg|png|gif|webp|mp4|webm|ogv|pdf)$/i.test(m.url))
+      throw new Error('مرفق غير صالح');
+    const type = String(m.type || '');
+    if (!['image', 'video', 'pdf'].includes(type)) throw new Error('نوع المرفق غير مدعوم');
+    return { url: m.url, name: String(m.name || 'مرفق').slice(0, 120), type };
+  });
+}
 
 /* ----------------------------- public ----------------------------- */
 
@@ -43,6 +63,26 @@ app.get('/api/widget/config', cors, (req, res) => {
 });
 
 app.get('/healthz', (req, res) => res.json({ ok: true }));
+app.post('/api/media', auth(), express.raw({ type: 'application/octet-stream', limit: '20mb' }), (req, res) => {
+  const mime = String(req.query.type || '').toLowerCase();
+  const spec = MEDIA_TYPES[mime];
+  const b = req.body;
+  if (!spec || !Buffer.isBuffer(b) || !b.length) return res.status(400).json({ error: 'صيغة الملف غير مدعومة أو الملف فارغ' });
+  const signatureOk = mime === 'image/jpeg' ? b[0] === 0xff && b[1] === 0xd8
+    : mime === 'image/png' ? b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
+    : mime === 'image/gif' ? b.subarray(0, 3).toString() === 'GIF'
+    : mime === 'image/webp' ? b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP'
+    : mime === 'video/mp4' ? b.subarray(4, 8).toString() === 'ftyp'
+    : mime === 'video/webm' ? b.subarray(0, 4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3]))
+    : mime === 'video/ogg' ? b.subarray(0, 4).toString() === 'OggS'
+    : b.subarray(0, 5).toString() === '%PDF-';
+  if (!signatureOk) return res.status(400).json({ error: 'محتوى الملف لا يطابق صيغته' });
+  const id = crypto.randomUUID();
+  const filename = `${id}.${spec.ext}`;
+  fs.writeFileSync(path.join(MEDIA_DIR, filename), b, { flag: 'wx' });
+  res.json({ url: `/media/${filename}`, type: spec.kind, name: String(req.query.name || 'مرفق').slice(0, 120) });
+});
+app.use('/media', express.static(MEDIA_DIR, { dotfiles: 'deny', index: false, maxAge: '1d', setHeaders: (res) => res.set('X-Content-Type-Options', 'nosniff') }));
 app.get('/', (req, res) => res.redirect('/admin/'));
 app.use('/admin', express.static(path.join(PUB, 'admin')));
 app.use('/demo', express.static(path.join(PUB, 'demo')));
@@ -303,8 +343,9 @@ app.get('/api/kb', auth(), (req, res) => {
 app.post('/api/kb', auth(), (req, res) => {
   const { site_id, question, answer, keywords } = req.body;
   if (!site_id || !question?.trim() || !answer?.trim()) return res.status(400).json({ error: 'السؤال والإجابة مطلوبان' });
-  const r = db.prepare('INSERT INTO kb(site_id,question,answer,keywords,source,source_conversation,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)')
-    .run(Number(site_id), question.trim(), answer.trim(), keywords || '', req.body.conversation_id ? 'learned' : 'manual', req.body.conversation_id || null, req.user.id, now(), now());
+  let media; try { media = cleanKbMedia(req.body.media || []); } catch (e) { return res.status(400).json({ error: e.message }); }
+  const r = db.prepare('INSERT INTO kb(site_id,question,answer,keywords,media,source,source_conversation,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)')
+    .run(Number(site_id), question.trim(), answer.trim(), keywords || '', JSON.stringify(media), req.body.conversation_id ? 'learned' : 'manual', req.body.conversation_id || null, req.user.id, now(), now());
   res.json({ id: r.lastInsertRowid });
 });
 
@@ -312,8 +353,10 @@ app.put('/api/kb/:id', auth(), (req, res) => {
   const k = db.prepare('SELECT * FROM kb WHERE id=?').get(Number(req.params.id));
   if (!k) return res.status(404).json({ error: 'not found' });
   const { question, answer, keywords, active } = req.body;
-  db.prepare('UPDATE kb SET question=?, answer=?, keywords=?, active=?, updated_at=? WHERE id=?')
-    .run(question ?? k.question, answer ?? k.answer, keywords ?? k.keywords, active === undefined ? k.active : (active ? 1 : 0), now(), k.id);
+  let media = k.media || '[]';
+  if (req.body.media !== undefined) { try { media = JSON.stringify(cleanKbMedia(req.body.media)); } catch (e) { return res.status(400).json({ error: e.message }); } }
+  db.prepare('UPDATE kb SET question=?, answer=?, keywords=?, media=?, active=?, updated_at=? WHERE id=?')
+    .run(question ?? k.question, answer ?? k.answer, keywords ?? k.keywords, media, active === undefined ? k.active : (active ? 1 : 0), now(), k.id);
   res.json({ ok: true });
 });
 
