@@ -102,11 +102,13 @@ function createSite(name, key) {
 function hydrateSite(row) {
   if (!row) return null;
   return {
-  const site = {
     ...row,
     settings: deepMerge(defaultSettings(), JSON.parse(row.settings || '{}')),
     tree: JSON.parse(row.tree || 'null') || defaultTree()
   };
+  const settings = deepMerge(defaultSettings(), JSON.parse(row.settings || '{}'));
+  const tree = JSON.parse(row.tree || 'null') || defaultTree();
+  const site = Object.assign({}, row, { settings, tree });
   // Keep business location available from the welcome menu for each active site.
   // The option is derived from the site's own settings and refreshed on reads,
   // so existing installations receive it without a manual tree reset.
