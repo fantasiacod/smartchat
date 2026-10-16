@@ -101,7 +101,10 @@ function sendNode(conv, site, nodeId) {
 
 async function runAction(conv, site, opt, freeText) {
   switch (opt.action) {
-    case 'goto': return sendNode(conv, site, opt.target);
+    case 'goto': {
+      if (!opt.target || !site.tree.nodes.some(n => n.id === opt.target)) return botSay(conv, 'هذا الزر غير مربوط بخطوة بعد. اختر خيارًا آخر أو ارجع للقائمة الرئيسية.', navOptions());
+      return sendNode(conv, site, opt.target);
+    }
     case 'handoff': return handoff(conv, site, freeText || null, site.settings.behavior.handoff_message);
     case 'order_status': return startLookup(conv, site, 'order', freeText);
     case 'customer_info': return startLookup(conv, site, 'customer', freeText);
@@ -109,8 +112,13 @@ async function runAction(conv, site, opt, freeText) {
     case 'url': return addMessage(conv, 'bot', opt.label, { link: opt.target, link_label: 'فتح الرابط ↗', options: navOptions() });
     case 'company_info': {
       const a = site.settings.appearance;
-      const lines = [a.company_name ? `عن ${a.company_name}` : 'معلومات النشاط التجاري', a.unified_number ? `الرقم الموحد: ${a.unified_number}` : '', a.company_website ? `الموقع الإلكتروني: ${a.company_website}` : ''].filter(Boolean);
-      return addMessage(conv, 'bot', lines.join('\n'), a.company_website ? { link: a.company_website, link_label: 'زيارة الموقع ↗', options: navOptions() } : { options: navOptions() });
+      const lines = [a.company_name ? `عن ${a.company_name}` : 'معلومات النشاط التجاري', a.company_description, a.company_phone ? `الهاتف: ${a.company_phone}` : '', a.company_email ? `البريد الإلكتروني: ${a.company_email}` : '', a.unified_number ? `الرقم الموحد: ${a.unified_number}` : '', a.company_location ? `العنوان: ${a.company_location}` : ''].filter(Boolean);
+      return addMessage(conv, 'bot', lines.join('\n'), { ...(a.company_website ? { link: a.company_website, link_label: 'زيارة الموقع ↗' } : {}), options: navOptions() });
+    }
+    case 'company_website': {
+      const url = String(site.settings.appearance.company_website || '').trim();
+      if (!/^https?:\/\//i.test(url)) return botSay(conv, 'لم تتم إضافة رابط الموقع الإلكتروني بعد.', navOptions());
+      return addMessage(conv, 'bot', `موقع ${site.name}`, { link: url, link_label: 'فتح الموقع الإلكتروني ↗', options: navOptions() });
     }
     case 'company_location': {
       const a = site.settings.appearance;
