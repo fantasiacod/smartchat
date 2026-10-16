@@ -151,6 +151,7 @@
       '.opt{border:1.5px solid ' + color + ';color:' + color + ';background:#fff;border-radius:999px;padding:7px 13px;font-size:13.5px;cursor:pointer;transition:.15s}' +
       '.opt:hover{background:' + color + ';color:' + on + '}.opt[disabled]{opacity:.45;cursor:default;background:#fff;color:' + color + '}' +
       '.link{display:inline-block;margin-top:6px;background:' + color + ';color:' + on + '!important;text-decoration:none;padding:6px 12px;border-radius:8px;font-size:13px}' +
+      '.attachments{display:flex;flex-direction:column;gap:8px;margin-top:8px}.attachments img{display:block;max-width:min(100%,280px);max-height:260px;border-radius:10px;object-fit:contain}.attachments video{display:block;width:min(100%,320px);max-height:260px;border-radius:10px;background:#111}.attachment-link{display:inline-flex;align-items:center;gap:7px;border:1px solid rgba(127,127,127,.25);border-radius:9px;padding:8px 11px;text-decoration:none;color:inherit!important;background:rgba(127,127,127,.08)}' +
       '.typing{display:none;align-self:flex-start;background:' + botBg + ';border-radius:16px;padding:10px 14px;gap:4px}.typing.on{display:flex}' +
       '.typing i{width:7px;height:7px;border-radius:50%;background:#9ca3af;animation:bl 1.2s infinite}.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}' +
       '@keyframes bl{0%,60%,100%{opacity:.3}30%{opacity:1}}' +
@@ -297,9 +298,15 @@
         var me = m.sender === 'visitor';
         var who = m.sender === 'agent' ? (m.agent_name || 'موظف') : m.sender === 'bot' ? A.bot_name : '';
         var av = m.sender === 'bot' && A.bot_avatar ? '<img src="' + esc(A.bot_avatar) + '">' : esc((who || '?').trim().charAt(0));
+        var attachments = (m.media || []).map(function (f) {
+          var url = BASE + f.url, name = esc(f.name || 'مرفق');
+          if (f.type === 'image') return '<a href="' + esc(url) + '" target="_blank" rel="noopener"><img src="' + esc(url) + '" alt="' + name + '" loading="lazy"></a>';
+          if (f.type === 'video') return '<video controls playsinline preload="metadata" aria-label="' + name + '"><source src="' + esc(url) + '"></video>';
+          return '<a class="attachment-link" href="' + esc(url) + '" target="_blank" rel="noopener">📄 ' + name + ' · فتح ملف PDF</a>';
+        }).join('');
         html += '<div class="row' + (me ? ' me' : m.sender === 'agent' ? ' agent' : ' bot') + '">' + (me ? '' : '<div class="mav">' + av + '</div>') + '<div>' +
           (who ? '<div class="who">' + esc(who) + '</div>' : '') +
-          '<div class="bub">' + fmt(m.body) + (m.link ? '<br><a class="link" href="' + esc(m.link) + '" target="_blank" rel="noopener">' + esc(m.link_label || 'فتح') + '</a>' : '') +
+          '<div class="bub">' + fmt(m.body) + (m.link ? '<br><a class="link" href="' + esc(m.link) + '" target="_blank" rel="noopener">' + esc(m.link_label || 'فتح') + '</a>' : '') + (attachments ? '<div class="attachments">' + attachments + '</div>' : '') +
           '<div class="tm">' + time(m.created_at) + '</div></div></div></div>';
         if (m.options && m.options.length) {
           var active = i === lastOptIdx && state.status === 'bot' && i >= state.messages.length - 1;
