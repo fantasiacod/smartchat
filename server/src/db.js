@@ -44,6 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id, id);
 CREATE TABLE IF NOT EXISTS kb (
   id INTEGER PRIMARY KEY, site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
   question TEXT NOT NULL, answer TEXT NOT NULL, keywords TEXT DEFAULT '',
+  media TEXT DEFAULT '[]',
   source TEXT DEFAULT 'manual', source_conversation INTEGER, hits INTEGER DEFAULT 0, active INTEGER DEFAULT 1,
   created_by INTEGER, created_at TEXT, updated_at TEXT
 );
@@ -57,6 +58,11 @@ CREATE TABLE IF NOT EXISTS demo_customers (
   id INTEGER PRIMARY KEY, name TEXT, email TEXT, phone TEXT, city TEXT, tier TEXT
 );
 `);
+
+// Upgrade databases created by earlier releases without losing existing Q&As.
+if (!db.prepare('PRAGMA table_info(kb)').all().some(c => c.name === 'media')) {
+  db.exec("ALTER TABLE kb ADD COLUMN media TEXT NOT NULL DEFAULT '[]'");
+}
 
 const now = () => new Date().toISOString();
 
