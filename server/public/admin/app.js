@@ -51,10 +51,10 @@
   const STATUS = { bot: 'مع البوت', waiting: 'بانتظار موظف', human: 'مع موظف', closed: 'مغلقة' };
   const CLOSED_BY = { visitor: 'المستفيد', agent: 'الموظف', system: 'النظام (عدم نشاط)' };
   const SENDER = { visitor: 'المستفيد', bot: 'البوت', agent: 'موظف', system: 'النظام' };
-  const ACTIONS = { goto: 'الانتقال إلى عقدة', answer: 'رد نصي مباشر', company_info: 'معلومات النشاط التجاري', company_location: 'موقع النشاط التجاري على خرائط Google', order_status: 'استعلام حالة طلب (قاعدة البيانات)', customer_info: 'عرض بيانات المستفيد', handoff: 'تحويل لموظف بشري', url: 'فتح رابط', end: 'إنهاء المحادثة' };
+  const ACTIONS = { goto: 'الانتقال إلى عقدة', answer: 'رد نصي مباشر', company_info: 'معلومات النشاط التجاري', company_website: 'فتح موقع النشاط التجاري', company_location: 'موقع النشاط التجاري على خرائط Google', order_status: 'استعلام حالة طلب (قاعدة البيانات)', customer_info: 'عرض بيانات المستفيد', handoff: 'تحويل لموظف بشري', url: 'فتح رابط', end: 'إنهاء المحادثة' };
   const ACTION_HELP = {
     goto: 'ينقل العميل إلى عقدة أخرى لعرض رسالة وأزرار جديدة.', answer: 'يرسل ردًا مكتوبًا مباشرة ثم يعرض خيارات المتابعة.',
-    company_info: 'يعرض بيانات النشاط التجاري التي أدخلتها في الهوية والمظهر.', company_location: 'يرسل عنوان النشاط ورابط فتحه على خرائط Google.',
+    company_info: 'يعرض بيانات النشاط التجاري التي أدخلتها في الهوية والمظهر.', company_website: 'يفتح رابط موقع النشاط التجاري المحفوظ في الهوية والمظهر.', company_location: 'يرسل عنوان النشاط ورابط فتحه على خرائط Google.',
     order_status: 'يطلب بيانات العميل ثم يبحث عن الطلب في مصدر البيانات المرتبط.', customer_info: 'يبحث عن بيانات العميل في مصدر البيانات المرتبط.',
     handoff: 'ينقل المحادثة إلى صندوق الموظفين المباشر.', url: 'يفتح الرابط الذي تضيفه في حقل هذا الزر.', end: 'ينهي المحادثة ويعرض نموذج التقييم.'
   };
@@ -539,7 +539,7 @@
     order_status: { icon: '📦', color: '#2563eb', label: 'حالة طلب' },
     customer_info: { icon: '👤', color: '#7c3aed', label: 'بيانات المستفيد' },
     company_info: { icon: '🏢', color: '#0f766e', label: 'معلومات النشاط' },
-    company_location: { icon: '📍', color: '#059669', label: 'موقع النشاط' },
+    company_location: { icon: '📍', color: '#059669', label: 'موقع النشاط' }, company_website: { icon: '🌐', color: '#2563eb', label: 'موقع النشاط' },
     handoff: { icon: '🙋', color: '#ea580c', label: 'تحويل لموظف' },
     url: { icon: '🔗', color: '#0891b2', label: 'رابط' },
     end: { icon: '⏹', color: '#dc2626', label: 'إنهاء' }
@@ -590,7 +590,7 @@
         <div class="fe-main">
           <div class="fe-canvas" id="fe-canvas" dir="ltr">
             <div class="fe-world" id="fe-world"><svg class="fe-edges" id="fe-edges"></svg></div>
-          <div class="fe-hint"><b>طريقة الاستخدام:</b> اسحب رأس العقدة لتحريكها · اسحب الدائرة بجانب الزر وأسقطها فوق عقدة موجودة لربطها · لإضافة خطوة جديدة استخدم «إضافة عقدة» أولاً ثم اخترها من إعداد الزر · إسقاط الزر في مساحة فارغة لا ينشئ عقدة تلقائياً · اسحب الخلفية للتنقل</div>
+          <div class="fe-hint"><b>الربط:</b> اختر «الانتقال إلى عقدة» للزر، ثم اسحب دائرته وأسقطها على دائرة المدخل أعلى العقدة المناسبة. لن يتم الربط عند الإفلات في مكان آخر. لفك الربط اضغط الخط الواصل وأكّد الفك. يمكنك أيضًا اختيار العقدة من القائمة الجانبية.</div>
           </div>
           <aside class="fe-side" id="fe-side"></aside>
         </div>
@@ -603,7 +603,7 @@
     function cardHTML(n) {
       const isRoot = n.id === tree.root;
       return `<div class="fe-card ${isRoot ? 'root' : ''} ${sel === n.id ? 'sel' : ''}" data-id="${esc(n.id)}" style="left:${n.x}px;top:${n.y}px" dir="rtl">
-        <span class="fe-in" title="مدخل"></span>
+        <span class="fe-in" title="أسقط هنا لربط زر بهذه العقدة"></span>
         <div class="fe-head">${isRoot ? '<span class="fe-start">▶ البداية</span>' : ''}<b>${esc(n.title || n.id)}</b></div>
         <div class="fe-msg">${esc(n.message || '').slice(0, 120) || '<span class="muted">بدون رسالة</span>'}</div>
         <div class="fe-opts">${(n.options || []).map((o, i) => {
@@ -611,7 +611,7 @@
           const tgt = o.action === 'goto' ? nodeById(o.target) : null;
           return `<div class="fe-opt" data-i="${i}"><span class="fe-ic" style="background:${m.color}">${m.icon}</span><span class="fe-ol">${esc(o.label)}</span>
             ${o.action !== 'goto' ? `<span class="fe-tag" style="color:${m.color}">${m.label}</span>` : (tgt ? '' : '<span class="fe-tag" style="color:#dc2626">غير مربوط</span>')}
-            <span class="fe-port" data-port="${i}" title="اسحب للربط"></span></div>`;
+            ${o.action === 'goto' ? `<span class="fe-port" data-port="${i}" title="اسحب إلى دائرة مدخل العقدة لربط هذا الزر"></span>` : ''}</div>`;
         }).join('')}
         <button class="fe-addopt" type="button">＋ زر</button></div>
       </div>`;
@@ -654,7 +654,7 @@
       svg.innerHTML = h;
       $$('.fe-edge:not(.temp)', svg).forEach(p => p.onclick = (e) => {
         e.stopPropagation();
-        if (confirm('حذف هذا الربط؟ (سيتحول الزر إلى "تحويل لموظف")')) { const o = nodeById(p.dataset.from).options[p.dataset.i]; o.action = 'handoff'; o.target = ''; setDirty(); drawCards(); renderSide(); }
+        if (confirm('فك ربط هذا الزر؟ سيبقى الزر في المحادثة دون انتقال حتى تربطه بعقدة أخرى أو تغيّر إجراءه.')) { const o = nodeById(p.dataset.from).options[p.dataset.i]; o.target = ''; setDirty(); drawCards(); renderSide(); }
       });
     }
 
@@ -696,7 +696,11 @@
     canvas.addEventListener('pointermove', (e) => {
       if (!drag) return;
       if (drag.type === 'pan') { view.x = e.clientX - drag.sx; view.y = e.clientY - drag.sy; drag.moved = true; applyView(); }
-      if (drag.type === 'link') { drawEdges({ a: drag.a, b: toWorld(e) }); }
+      if (drag.type === 'link') {
+        const input = document.elementFromPoint(e.clientX, e.clientY)?.closest('.fe-in');
+        $$('.fe-in', world).forEach(el => el.classList.toggle('drop-target', !!input && el === input && el.closest('.fe-card')?.dataset.id !== drag.n.id));
+        drawEdges({ a: drag.a, b: toWorld(e) });
+      }
     });
     canvas.addEventListener('pointerup', (e) => {
       canvas.classList.remove('panning');
@@ -704,16 +708,18 @@
       if (drag.type === 'pan' && !drag.moved && sel) { sel = null; drawCards(); renderSide(); }
       if (drag.type === 'link') {
         const o = drag.n.options[drag.i];
-        const hit = document.elementsFromPoint(e.clientX, e.clientY).find(el => el.classList?.contains('fe-card'));
-        if (hit && hit.dataset.id !== drag.n.id) {
-          o.action = 'goto'; o.target = hit.dataset.id;
+        const input = document.elementFromPoint(e.clientX, e.clientY)?.closest('.fe-in');
+        const hit = input?.closest('.fe-card');
+        if (o.action === 'goto' && hit && hit.dataset.id !== drag.n.id && nodeById(hit.dataset.id)) {
+          o.target = hit.dataset.id;
           setDirty(); drawCards(); renderSide();
         } else if (hit?.dataset.id === drag.n.id) {
-          err('اختر عقدة أخرى لربط الزر بها.'); drawEdges();
+          err('لا يمكن ربط العقدة بنفسها. اختر دائرة مدخل لعقدة أخرى.'); drawEdges();
         } else {
-          err('لم يتم إنشاء ربط. أسقط الزر فوق عقدة موجودة، أو أضف عقدة جديدة أولاً من زر «إضافة عقدة».');
+          err('لم يتم الربط. أسقط الدائرة على دائرة المدخل أعلى عقدة مناسبة، أو اختر العقدة من القائمة الجانبية.');
           drawEdges();
         }
+        $$('.fe-in', world).forEach(el => el.classList.remove('drop-target'));
       }
       drag = null;
     });
@@ -1092,6 +1098,7 @@
         <div class="card" style="margin-bottom:14px"><h3>🏢 هوية الشركة</h3>
           ${txt('company_name', 'اسم الشركة', 'مثال: متجر الأمل')}
           ${img('company_logo', 'شعار الشركة', 'يظهر في أعلى نافذة المحادثة وفي شاشة البداية. يفضل PNG بخلفية شفافة.')}
+          <label class="f"><span>نبذة ومعلومات النشاط التجاري</span><textarea data-t="company_description" rows="4" placeholder="اكتب نبذة النشاط، الخدمات، أوقات العمل، أو أي معلومات تريد أن يرسلها البوت">${esc(A.company_description || '')}</textarea><small>تظهر للعميل عند اختياره «معلومات النشاط التجاري» في قائمة الترحيب.</small></label>
           <div class="grid g2">${txt('footer_text', 'نص التذييل قبل اسم الشركة', 'بدعم من')}
           <label class="f"><span>إظهار التذييل</span><select data-s="show_footer"><option value="true">نعم</option><option value="false">لا</option></select></label></div>
         </div>
@@ -1099,7 +1106,7 @@
           <div class="grid g2">${txt('title', 'عنوان النافذة')}${txt('subtitle', 'العنوان الفرعي')}${txt('bot_name', 'اسم البوت')}
           <label class="f"><span>اتجاه النص</span><select data-s="dir"><option value="rtl">عربي (RTL)</option><option value="ltr">English (LTR)</option></select></label></div>
           <h4 style="margin:12px 0 8px;font-size:13.5px;color:var(--muted)">معلومات تظهر للمستفيد</h4>
-          <div class="grid g2">${txt('unified_number', 'الرقم الموحد للنشاط', '9200XXXXXX')}${txt('company_website', 'موقع النشاط التجاري', 'https://example.org')}${txt('company_location', 'عنوان النشاط التجاري', 'المدينة، الحي، الشارع')}${txt('company_map_url', 'رابط خرائط Google (اختياري)', 'https://maps.app.goo.gl/...')}</div>
+          <div class="grid g2">${txt('company_phone', 'هاتف النشاط التجاري', '+966...')}${txt('company_email', 'البريد الإلكتروني للنشاط', 'info@example.org')}${txt('unified_number', 'الرقم الموحد للنشاط', '9200XXXXXX')}${txt('company_website', 'رابط الموقع الإلكتروني', 'https://example.org')}${txt('company_location', 'عنوان النشاط التجاري', 'المدينة، الحي، الشارع')}${txt('company_map_url', 'رابط خرائط Google (اختياري)', 'https://maps.app.goo.gl/...')}</div>
           ${img('bot_avatar', 'صورة البوت (تظهر بجانب رسائله)')}
           <label class="f"><span>خط المحادثة</span><select data-s="font"><option value="">خط الموقع الافتراضي</option><option value="Tahoma">Tahoma</option><option value="Arial">Arial</option><option value="'IBM Plex Sans Arabic'">IBM Plex Sans Arabic</option><option value="'Noto Sans Arabic'">Noto Sans Arabic</option><option value="'Noto Naskh Arabic'">Noto Naskh Arabic</option><option value="'Cairo'">Cairo</option><option value="'Tajawal'">Tajawal</option><option value="'Amiri'">Amiri — خط نسخي</option><option value="'Reem Kufi'">Reem Kufi — كوفي</option><option value="'Aref Ruqaa'">Aref Ruqaa — رقعة</option><option value="'El Messiri'">El Messiri</option></select><small>يتحمّل الخط العربي المختار تلقائيًا للزائر.</small></label>
           <div class="font-sample" id="chat-font-sample" dir="rtl">مرحباً، كيف نقدر نساعدك اليوم؟ ١٢٣٤٥٦</div>
