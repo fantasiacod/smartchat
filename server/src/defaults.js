@@ -83,7 +83,7 @@ function defaultSettings() {
     behavior: {
       auto_learn: true,
       kb_threshold: 0.6,
-      no_answer_action: 'handoff',     // handoff | fallback
+      no_answer_action: 'fallback',   // handoff | fallback
       fallback_message: 'عذراً لم أفهم سؤالك، اختر من القائمة أو اطلب التحدث مع موظف.',
       handoff_message: 'لحظات من فضلك، جارٍ تحويلك إلى أحد موظفينا 👨‍💼',
       no_answer_handoff_message: 'لم أجد إجابة لسؤالك، سأحولك الآن إلى أحد موظفينا ليجيبك 👨‍💼',
