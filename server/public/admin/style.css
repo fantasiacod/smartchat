@@ -202,3 +202,49 @@ pre.code{background:#0f172a;color:#d1fae5;padding:14px;border-radius:10px;overfl
 .fs-opt{border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:8px;background:var(--soft)}
 .fe-legend{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12.5px}.fe-legend div{display:flex;gap:6px;align-items:center}
 @media (max-width:900px){.fe-main{grid-template-columns:1fr}.fe-side{max-height:45vh}}
+
+/* Persisted day/night dashboard themes */
+body[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0b1220;--panel:#111827;--ink:#e5e7eb;--muted:#9ca3af;--line:#273244;--soft:#182334;
+  --brand:#41b072;--brand-ink:#fff;--brand-soft:#173526;--danger:#f87171;--warn:#fbbf24;--info:#60a5fa;
+  --sh:0 1px 2px rgba(0,0,0,.25),0 4px 14px rgba(0,0,0,.18);
+}
+body[data-theme="dark"] .login{background:linear-gradient(135deg,#10251b,#0b1220 60%)}
+body[data-theme="dark"] input,
+body[data-theme="dark"] select,
+body[data-theme="dark"] textarea,
+body[data-theme="dark"] .card,
+body[data-theme="dark"] .fe-card,
+body[data-theme="dark"] .fe-side,
+body[data-theme="dark"] .ci,
+body[data-theme="dark"] .chat .ch,
+body[data-theme="dark"] .list,
+body[data-theme="dark"] .items,
+body[data-theme="dark"] .m .b,
+body[data-theme="dark"] .m .opts span,
+body[data-theme="dark"] .pal,
+body[data-theme="dark"] .shape,
+body[data-theme="dark"] .ico{background-color:var(--panel);color:var(--ink);border-color:var(--line)}
+body[data-theme="dark"] .btn:not(.pri):not(.dan){background-color:var(--panel);color:var(--ink);border-color:var(--line)}
+body[data-theme="dark"] .btn:not(.pri):not(.dan):hover{background-color:var(--soft)}
+body[data-theme="dark"] .btn.pri{background:var(--brand);border-color:var(--brand);color:#fff}
+body[data-theme="dark"] .btn.dan{background:var(--panel);color:var(--danger);border-color:var(--line)}
+body[data-theme="dark"] .fe-canvas{background-color:#0f172a;background-image:radial-gradient(#334155 1px,transparent 1px)}
+body[data-theme="dark"] .fe-head{background:#1e293b}
+body[data-theme="dark"] .fe-card.root .fe-head{background:#173526}
+body[data-theme="dark"] .fe-msg{color:#cbd5e1;border-color:var(--line)}
+body[data-theme="dark"] .fe-in,
+body[data-theme="dark"] .fe-port{background:#111827;border-color:#64748b}
+body[data-theme="dark"] .fe-hint{background:rgba(17,24,39,.92);color:#cbd5e1}
+body[data-theme="dark"] .tag,
+body[data-theme="dark"] .tabs button,
+body[data-theme="dark"] .m .w{color:var(--muted)}
+body[data-theme="dark"] table th{background:#182334;color:#cbd5e1}
+body[data-theme="dark"] .login .card{background:var(--panel);color:var(--ink)}
+body[data-theme="dark"] .chat .msgs,
+body[data-theme="dark"] .msgs{background:var(--bg)}
+body[data-theme="dark"] .m.visitor .b,
+body[data-theme="dark"] .m.agent .b{background:#173526;color:#e5e7eb}
+body[data-theme="dark"] .pending{background:#33270e;border-color:#725516;color:#fde68a}
+@media (max-width:600px){#theme-toggle{font-size:0;padding:7px 9px}#theme-toggle:first-letter{font-size:15px}}
