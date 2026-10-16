@@ -217,6 +217,7 @@ pre.code{background:#0f172a;color:#d1fae5;padding:14px;border-radius:10px;overfl
 .fe-port:hover{transform:scale(1.35);background:var(--brand)}
 .fe-in{position:absolute;right:-8px;top:15px;width:14px;height:14px;border-radius:50%;background:#94a3b8;border:3px solid #fff;box-shadow:0 0 0 1px #94a3b8}
 .fe-addopt{margin:2px 12px 6px;border:1px dashed #cbd5e1;background:none;border-radius:8px;padding:4px;width:calc(100% - 24px);color:#64748b;cursor:pointer;font-size:12px}
+.fe-in.drop-target{background:var(--brand);box-shadow:0 0 0 5px var(--brand-soft);transform:scale(1.3)}
 .fe-addopt{margin:6px 12px 8px;border:1px dashed #94a3b8;background:var(--soft);border-radius:9px;padding:8px;width:calc(100% - 24px);min-height:40px;color:var(--ink);cursor:pointer;font-size:14px;font-weight:700}
 .fe-addopt:hover{border-color:var(--brand);color:var(--brand)}
 .fe-side{background:#fff;border-inline-start:1px solid var(--line);overflow-y:auto;padding:16px}
