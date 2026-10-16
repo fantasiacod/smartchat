@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS messages (
   agent_id INTEGER, body TEXT, payload TEXT, created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id, id);
+CREATE TABLE IF NOT EXISTS media_assets (
+  id TEXT PRIMARY KEY, extension TEXT NOT NULL, mime TEXT NOT NULL, name TEXT NOT NULL,
+  data BLOB NOT NULL, created_at TEXT
+);
 CREATE TABLE IF NOT EXISTS kb (
   id INTEGER PRIMARY KEY, site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
   question TEXT NOT NULL, answer TEXT NOT NULL, keywords TEXT DEFAULT '',
@@ -116,11 +120,14 @@ function hydrateSite(row) {
   const welcome = site.tree.nodes.find(n => n.id === 'root') || site.tree.nodes.find(n => n.id === site.tree.root);
   if (welcome) {
     welcome.options = welcome.options || [];
-    const locationOption = welcome.options.find(o => o.action === 'company_location');
-    if (locationOption) locationOption.label = `📍 موقع ${site.name}`;
-    else if (a.company_location || a.company_map_url) {
-      welcome.options.push({ label: `📍 موقع ${site.name}`, action: 'company_location', target: '' });
-    }
+    const ensureOption = (action, label, enabled) => {
+      const existing = welcome.options.find(o => o.action === action);
+      if (existing) existing.label = label;
+      else if (enabled) welcome.options.push({ label, action, target: '' });
+    };
+    ensureOption('company_info', `🏢 معلومات ${site.name}`, !!(a.company_name || a.company_description || a.company_phone || a.company_email || a.unified_number || a.company_website || a.company_location));
+    ensureOption('company_website', `🌐 موقع ${site.name}`, !!a.company_website);
+    ensureOption('company_location', `📍 موقع ${site.name}`, !!(a.company_location || a.company_map_url));
   }
   return site;
 }
