@@ -2,7 +2,42 @@
 (function () {
   'use strict';
   const THEME_KEY = 'sc_theme';
+  const DASHBOARD_KEY = 'sc_dashboard_customization';
   document.body.dataset.theme = localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light';
+  const DASHBOARD_DEFAULTS = {
+    accent: '#41b072', font: '"IBM Plex Sans Arabic",system-ui,Tahoma,sans-serif', decoration: 'none',
+    light: { bg: '#f4f6f8', panel: '#ffffff', text: '#0f172a', sidebar: '#0f1f17', sidebarText: '#cfe3d7' },
+    dark: { bg: '#0b1220', panel: '#111827', text: '#e5e7eb', sidebar: '#080f0c', sidebarText: '#cfe3d7' }
+  };
+  function loadDashboardPrefs() {
+    try { return { ...DASHBOARD_DEFAULTS, ...JSON.parse(localStorage.getItem(DASHBOARD_KEY) || '{}'),
+      light: { ...DASHBOARD_DEFAULTS.light, ...(JSON.parse(localStorage.getItem(DASHBOARD_KEY) || '{}').light || {}) },
+      dark: { ...DASHBOARD_DEFAULTS.dark, ...(JSON.parse(localStorage.getItem(DASHBOARD_KEY) || '{}').dark || {}) } }; }
+    catch { return JSON.parse(JSON.stringify(DASHBOARD_DEFAULTS)); }
+  }
+  let dashboardPrefs = loadDashboardPrefs();
+  function applyDashboardPrefs(prefs = dashboardPrefs) {
+    const mode = document.body.dataset.theme === 'dark' ? 'dark' : 'light';
+    const colors = prefs[mode] || DASHBOARD_DEFAULTS[mode];
+    document.body.style.setProperty('--bg', colors.bg);
+    document.body.style.setProperty('--panel', colors.panel);
+    document.body.style.setProperty('--ink', colors.text);
+    document.body.style.setProperty('--side-bg', colors.sidebar);
+    document.body.style.setProperty('--side-ink', colors.sidebarText);
+    document.body.style.setProperty('--brand', prefs.accent || DASHBOARD_DEFAULTS.accent);
+    document.body.style.setProperty('--brand-soft', (prefs.accent || DASHBOARD_DEFAULTS.accent) + '20');
+    document.body.style.fontFamily = prefs.font || DASHBOARD_DEFAULTS.font;
+    document.body.dataset.dashboardDecoration = prefs.decoration || 'none';
+    const motifs = {
+      geometric: '<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72"><path d="M36 3 43 22 63 16 50 36 63 56 43 50 36 69 29 50 9 56 22 36 9 16 29 22Z" fill="none" stroke="#ffffff" stroke-opacity=".17"/><circle cx="36" cy="36" r="10" fill="none" stroke="#ffffff" stroke-opacity=".14"/></svg>',
+      arabesque: '<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88" viewBox="0 0 88 88"><path d="M44 4C18 4 4 18 4 44s14 40 40 40 40-14 40-40S70 4 44 4Zm0 12c15 0 28 13 28 28S59 72 44 72 16 59 16 44s13-28 28-28Z" fill="none" stroke="#ffffff" stroke-opacity=".17"/><path d="M44 17c-5 12-12 19-24 27 12 8 19 15 24 27 5-12 12-19 24-27-12-8-19-15-24-27Z" fill="none" stroke="#ffffff" stroke-opacity=".14"/></svg>',
+      arabic_letters: '<svg xmlns="http://www.w3.org/2000/svg" width="112" height="88" viewBox="0 0 112 88"><g fill="#ffffff" fill-opacity=".18" font-family="serif" font-size="31" text-anchor="middle"><text x="28" y="53">ع</text><text x="56" y="53">ض</text><text x="84" y="53">م</text></g></svg>'
+    };
+    const motifColor = mode === 'dark' ? '#ffffff' : (prefs.accent || DASHBOARD_DEFAULTS.accent);
+    const svg = motifs[prefs.decoration]?.replace(/#ffffff/g, motifColor);
+    document.body.style.setProperty('--dashboard-pattern', svg ? 'url("data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) + '")' : 'none');
+  }
+  applyDashboardPrefs();
   const S = {
     token: localStorage.getItem('sc_token'), user: null, sites: [], siteId: Number(localStorage.getItem('sc_site')) || null,
     socket: null, live: new Map(), selected: null, tab: 'waiting', online: [], users: [], typing: {}
@@ -17,6 +52,12 @@
   const CLOSED_BY = { visitor: 'المستفيد', agent: 'الموظف', system: 'النظام (عدم نشاط)' };
   const SENDER = { visitor: 'المستفيد', bot: 'البوت', agent: 'موظف', system: 'النظام' };
   const ACTIONS = { goto: 'الانتقال إلى عقدة', answer: 'رد نصي مباشر', company_info: 'معلومات النشاط التجاري', company_location: 'موقع النشاط التجاري على خرائط Google', order_status: 'استعلام حالة طلب (قاعدة البيانات)', customer_info: 'عرض بيانات المستفيد', handoff: 'تحويل لموظف بشري', url: 'فتح رابط', end: 'إنهاء المحادثة' };
+  const ACTION_HELP = {
+    goto: 'ينقل العميل إلى عقدة أخرى لعرض رسالة وأزرار جديدة.', answer: 'يرسل ردًا مكتوبًا مباشرة ثم يعرض خيارات المتابعة.',
+    company_info: 'يعرض بيانات النشاط التجاري التي أدخلتها في الهوية والمظهر.', company_location: 'يرسل عنوان النشاط ورابط فتحه على خرائط Google.',
+    order_status: 'يطلب بيانات العميل ثم يبحث عن الطلب في مصدر البيانات المرتبط.', customer_info: 'يبحث عن بيانات العميل في مصدر البيانات المرتبط.',
+    handoff: 'ينقل المحادثة إلى صندوق الموظفين المباشر.', url: 'يفتح الرابط الذي تضيفه في حقل هذا الزر.', end: 'ينهي المحادثة ويعرض نموذج التقييم.'
+  };
   const site = () => S.sites.find(s => s.id === S.siteId) || S.sites[0];
   const fmtDate = (iso) => iso ? new Date(iso).toLocaleString('ar-SA-u-ca-gregory-nu-latn', { dateStyle: 'short', timeStyle: 'short' }) : '-';
   const ago = (iso) => {
@@ -148,9 +189,9 @@
         <div id="onl" style="margin-top:8px;font-size:12px;color:#7fa08d"></div></div>
       </nav>
       <div class="main">
-        <div class="top"><button class="btn sm menu-btn" id="mb">☰</button><h2 id="ttl"></h2>
+        <div class="top"><button class="btn sm menu-btn" id="mb" aria-label="فتح القائمة">☰</button><h2 id="ttl"></h2>
           <button class="btn sm" id="theme-toggle" type="button" aria-label="تبديل الوضع">${document.body.dataset.theme === 'dark' ? '☀️ الوضع النهاري' : '🌙 الوضع الليلي'}</button>
-          <select id="sitesel" style="width:auto;min-width:160px">${S.sites.map(s => `<option value="${s.id}" ${s.id === S.siteId ? 'selected' : ''}>🌐 ${esc(s.name)}</option>`).join('')}</select>
+          <label class="active-site" for="sitesel"><span>🌐 الموقع النشط<small>إعدادات ومحادثات هذا الموقع</small></span><select id="sitesel" title="اختر الموقع الذي تريد إدارة إعداداته ومحادثاته">${S.sites.map(s => `<option value="${s.id}" ${s.id === S.siteId ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
         </div>
         ${S.user.weak_password ? '<div style="background:#fef2f2;color:#991b1b;padding:10px 20px;border-bottom:1px solid #fecaca;font-size:14px">⚠️ أنت تستخدم كلمة المرور الافتراضية. <a href="#/profile" style="color:#991b1b;font-weight:700">غيّرها الآن</a> لحماية لوحة التحكم.</div>' : ''}
         <div class="content" id="ct"></div>
@@ -161,6 +202,7 @@
     $('#theme-toggle').onclick = () => {
       const theme = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
       document.body.dataset.theme = theme; localStorage.setItem(THEME_KEY, theme);
+      applyDashboardPrefs();
       $('#theme-toggle').textContent = theme === 'dark' ? '☀️ الوضع النهاري' : '🌙 الوضع الليلي';
     };
     $('#sitesel').onchange = (e) => { S.siteId = Number(e.target.value); localStorage.setItem('sc_site', S.siteId); route(); };
@@ -518,7 +560,8 @@
     order.forEach(id => {
       const d = depth[id]; rows[d] = (rows[d] || 0);
       const n = tree.nodes.find(x => x.id === id);
-      n.x = 2000 - d * 360; n.y = 60 + rows[d] * 260; rows[d]++;
+      n.x = 2000 - d * 360; n.y = 60 + rows[d];
+      rows[d] += Math.max(260, 180 + (n.options || []).length * 48);
     });
   }
 
@@ -532,18 +575,18 @@
     $('#ct').innerHTML = `
       <div class="fe">
         <div class="fe-bar">
-          <button class="btn sm" id="fe-add">＋ عقدة</button>
-          <button class="btn sm" id="fe-layout" title="ترتيب تلقائي">⇄ ترتيب</button>
-          <button class="btn sm" id="fe-fit" title="ملائمة الشاشة">⤢ ملائمة</button>
-          <button class="btn sm" id="fe-zo">－</button><span class="muted" id="fe-z" style="min-width:42px;text-align:center">100%</span><button class="btn sm" id="fe-zi">＋</button>
+          <button class="btn pri fe-tool" id="fe-add" title="إضافة خطوة جديدة في مسار المحادثة">＋ إضافة عقدة</button>
+          <button class="btn fe-tool" id="fe-layout" title="ترتيب العقد تلقائياً حسب مسار الردود">⇄ ترتيب تلقائي</button>
+          <button class="btn fe-tool" id="fe-fit" title="إظهار الشجرة كاملة داخل مساحة العمل">⤢ ملائمة الشجرة</button>
+          <button class="btn fe-tool zoom-tool" id="fe-zo" title="تصغير">− تصغير</button><span class="muted" id="fe-z" style="min-width:48px;text-align:center">100%</span><button class="btn fe-tool zoom-tool" id="fe-zi" title="تكبير">＋ تكبير</button>
           <span class="sp"></span><span class="muted" id="fe-dirty" style="font-size:13px"></span>
-          <button class="btn sm" id="fe-reset">استعادة الافتراضي</button>
-          <button class="btn sm pri" id="fe-save">💾 حفظ</button>
+          <button class="btn fe-tool" id="fe-reset" title="إرجاع الشجرة إلى الردود الافتراضية">↺ استعادة الافتراضي</button>
+          <button class="btn pri fe-tool" id="fe-save" title="حفظ كل تغييرات الشجرة للموقع النشط">💾 حفظ التغييرات</button>
         </div>
         <div class="fe-main">
           <div class="fe-canvas" id="fe-canvas" dir="ltr">
             <div class="fe-world" id="fe-world"><svg class="fe-edges" id="fe-edges"></svg></div>
-            <div class="fe-hint">اسحب العقدة من رأسها لتحريكها • اسحب من الدائرة ● بجانب أي زر وأفلتها على عقدة لربطها، أو في مكان فارغ لإنشاء عقدة جديدة • اسحب الخلفية للتنقل • عجلة الفأرة للتكبير</div>
+          <div class="fe-hint"><b>طريقة الاستخدام:</b> اسحب رأس العقدة لتحريكها · اسحب الدائرة بجانب الزر إلى عقدة لربطه · أفلت الدائرة في مساحة فارغة لإنشاء عقدة مرتبطة · اسحب الخلفية للتنقل، واستخدم أزرار التكبير للتقريب</div>
           </div>
           <aside class="fe-side" id="fe-side"></aside>
         </div>
@@ -702,19 +745,21 @@
       const ids = tree.nodes.map(x => x.id);
       side.innerHTML = `
         <div class="row" style="margin-bottom:10px"><h3 style="margin:0">تعديل العقدة</h3><span class="sp"></span><button class="btn sm" id="fs-close">✕</button></div>
-        <label class="f"><span>اسم العقدة</span><input id="fs-title" value="${esc(n.title || '')}"></label>
-        <label class="f"><span>رسالة البوت</span><textarea id="fs-msg" rows="4">${esc(n.message || '')}</textarea></label>
+        <p class="fe-intro">العقدة هي خطوة في المحادثة. اكتب الرسالة التي يراها العميل، ثم حدّد ما يحدث عند ضغطه كل زر.</p>
+        <label class="f"><span>اسم العقدة</span><input id="fs-title" value="${esc(n.title || '')}"><small>اسم داخلي يساعدك على تمييز هذه الخطوة في الشجرة.</small></label>
+        <label class="f"><span>رسالة البوت للعميل</span><textarea id="fs-msg" rows="4">${esc(n.message || '')}</textarea><small>هذه الرسالة تظهر قبل الأزرار. يمكنك استخدام {name} لإدراج اسم العميل.</small></label>
         <div class="row" style="margin:6px 0 8px"><b style="font-size:14px">الأزرار</b><span class="sp"></span><button class="btn sm" id="fs-addopt">＋ زر</button></div>
         ${(n.options || []).map((o, i) => `
           <div class="fs-opt" data-i="${i}">
             <div class="row" style="gap:6px"><input data-o="label" value="${esc(o.label)}" placeholder="نص الزر" style="flex:1">
               <button class="btn sm" data-mv="-1" title="أعلى">↑</button><button class="btn sm" data-mv="1" title="أسفل">↓</button><button class="btn sm dan" data-del>✕</button></div>
             <div class="row" style="gap:6px;margin-top:6px">
-              <select data-o="action" style="flex:1">${Object.entries(ACTIONS).map(([k, l]) => `<option value="${k}" ${o.action === k ? 'selected' : ''}>${ACT_META[k].icon} ${l}</option>`).join('')}</select>
+              <select data-o="action" aria-label="الإجراء الذي ينفذه الزر">${Object.entries(ACTIONS).map(([k, l]) => `<option value="${k}" ${o.action === k ? 'selected' : ''}>${ACT_META[k].icon} ${l}</option>`).join('')}</select>
               ${o.action === 'goto' ? `<select data-o="target" style="flex:1"><option value="">— اختر —</option>${tree.nodes.filter(x => x.id !== n.id).map(x => `<option value="${esc(x.id)}" ${o.target === x.id ? 'selected' : ''}>${esc(x.title || x.id)}</option>`).join('')}</select>` : ''}
             </div>
             ${o.action === 'url' ? `<input data-o="target" value="${esc(o.target || '')}" placeholder="https://..." dir="ltr" style="margin-top:6px">` : ''}
             ${o.action === 'answer' ? `<textarea data-o="target" rows="2" placeholder="نص الرد" style="margin-top:6px">${esc(o.target || '')}</textarea>` : ''}
+            <small class="action-help">${esc(ACTION_HELP[o.action] || 'اختر الإجراء الذي سيحدث عند ضغط العميل على هذا الزر.')}</small>
           </div>`).join('')}
         <div class="row" style="margin-top:14px">
           ${n.id !== tree.root ? '<button class="btn sm" id="fs-root">▶ اجعلها البداية</button><button class="btn sm" id="fs-dup">⧉ نسخ</button><span class="sp"></span><button class="btn sm dan" id="fs-del">حذف العقدة</button>' : '<span class="muted" style="font-size:12.5px">هذه عقدة البداية (أول ما يراه المستفيد)</span><span class="sp"></span><button class="btn sm" id="fs-dup">⧉ نسخ</button>'}
@@ -986,8 +1031,9 @@
 
   function renderAppearance() {
     setTitle('الهوية والمظهر');
-    const st = { a: JSON.parse(JSON.stringify(site().settings.appearance)), p: JSON.parse(JSON.stringify(site().settings.prechat)), tab: 'identity', dirty: false };
+    const st = { a: JSON.parse(JSON.stringify(site().settings.appearance)), p: JSON.parse(JSON.stringify(site().settings.prechat)), dash: JSON.parse(JSON.stringify(dashboardPrefs)), dashMode: document.body.dataset.theme === 'dark' ? 'dark' : 'light', tab: 'identity', dirty: false };
     const A = st.a;
+    if (A.islamic_pattern && (!A.decoration_style || A.decoration_style === 'none')) A.decoration_style = 'geometric';
 
     const colorField = (k, label, auto = true, hint = '') => `
       <label class="f"><span>${label}</span><div class="colorrow">
@@ -1014,9 +1060,13 @@
           <label class="f"><span>اتجاه النص</span><select data-s="dir"><option value="rtl">عربي (RTL)</option><option value="ltr">English (LTR)</option></select></label></div>
           <h4 style="margin:12px 0 8px;font-size:13.5px;color:var(--muted)">معلومات تظهر للمستفيد</h4>
           <div class="grid g2">${txt('unified_number', 'الرقم الموحد للنشاط', '9200XXXXXX')}${txt('company_website', 'موقع النشاط التجاري', 'https://example.org')}${txt('company_location', 'عنوان النشاط التجاري', 'المدينة، الحي، الشارع')}${txt('company_map_url', 'رابط خرائط Google (اختياري)', 'https://maps.app.goo.gl/...')}</div>
-          <label class="chk"><input type="checkbox" data-b="islamic_pattern" ${A.islamic_pattern ? 'checked' : ''}> زخرفة إسلامية هادئة داخل المحادثة</label>
           ${img('bot_avatar', 'صورة البوت (تظهر بجانب رسائله)')}
-          <label class="f"><span>خط المحادثة</span><select data-s="font"><option value="">خط الموقع الافتراضي</option><option value="Tahoma">Tahoma</option><option value="Arial">Arial</option><option value="'IBM Plex Sans Arabic'">IBM Plex Sans Arabic</option><option value="'Noto Sans Arabic'">Noto Sans Arabic</option><option value="'Cairo'">Cairo</option><option value="'Tajawal'">Tajawal</option></select><small>الخطوط المثبتة على جهاز الزائر أو المحمّلة في موقعه تظهر بشكل أفضل.</small></label>
+          <label class="f"><span>خط المحادثة</span><select data-s="font"><option value="">خط الموقع الافتراضي</option><option value="Tahoma">Tahoma</option><option value="Arial">Arial</option><option value="'IBM Plex Sans Arabic'">IBM Plex Sans Arabic</option><option value="'Noto Sans Arabic'">Noto Sans Arabic</option><option value="'Noto Naskh Arabic'">Noto Naskh Arabic</option><option value="'Cairo'">Cairo</option><option value="'Tajawal'">Tajawal</option><option value="'Amiri'">Amiri — خط نسخي</option><option value="'Reem Kufi'">Reem Kufi — كوفي</option><option value="'Aref Ruqaa'">Aref Ruqaa — رقعة</option><option value="'El Messiri'">El Messiri</option></select><small>يتحمّل الخط العربي المختار تلقائيًا للزائر.</small></label>
+          <div class="font-sample" id="chat-font-sample" dir="rtl">مرحباً، كيف نقدر نساعدك اليوم؟ ١٢٣٤٥٦</div>
+          <div class="card decor-card"><h3>✦ زخرفة المحادثة</h3><p class="muted">اختر زخرفة خلفية خفيفة لمنطقة الرسائل، أو اعرض حروفًا عربية زخرفية.</p>
+            <label class="f"><span>نوع الزخرفة</span><select data-s="decoration_style"><option value="none">بدون زخرفة</option><option value="geometric">نجوم وأشكال هندسية إسلامية</option><option value="arabesque">أرابيسك إسلامي</option><option value="arabic_letters">حروف عربية زخرفية</option></select></label>
+            <div class="grid g2">${colorField('decoration_color', 'لون الزخرفة', true, 'اتركه تلقائيًا لاستخدام اللون الرئيسي.')}${range('decoration_opacity', 'وضوح الزخرفة', 0.03, 0.18, 0.01, '')}</div>
+          </div>
         </div>`,
       colors: () => `
         <div class="card" style="margin-bottom:14px"><h3>🎨 قوالب ألوان جاهزة</h3>
@@ -1027,14 +1077,30 @@
           <div class="grid g2">
             ${colorField('primary_color', 'اللون الرئيسي', false, 'الأزرار والروابط وكل ما لم يُحدد له لون')}
             ${colorField('secondary_color', 'اللون الثانوي', true, 'يُستخدم في التدرج')}
-            ${colorField('header_bg', 'خلفية رأس النافذة')}
-            ${colorField('header_text', 'نص رأس النافذة')}
-            ${colorField('chat_bg', 'خلفية منطقة المحادثة')}
-            ${colorField('launcher_bg', 'لون زر المحادثة')}
-            ${colorField('bot_bubble_bg', 'فقاعة البوت والموظف')}
-            ${colorField('bot_bubble_text', 'نص فقاعة البوت')}
-            ${colorField('visitor_bubble_bg', 'فقاعة المستفيد')}
-            ${colorField('visitor_bubble_text', 'نص فقاعة المستفيد')}
+            ${colorField('header_bg', 'خلفية رأس المحادثة')}
+            ${colorField('header_text', 'نص رأس المحادثة')}
+            ${colorField('panel_bg', 'خلفية النافذة والنماذج', false)}
+            ${colorField('panel_text', 'نص النافذة والنماذج', false)}
+            ${colorField('chat_bg', 'خلفية سجل الرسائل', false)}
+            ${colorField('bot_bubble_bg', 'فقاعة ردود المساعد', false)}
+            ${colorField('bot_bubble_text', 'نص ردود المساعد', false)}
+            ${colorField('agent_bubble_bg', 'فقاعة الموظف')}
+            ${colorField('agent_bubble_text', 'نص الموظف')}
+            ${colorField('visitor_bubble_bg', 'فقاعة العميل')}
+            ${colorField('visitor_bubble_text', 'نص العميل')}
+            ${colorField('avatar_bg', 'خلفية صور/أيقونات المساعد والموظف')}
+            ${colorField('system_bg', 'خلفية تنبيهات النظام', false)}
+            ${colorField('system_text', 'نص تنبيهات النظام', false)}
+            ${colorField('input_bg', 'خلفية حقل الكتابة', false)}
+            ${colorField('input_text', 'نص حقل الكتابة', false)}
+            ${colorField('footer_bg', 'خلفية أسفل النافذة', false)}
+            ${colorField('footer_text', 'نص أسفل النافذة', false)}
+            ${colorField('teaser_bg', 'خلفية رسالة الترحيب المنبثقة', false)}
+            ${colorField('teaser_text', 'نص رسالة الترحيب المنبثقة', false)}
+            ${colorField('launcher_label_bg', 'خلفية تسمية زر المحادثة', false)}
+            ${colorField('launcher_label_text', 'نص تسمية زر المحادثة', false)}
+            ${colorField('launcher_bg', 'خلفية زر فتح المحادثة')}
+            ${colorField('launcher_text', 'أيقونة زر فتح المحادثة')}
           </div>
           <div class="grid g2">
             <label class="f"><span>نمط الرأس</span><select data-s="header_style"><option value="solid">لون واحد</option><option value="gradient">متدرج</option></select></label>
@@ -1076,9 +1142,25 @@
           <label class="chk"><input type="checkbox" data-pb="enabled" ${st.p.enabled ? 'checked' : ''}> طلب بيانات المستفيد قبل البدء</label>
           <label class="f"><span>عنوان النموذج</span><input data-pt="title" value="${esc(st.p.title)}"></label>
           <div class="row"><label class="chk"><input type="checkbox" data-pb="name" ${st.p.name ? 'checked' : ''}> الاسم</label><label class="chk"><input type="checkbox" data-pb="phone" ${st.p.phone ? 'checked' : ''}> الجوال</label><label class="chk"><input type="checkbox" data-pb="email" ${st.p.email ? 'checked' : ''}> البريد</label></div>
-          <small class="muted">الجوال يُستخدم لجلب بيانات المستفيد من قاعدة البيانات تلقائياً.</small></div>`
+          <small class="muted">الجوال يُستخدم لجلب بيانات المستفيد من قاعدة البيانات تلقائياً.</small></div>`,
+      dashboard: () => {
+        const d = st.dash, c = d[st.dashMode];
+        const colorInput = (key, label) => `<label class="f"><span>${label}</span><div class="colorrow"><input type="color" data-dash-color="${key}" value="${esc(c[key])}"><code>${esc(c[key])}</code></div></label>`;
+        return `<div class="card dash-custom"><h3>🖥️ تخصيص لوحة البرنامج</h3>
+          <p class="muted">هذه الألوان والزخارف تخص لوحة التحكم على هذا المتصفح. لا تغيّر مظهر محادثات مواقع العملاء.</p>
+          <div class="dash-mode"><b>تعديل ألوان الوضع ${st.dashMode === 'dark' ? 'الليلي' : 'النهاري'}</b><button class="btn sm" type="button" id="dash-switch-mode">التبديل إلى الوضع ${st.dashMode === 'dark' ? 'النهاري' : 'الليلي'} للتعديل</button></div>
+          <div class="grid g2">${colorInput('bg', 'خلفية صفحات البرنامج')}${colorInput('panel', 'خلفية البطاقات والنوافذ')}${colorInput('text', 'لون النصوص')}${colorInput('sidebar', 'خلفية القائمة الجانبية')}${colorInput('sidebarText', 'نصوص القائمة الجانبية')}</div>
+          <label class="f"><span>لون الأزرار والعناصر الرئيسية</span><div class="colorrow"><input type="color" data-dash-accent value="${esc(d.accent)}"><code>${esc(d.accent)}</code></div></label>
+          <div class="grid g2">
+            <label class="f"><span>الزخرفة الإسلامية للبرنامج</span><select data-dash-decoration><option value="none">بدون زخرفة</option><option value="geometric">نجوم هندسية</option><option value="arabesque">أرابيسك</option><option value="arabic_letters">حروف عربية</option></select></label>
+            <label class="f"><span>خط واجهة البرنامج</span><select data-dash-font><option value="&quot;IBM Plex Sans Arabic&quot;,system-ui,Tahoma,sans-serif">IBM Plex Sans Arabic</option><option value="'Noto Sans Arabic',system-ui,sans-serif">Noto Sans Arabic</option><option value="'Noto Naskh Arabic',serif">Noto Naskh Arabic</option><option value="'Cairo',sans-serif">Cairo</option><option value="'Tajawal',sans-serif">Tajawal</option><option value="'Amiri',serif">Amiri — نسخي</option><option value="'Reem Kufi',sans-serif">Reem Kufi — كوفي</option><option value="'Aref Ruqaa',serif">Aref Ruqaa — رقعة</option><option value="'El Messiri',sans-serif">El Messiri</option><option value="Tahoma,sans-serif">Tahoma</option></select></label>
+          </div>
+          <div class="dash-samples" dir="rtl"><b>معاينة الحروف والزخارف</b><span>مرحباً بكم في لوحة التحكم — ١٢٣٤٥٦</span><span class="dash-arabic">ع ض م هـ</span></div>
+          <div class="row dash-actions"><button class="btn pri" type="button" id="dash-save">💾 حفظ تخصيص البرنامج</button><button class="btn" type="button" id="dash-reset">استعادة الألوان الافتراضية</button><small class="muted">يُحفظ التخصيص في هذا المتصفح فقط.</small></div>
+        </div>`;
+      }
     };
-    const TABS = [['identity', '🏢 الهوية'], ['colors', '🎨 الألوان'], ['shapes', '🔘 الأشكال'], ['texts', '✍️ النصوص'], ['rating', '⭐ التقييم'], ['prechat', '📝 نموذج البداية']];
+    const TABS = [['identity', '🏢 الهوية'], ['colors', '🎨 ألوان المحادثة'], ['shapes', '🔘 الأشكال'], ['texts', '✍️ النصوص'], ['rating', '⭐ التقييم'], ['prechat', '📝 نموذج البداية'], ['dashboard', '🖥️ لوحة البرنامج']];
 
     $('#ct').innerHTML = `
       <div class="grid ap-layout">
@@ -1102,9 +1184,10 @@
 
     const draw = () => {
       $$('[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === st.tab));
+      $('.ap-save').style.display = st.tab === 'dashboard' ? 'none' : 'flex';
       $('#apbody').innerHTML = tabs[st.tab]();
       const body = $('#apbody');
-      $$('[data-s]', body).forEach(s => { s.value = String(A[s.dataset.s]); s.onchange = () => { A[s.dataset.s] = s.value === 'true' ? true : s.value === 'false' ? false : s.value; markDirty(); }; });
+      $$('[data-s]', body).forEach(s => { s.value = String(A[s.dataset.s]); s.onchange = () => { A[s.dataset.s] = s.value === 'true' ? true : s.value === 'false' ? false : s.value; if (s.dataset.s === 'decoration_style') A.islamic_pattern = s.value !== 'none'; markDirty(); if (s.dataset.s === 'font') { const sample = $('#chat-font-sample', body); if (sample) sample.style.fontFamily = A.font || 'inherit'; } }; });
       $$('[data-t]', body).forEach(i => i.oninput = () => { A[i.dataset.t] = i.value; markDirty(); });
       $$('[data-b]', body).forEach(i => i.onchange = () => { A[i.dataset.b] = i.checked; markDirty(); });
       $$('[data-r]', body).forEach(i => i.oninput = () => { A[i.dataset.r] = Number(i.value); $(`[data-rv="${i.dataset.r}"]`, body).textContent = i.value; markDirty(); if (i.dataset.r === 'rating_max') rdemo(); });
@@ -1122,6 +1205,29 @@
       $$('[data-clr]', body).forEach(b => b.onclick = () => { A[b.dataset.clr] = ''; draw(); markDirty(); });
       $$('[data-pb]', body).forEach(i => i.onchange = () => { st.p[i.dataset.pb] = i.checked; markDirty(); });
       $$('[data-pt]', body).forEach(i => i.oninput = () => { st.p[i.dataset.pt] = i.value; markDirty(); });
+      const fontSample = $('#chat-font-sample', body); if (fontSample) fontSample.style.fontFamily = A.font || 'inherit';
+      if (st.tab === 'dashboard') {
+        const d = st.dash, colors = d[st.dashMode];
+        $('[data-dash-decoration]', body).value = d.decoration;
+        $('[data-dash-font]', body).value = d.font;
+        $$('[data-dash-color]', body).forEach(inp => inp.oninput = () => {
+          colors[inp.dataset.dashColor] = inp.value; inp.nextElementSibling.textContent = inp.value; applyDashboardPrefs(d);
+        });
+        $('[data-dash-accent]', body).oninput = (e) => { d.accent = e.target.value; e.target.nextElementSibling.textContent = d.accent; applyDashboardPrefs(d); };
+        $('[data-dash-decoration]', body).onchange = (e) => { d.decoration = e.target.value; applyDashboardPrefs(d); };
+        $('[data-dash-font]', body).onchange = (e) => { d.font = e.target.value; applyDashboardPrefs(d); $('.dash-samples', body).style.fontFamily = d.font; };
+        $('#dash-switch-mode', body).onclick = () => {
+          st.dashMode = st.dashMode === 'dark' ? 'light' : 'dark';
+          document.body.dataset.theme = st.dashMode; localStorage.setItem(THEME_KEY, st.dashMode); applyDashboardPrefs(d);
+          $('#theme-toggle').textContent = st.dashMode === 'dark' ? '☀️ الوضع النهاري' : '🌙 الوضع الليلي'; draw();
+        };
+        $('#dash-save', body).onclick = () => { dashboardPrefs = JSON.parse(JSON.stringify(d)); localStorage.setItem(DASHBOARD_KEY, JSON.stringify(dashboardPrefs)); applyDashboardPrefs(); ok('تم حفظ تخصيص لوحة البرنامج على هذا المتصفح'); };
+        $('#dash-reset', body).onclick = () => {
+          st.dash = JSON.parse(JSON.stringify(DASHBOARD_DEFAULTS)); dashboardPrefs = JSON.parse(JSON.stringify(st.dash));
+          localStorage.setItem(DASHBOARD_KEY, JSON.stringify(dashboardPrefs)); applyDashboardPrefs(); draw(); ok('تمت استعادة تخصيص لوحة البرنامج الافتراضي');
+        };
+        $('.dash-samples', body).style.fontFamily = d.font;
+      }
       if (st.tab === 'rating') rdemo();
     };
     const rdemo = () => { const m = Number(A.rating_max) || 5; const el = $('#rdemo'); if (el) el.innerHTML = [0.5, m / 2, m - 1, m].map(v => `<div style="margin:4px 0">${stars(v, m)}</div>`).join(''); };
