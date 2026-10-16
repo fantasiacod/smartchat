@@ -102,10 +102,25 @@ function createSite(name, key) {
 function hydrateSite(row) {
   if (!row) return null;
   return {
+  const site = {
     ...row,
     settings: deepMerge(defaultSettings(), JSON.parse(row.settings || '{}')),
     tree: JSON.parse(row.tree || 'null') || defaultTree()
   };
+  // Keep business location available from the welcome menu for each active site.
+  // The option is derived from the site's own settings and refreshed on reads,
+  // so existing installations receive it without a manual tree reset.
+  const a = site.settings.appearance;
+  const welcome = site.tree.nodes.find(n => n.id === 'root') || site.tree.nodes.find(n => n.id === site.tree.root);
+  if (welcome) {
+    welcome.options = welcome.options || [];
+    const locationOption = welcome.options.find(o => o.action === 'company_location');
+    if (locationOption) locationOption.label = `📍 موقع ${site.name}`;
+    else if (a.company_location || a.company_map_url) {
+      welcome.options.push({ label: `📍 موقع ${site.name}`, action: 'company_location', target: '' });
+    }
+  }
+  return site;
 }
 const getSite = (id) => hydrateSite(db.prepare('SELECT * FROM sites WHERE id=?').get(id));
 const getSiteByKey = (key) => hydrateSite(db.prepare('SELECT * FROM sites WHERE key=?').get(key));
