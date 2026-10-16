@@ -4,6 +4,9 @@ function defaultSettings() {
   return {
     appearance: {
       company_name: '',
+      company_description: '',
+      company_phone: '',
+      company_email: '',
       company_website: '',
       company_location: '',
       company_map_url: '',
