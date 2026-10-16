@@ -116,7 +116,7 @@ async function runAction(conv, site, opt, freeText) {
       const a = site.settings.appearance;
       const target = a.company_map_url || (a.company_location ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(a.company_location) : '');
       if (!target) return botSay(conv, 'لم تتم إضافة موقع النشاط التجاري بعد. يرجى التواصل مع خدمة العملاء.', navOptions());
-      return addMessage(conv, 'bot', a.company_location || 'موقع النشاط التجاري', { link: target, link_label: 'فتح الموقع في خرائط Google ↗', options: navOptions() });
+      return addMessage(conv, 'bot', a.company_location || `موقع ${site.name}`, { link: target, link_label: 'فتح الموقع في خرائط Google ↗', options: navOptions() });
     }
     case 'end': return closeConversation(conv, 'visitor');
     case 'cancel': return sendNode(conv, site, '__root');
