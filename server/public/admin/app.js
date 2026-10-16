@@ -1,6 +1,8 @@
 /* Smart Chat — admin dashboard (vanilla JS SPA) */
 (function () {
   'use strict';
+  const THEME_KEY = 'sc_theme';
+  document.body.dataset.theme = localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light';
   const S = {
     token: localStorage.getItem('sc_token'), user: null, sites: [], siteId: Number(localStorage.getItem('sc_site')) || null,
     socket: null, live: new Map(), selected: null, tab: 'waiting', online: [], users: [], typing: {}
@@ -14,7 +16,7 @@
   const STATUS = { bot: 'مع البوت', waiting: 'بانتظار موظف', human: 'مع موظف', closed: 'مغلقة' };
   const CLOSED_BY = { visitor: 'المستفيد', agent: 'الموظف', system: 'النظام (عدم نشاط)' };
   const SENDER = { visitor: 'المستفيد', bot: 'البوت', agent: 'موظف', system: 'النظام' };
-  const ACTIONS = { goto: 'الانتقال إلى عقدة', answer: 'رد نصي مباشر', order_status: 'استعلام حالة طلب (قاعدة البيانات)', customer_info: 'عرض بيانات المستفيد', handoff: 'تحويل لموظف بشري', url: 'فتح رابط', end: 'إنهاء المحادثة' };
+  const ACTIONS = { goto: 'الانتقال إلى عقدة', answer: 'رد نصي مباشر', company_info: 'معلومات النشاط التجاري', company_location: 'موقع النشاط التجاري على خرائط Google', order_status: 'استعلام حالة طلب (قاعدة البيانات)', customer_info: 'عرض بيانات المستفيد', handoff: 'تحويل لموظف بشري', url: 'فتح رابط', end: 'إنهاء المحادثة' };
   const site = () => S.sites.find(s => s.id === S.siteId) || S.sites[0];
   const fmtDate = (iso) => iso ? new Date(iso).toLocaleString('ar-SA-u-ca-gregory-nu-latn', { dateStyle: 'short', timeStyle: 'short' }) : '-';
   const ago = (iso) => {
@@ -147,6 +149,7 @@
       </nav>
       <div class="main">
         <div class="top"><button class="btn sm menu-btn" id="mb">☰</button><h2 id="ttl"></h2>
+          <button class="btn sm" id="theme-toggle" type="button" aria-label="تبديل الوضع">${document.body.dataset.theme === 'dark' ? '☀️ الوضع النهاري' : '🌙 الوضع الليلي'}</button>
           <select id="sitesel" style="width:auto;min-width:160px">${S.sites.map(s => `<option value="${s.id}" ${s.id === S.siteId ? 'selected' : ''}>🌐 ${esc(s.name)}</option>`).join('')}</select>
         </div>
         ${S.user.weak_password ? '<div style="background:#fef2f2;color:#991b1b;padding:10px 20px;border-bottom:1px solid #fecaca;font-size:14px">⚠️ أنت تستخدم كلمة المرور الافتراضية. <a href="#/profile" style="color:#991b1b;font-weight:700">غيّرها الآن</a> لحماية لوحة التحكم.</div>' : ''}
@@ -155,6 +158,11 @@
     </div>`;
     $('#lo').onclick = (e) => { e.preventDefault(); logout(); };
     $('#mb').onclick = () => $('#side').classList.toggle('open');
+    $('#theme-toggle').onclick = () => {
+      const theme = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+      document.body.dataset.theme = theme; localStorage.setItem(THEME_KEY, theme);
+      $('#theme-toggle').textContent = theme === 'dark' ? '☀️ الوضع النهاري' : '🌙 الوضع الليلي';
+    };
     $('#sitesel').onchange = (e) => { S.siteId = Number(e.target.value); localStorage.setItem('sc_site', S.siteId); route(); };
   }
 
@@ -488,6 +496,8 @@
     answer: { icon: '💬', color: '#0ea5e9', label: 'رد نصي' },
     order_status: { icon: '📦', color: '#2563eb', label: 'حالة طلب' },
     customer_info: { icon: '👤', color: '#7c3aed', label: 'بيانات المستفيد' },
+    company_info: { icon: '🏢', color: '#0f766e', label: 'معلومات النشاط' },
+    company_location: { icon: '📍', color: '#059669', label: 'موقع النشاط' },
     handoff: { icon: '🙋', color: '#ea580c', label: 'تحويل لموظف' },
     url: { icon: '🔗', color: '#0891b2', label: 'رابط' },
     end: { icon: '⏹', color: '#dc2626', label: 'إنهاء' }
@@ -602,6 +612,15 @@
     }
 
     const toWorld = (e) => { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left - view.x) / view.z, y: (e.clientY - r.top - view.y) / view.z }; };
+    window.addEventListener('pointermove', (e) => {
+      if (!drag || drag.type !== 'node' || drag.pointerId !== e.pointerId) return;
+      const p = toWorld(e); drag.n.x = Math.round(p.x - drag.ox); drag.n.y = Math.round(p.y - drag.oy); drag.moved = true;
+      drag.card.style.left = drag.n.x + 'px'; drag.card.style.top = drag.n.y + 'px'; drawEdges();
+    });
+    window.addEventListener('pointerup', (e) => {
+      if (drag?.type !== 'node' || drag.pointerId !== e.pointerId) return;
+      if (drag.moved) setDirty(); drag = null;
+    });
 
     function bindCard(card) {
       const n = nodeById(card.dataset.id);
@@ -611,22 +630,15 @@
         if (sel !== n.id) { sel = n.id; $$('.fe-card', world).forEach(c => c.classList.toggle('sel', c === card)); renderSide(); drawEdges(); }
         if (!e.target.closest('.fe-head')) return;
         const p = toWorld(e);
-        drag = { type: 'node', n, card, ox: p.x - n.x, oy: p.y - n.y, moved: false };
+        drag = { type: 'node', n, card, pointerId: e.pointerId, ox: p.x - n.x, oy: p.y - n.y, moved: false };
         card.setPointerCapture(e.pointerId);
       });
-      card.addEventListener('pointermove', (e) => {
-        if (!drag || drag.type !== 'node' || drag.card !== card) return;
-        const p = toWorld(e);
-        n.x = Math.round(p.x - drag.ox); n.y = Math.round(p.y - drag.oy); drag.moved = true;
-        card.style.left = n.x + 'px'; card.style.top = n.y + 'px'; drawEdges();
-      });
-      card.addEventListener('pointerup', () => { if (drag?.type === 'node' && drag.moved) setDirty(); if (drag?.card === card) drag = null; });
       $$('.fe-port', card).forEach(port => port.addEventListener('pointerdown', (e) => {
         e.stopPropagation(); e.preventDefault();
         drag = { type: 'link', n, i: Number(port.dataset.port), a: portPos(card, Number(port.dataset.port)) };
         canvas.setPointerCapture(e.pointerId);
       }));
-      $('.fe-addopt', card).onclick = (e) => { e.stopPropagation(); (n.options = n.options || []).push({ label: 'زر جديد', action: 'handoff', target: '' }); sel = n.id; setDirty(); drawCards(); renderSide(); };
+      $('.fe-addopt', card).onclick = (e) => { e.stopPropagation(); (n.options = n.options || []).push({ label: 'زر جديد', action: 'answer', target: 'اكتب رد البوت هنا' }); sel = n.id; setDirty(); drawCards(); renderSide(); };
     }
 
     canvas.addEventListener('pointerdown', (e) => {
@@ -713,7 +725,7 @@
       $('#fs-close').onclick = () => { sel = null; drawCards(); renderSide(); };
       $('#fs-title').oninput = (e) => { n.title = e.target.value; setDirty(); refreshCard(); };
       $('#fs-msg').oninput = (e) => { n.message = e.target.value; setDirty(); refreshCard(); };
-      $('#fs-addopt').onclick = () => { (n.options = n.options || []).push({ label: 'زر جديد', action: 'handoff', target: '' }); setDirty(); refreshCard(); renderSide(); };
+      $('#fs-addopt').onclick = () => { (n.options = n.options || []).push({ label: 'زر جديد', action: 'answer', target: 'اكتب رد البوت هنا' }); setDirty(); refreshCard(); renderSide(); };
       $$('.fs-opt', side).forEach(row => {
         const i = Number(row.dataset.i), o = n.options[i];
         $$('[data-o]', row).forEach(inp => {
@@ -1000,8 +1012,11 @@
         <div class="card"><h3>🤖 المساعد</h3>
           <div class="grid g2">${txt('title', 'عنوان النافذة')}${txt('subtitle', 'العنوان الفرعي')}${txt('bot_name', 'اسم البوت')}
           <label class="f"><span>اتجاه النص</span><select data-s="dir"><option value="rtl">عربي (RTL)</option><option value="ltr">English (LTR)</option></select></label></div>
+          <h4 style="margin:12px 0 8px;font-size:13.5px;color:var(--muted)">معلومات تظهر للمستفيد</h4>
+          <div class="grid g2">${txt('unified_number', 'الرقم الموحد للنشاط', '9200XXXXXX')}${txt('company_website', 'موقع النشاط التجاري', 'https://example.org')}${txt('company_location', 'عنوان النشاط التجاري', 'المدينة، الحي، الشارع')}${txt('company_map_url', 'رابط خرائط Google (اختياري)', 'https://maps.app.goo.gl/...')}</div>
+          <label class="chk"><input type="checkbox" data-b="islamic_pattern" ${A.islamic_pattern ? 'checked' : ''}> زخرفة إسلامية هادئة داخل المحادثة</label>
           ${img('bot_avatar', 'صورة البوت (تظهر بجانب رسائله)')}
-          ${txt('font', 'الخط (اختياري، يجب أن يكون محمّلاً في موقعك)', 'Tajawal, Cairo')}
+          <label class="f"><span>خط المحادثة</span><select data-s="font"><option value="">خط الموقع الافتراضي</option><option value="Tahoma">Tahoma</option><option value="Arial">Arial</option><option value="'IBM Plex Sans Arabic'">IBM Plex Sans Arabic</option><option value="'Noto Sans Arabic'">Noto Sans Arabic</option><option value="'Cairo'">Cairo</option><option value="'Tajawal'">Tajawal</option></select><small>الخطوط المثبتة على جهاز الزائر أو المحمّلة في موقعه تظهر بشكل أفضل.</small></label>
         </div>`,
       colors: () => `
         <div class="card" style="margin-bottom:14px"><h3>🎨 قوالب ألوان جاهزة</h3>
