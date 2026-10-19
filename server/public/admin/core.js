@@ -38,7 +38,7 @@
   App.ROLE = { agent: 'موظف', supervisor: 'مشرف', admin: 'مدير النظام' };
   App.CONV = { bot: ['مع البوت', 'blue'], waiting: ['بانتظار موظف', 'amber'], human: ['مع موظف', 'green'], closed: ['مغلقة', 'gray'] };
   App.BY = { visitor: 'المستفيد', agent: 'الموظف', system: 'النظام (عدم نشاط)' };
-  App.TK_TYPE = { complaint: ['شكوى', 'red', '📝'], suggestion: ['اقتراح', 'purple', '💡'], inquiry: ['استفسار', 'blue', '❓'] };
+  App.TK_TYPE = { complaint: ['شكوى', 'red', '📝'], suggestion: ['اقتراح', 'purple', '💡'], inquiry: ['استفسار', 'blue', '❓'], callback: ['طلب تواصل', 'amber', '📞'] };
   App.TK_STATUS = { new: ['جديدة', 'blue'], in_progress: ['قيد المعالجة', 'amber'], resolved: ['تم الحل', 'green'], closed: ['مغلقة', 'gray'], rejected: ['مرفوضة', 'red'] };
   App.PRIORITY = { low: ['منخفضة', 'gray'], normal: ['عادية', 'blue'], high: ['عالية', 'amber'], urgent: ['عاجلة', 'red'] };
   App.LANG = { ar: 'العربية', en: 'English', ur: 'اردو' };
@@ -402,11 +402,10 @@
   /* ============================== router & shell ============================== */
   App.page = function (id, def) { def.id = id; App.pages[id] = def; App.order.push(id); };
   App.NAV = [
-    ['العمليات', ['live', 'history', 'tickets']],
-    ['التحليلات', ['stats', 'reports']],
-    ['المساعد الذكي', ['tree', 'kb', 'org']],
-    ['الهوية والإعدادات', ['appearance', 'languages', 'behavior', 'notify', 'install', 'datasource']],
-    ['الإدارة', ['users', 'sites', 'audit']]
+    ['العمل اليومي', ['live', 'history', 'tickets']],
+    ['عقل البوت', ['mindmap', 'tree', 'org']],
+    ['المتابعة', ['stats', 'reports']],
+    ['الإعدادات', ['appearance', 'languages', 'install', 'settings', 'users', 'backup']]
   ];
   App.renderNav = function () {
     var nav = App.$('.nav'); if (!nav) return;
@@ -469,7 +468,7 @@
     App.$$('.modal-bg').forEach(function (m) { m.remove(); });
     App.current = id; App.activeConv = null; App.dirty = false;
     App.renderNav();
-    App.$('#ptitle').innerHTML = p.icon + ' ' + p.title;
+    App.$('#ptitle').innerHTML = p.icon + ' ' + p.title + (p.hint ? '<small class="phint">' + p.hint + '</small>' : '');
     var c = App.$('#content'); c.className = 'content' + (p.full ? ' full' : ''); c.innerHTML = '';
     App.$('.side').classList.remove('open');
     try { cleanup = p.render(c, h.slice(1)) || null; } catch (e) { console.error(e); c.innerHTML = '<div class="alert err">' + esc(e.message) + '</div>'; }

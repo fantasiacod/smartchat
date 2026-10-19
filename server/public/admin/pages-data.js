@@ -165,7 +165,7 @@
             kpi('💡', 'الاقتراحات', A.num(bt.suggestion || 0), '', C.purple) +
             kpi('⏳', 'مفتوحة الآن', A.num(open), 'نسبة الحل ' + (s.resolution_rate == null ? '—' : s.resolution_rate + '%') + ' · متوسط ' + (s.avg_resolution_hours == null ? '—' : s.avg_resolution_hours + ' ساعة'), C.amber);
           var months = s.per_month.slice(-12);
-          A.$('#tk-ch').innerHTML = '<div class="card"><h3>📈 الطلبات الشهرية حسب النوع</h3>' + (months.length ? A.chart.bars(months.map(function (x) { return x.m; }), [{ name: 'شكاوى', color: C.red, values: months.map(function (x) { return x.complaint || 0; }) }, { name: 'اقتراحات', color: C.purple, values: months.map(function (x) { return x.suggestion || 0; }) }, { name: 'استفسارات', color: C.blue, values: months.map(function (x) { return x.inquiry || 0; }) }]) : '<div class="empty">لا بيانات بعد</div>') + '</div>' +
+          A.$('#tk-ch').innerHTML = '<div class="card"><h3>📈 الطلبات الشهرية حسب النوع</h3>' + (months.length ? A.chart.bars(months.map(function (x) { return x.m; }), [{ name: 'شكاوى', color: C.red, values: months.map(function (x) { return x.complaint || 0; }) }, { name: 'اقتراحات', color: C.purple, values: months.map(function (x) { return x.suggestion || 0; }) }, { name: 'استفسارات', color: C.blue, values: months.map(function (x) { return x.inquiry || 0; }) }, { name: 'طلبات تواصل', color: C.amber, values: months.map(function (x) { return x.callback || 0; }) }]) : '<div class="empty">لا بيانات بعد</div>') + '</div>' +
             '<div class="card"><h3>🎯 الحالات</h3>' + A.chart.donut(Object.keys(A.TK_STATUS).map(function (k, i) { return { name: A.TK_STATUS[k][0], value: bs[k] || 0, color: [C.blue, C.amber, C.green, C.gray, C.red][i] }; }), { label: 'طلب' }) + '</div>';
         }).catch(A.fail);
       }
@@ -286,16 +286,18 @@
 
   /* ============================== knowledge base ============================== */
   A.editKB = function (k, onDone, extra) {
-    k = Object.assign({ question: '', answer: '', keywords: '', lang: 'all', media: [], active: 1 }, k || {});
+    k = Object.assign({ question: '', answer: '', keywords: '', lang: 'all', media: [], active: 1, category_id: '' }, k || {});
+    k.category_id = k.category_id == null ? '' : String(k.category_id);
     var media = (k.media || []).slice();
     var m = A.modal({
       title: k.id ? '✏️ تعديل سؤال' : '➕ سؤال وإجابة جديدة', size: 'wide',
       body: A.f.area('question', 'السؤال', { rows: 2, ph: 'مثال: ما هي طريقة التسجيل في الجمعية؟' }) + A.f.area('answer', 'الإجابة', { rows: 6 }) +
-        '<div class="grid g2">' + A.f.text('keywords', 'كلمات مفتاحية', { opt: true, hint: 'مفصولة بفواصل — تساعد البوت على فهم الصيغ المختلفة للسؤال', ph: 'تسجيل, اشتراك, انضمام' }) +
+        '<div class="grid g3">' + A.f.select('category_id', 'التصنيف في الخريطة الذهنية', [['', '— بدون تصنيف —']].concat((A.state.kbCats || []).map(function (c) { return [String(c.id), c.name]; }))) +
+        A.f.text('keywords', 'كلمات مفتاحية', { opt: true, hint: 'مفصولة بفواصل — تساعد البوت على فهم الصيغ المختلفة', ph: 'تسجيل, اشتراك, انضمام' }) +
         A.f.select('lang', 'اللغة', [['all', 'كل اللغات'], ['ar', 'العربية'], ['en', 'English'], ['ur', 'اردو']]) + '</div>' +
         '<div class="field"><label class="f">مرفقات تُرسل مع الإجابة <small>(صورة، فيديو، PDF، يوتيوب)</small></label><div id="kbm"></div></div>' + (k.id ? A.f.swi('active', 'مفعّل') : ''),
       buttons: [{ label: 'إلغاء', ghost: true }, { label: 'حفظ', onClick: function () {
-        var body = { question: k.question, answer: k.answer, keywords: k.keywords, lang: k.lang, media: media, active: k.active };
+        var body = { question: k.question, answer: k.answer, keywords: k.keywords, lang: k.lang, media: media, active: k.active, category_id: k.category_id ? Number(k.category_id) : null };
         return (k.id ? A.api('PUT', '/api/kb/' + k.id, body) : A.api('POST', '/api/kb', Object.assign({ site_id: S.site.id }, body, extra || {}))).then(function () { A.toast('تم الحفظ', 'ok'); onDone && onDone(); });
       } }]
     });

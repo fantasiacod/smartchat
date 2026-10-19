@@ -53,13 +53,13 @@ function htmlEmail(site, text) {
   </div></div>`;
 }
 
-async function sendEmail(site, to, subject, text, ref) {
+async function sendEmail(site, to, subject, text, ref, attachments) {
   const cfg = site.settings.notify.email;
   if (!cfg.enabled || !cfg.host) throw new Error('البريد الإلكتروني غير مفعّل');
   if (!to) throw new Error('لا يوجد بريد للمستلم');
   try {
     const fromName = cfg.from_name || site.settings.org.name || site.name;
-    await transporter(cfg).sendMail({ from: `"${fromName.replace(/"/g, '')}" <${cfg.from_email || cfg.user}>`, to, subject, text, html: htmlEmail(site, text) });
+    await transporter(cfg).sendMail({ from: `"${fromName.replace(/"/g, '')}" <${cfg.from_email || cfg.user}>`, to, subject, text, html: htmlEmail(site, text), ...(attachments ? { attachments } : {}) });
     log(site.id, 'email', to, subject, 'sent', null, ref);
   } catch (e) { log(site.id, 'email', to, subject, 'failed', e.message, ref); throw e; }
 }

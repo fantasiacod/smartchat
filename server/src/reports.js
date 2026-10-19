@@ -123,7 +123,7 @@ function ticketStats(q) {
   const sw = siteWhere(q.site);
   const rows = db.prepare(`SELECT * FROM tickets WHERE ${sw.sql} AND created_at>=? AND created_at<=? ORDER BY id DESC`).all(...sw.args, from, to);
   const months = {};
-  for (const t of rows) { const k = t.created_at.slice(0, 7); months[k] = months[k] || { m: k, complaint: 0, suggestion: 0, inquiry: 0 }; months[k][t.type] = (months[k][t.type] || 0) + 1; }
+  for (const t of rows) { const k = t.created_at.slice(0, 7); months[k] = months[k] || { m: k, complaint: 0, suggestion: 0, inquiry: 0, callback: 0 }; months[k][t.type] = (months[k][t.type] || 0) + 1; }
   const resolved = rows.filter(t => t.resolved_at);
   const count = (key) => rows.reduce((m, x) => { m[x[key]] = (m[x[key]] || 0) + 1; return m; }, {});
   const days = Math.max(1, (new Date(to) - new Date(from)) / 86400000);
@@ -138,7 +138,7 @@ function ticketStats(q) {
 
 /* ---------------- Excel ---------------- */
 const STATUS_AR = { new: 'جديدة', in_progress: 'قيد المعالجة', resolved: 'تم الحل', closed: 'مغلقة', rejected: 'مرفوضة' };
-const TYPE_AR = { complaint: 'شكوى', suggestion: 'اقتراح', inquiry: 'استفسار' };
+const TYPE_AR = { complaint: 'شكوى', suggestion: 'اقتراح', inquiry: 'استفسار', callback: 'طلب تواصل' };
 const CONV_AR = { bot: 'مع البوت', waiting: 'بانتظار موظف', human: 'مع موظف', closed: 'مغلقة' };
 const BY_AR = { visitor: 'المستفيد', agent: 'الموظف', system: 'النظام' };
 const fmtDur = (s) => s == null ? '' : s < 60 ? `${Math.round(s)} ث` : s < 3600 ? `${Math.round(s / 60)} د` : `${round(s / 3600)} س`;

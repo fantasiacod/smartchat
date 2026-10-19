@@ -7,6 +7,8 @@ const nlp = require('./nlp');
 const ds = require('./datasource');
 const { texts, INTENTS, LANGS } = require('./i18n');
 const tickets = require('./tickets');
+const ICONS = require('../public/icons');
+const hooks = require('./webhooks');
 
 let vio, aio, JWT_SECRET;
 const online = new Map(); // userId -> {id,name,role}
@@ -50,7 +52,8 @@ function publicMsg(m) {
   return {
     id: m.id, sender: m.sender, body: m.body, created_at: m.created_at,
     agent_name: ag?.name, agent_title: ag?.title || undefined, agent_avatar: ag?.avatar || undefined,
-    options: p.options?.length ? p.options.map((o, i) => ({ i, label: o.label })) : undefined,
+    options: p.options?.length ? p.options.map((o, i) => ({ i, label: o.label, ...(o.icon && ICONS.has(o.icon) ? { icon: ICONS.svg(o.icon, o.color || null, 18) } : {}) })) : undefined,
+    card: p.card, banks: p.banks, ai: p.ai || undefined,
     numbered: p.numbered || undefined,
     media: media.length ? media : undefined,
     link: p.link, link_label: p.link_label,
@@ -115,7 +118,7 @@ function botSay(conv, site, body, options, extra = {}) {
 
 function navOptions(conv, site) {
   const t = tr(conv, site);
-  return [{ label: t.nav_home, action: 'goto', target: '__menu' }, { label: t.nav_agent, action: 'handoff' }];
+  return [{ label: t.nav_home, action: 'goto', target: '__menu' }];
 }
 
 /* ============================== flow ============================== */
@@ -151,15 +154,36 @@ function parseCoords(o) {
 
 function locationPayload(site) {
   const o = site.settings.org;
-  const c = parseCoords(o);
+  const c = parseCoords(o) || (o.map_resolved && isFinite(o.map_resolved.lat) ? o.map_resolved : null);
+  const name = o.name || site.name;
   if (!c && !o.map_url && !o.address) return null;
-  const q = c ? `${c.lat},${c.lng}` : o.address;
+  const q = c ? `${c.lat},${c.lng}` : [name, o.address].filter(Boolean).join(' ');
   return {
-    lat: c?.lat, lng: c?.lng, label: o.name || site.name, address: o.address || '',
+    lat: c?.lat, lng: c?.lng, label: name, address: o.address || '',
     url: o.map_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`,
-    directions: q ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}` : o.map_url,
-    embed: q ? `https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=16&output=embed` : null
+    directions: c ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}` : (o.map_url || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}`),
+    embed: `https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=16&output=embed`
   };
+}
+
+// Short Google Maps links (maps.app.goo.gl) hide the coordinates: follow the redirect once and remember them.
+async function resolveMapLink(siteId) {
+  const site = getSite(siteId); if (!site) return;
+  const o = site.settings.org, url = String(o.map_url || '');
+  if (!url || parseCoords(o) || (o.map_resolved && o.map_resolved.url === url)) return;
+  let cur = url, found = null;
+  try {
+    for (let i = 0; i < 4 && !found; i++) {
+      const r = await fetch(cur, { redirect: 'manual', signal: AbortSignal.timeout(6000), headers: { 'User-Agent': 'Mozilla/5.0' } });
+      const loc = r.headers.get('location');
+      found = parseCoords({ map_url: decodeURIComponent(loc || cur) });
+      if (!found && !loc) { const html = (await r.text()).slice(0, 200000); found = parseCoords({ map_url: decodeURIComponent((html.match(/https:\/\/www\.google\.[^"']*@-?\d+\.\d+,-?\d+\.\d+[^"']*/) || [''])[0]) }); }
+      if (!loc) break; cur = new URL(loc, cur).toString();
+    }
+  } catch (e) { /* offline or blocked: the map still works by name/address */ }
+  const fresh = getSite(siteId);
+  fresh.settings.org.map_resolved = found ? { url, lat: found.lat, lng: found.lng } : { url };
+  db.prepare('UPDATE sites SET settings=? WHERE id=?').run(JSON.stringify(fresh.settings), siteId);
 }
 
 const SOCIAL = { x: ['𝕏 X', 'https://x.com/'], instagram: ['📸 Instagram', 'https://instagram.com/'], snapchat: ['👻 Snapchat', 'https://snapchat.com/add/'], tiktok: ['🎵 TikTok', 'https://tiktok.com/@'], youtube: ['▶️ YouTube', 'https://youtube.com/@'], facebook: ['📘 Facebook', 'https://facebook.com/'], linkedin: ['💼 LinkedIn', 'https://linkedin.com/company/'], whatsapp: ['🟢 WhatsApp', 'https://wa.me/'] };
@@ -177,16 +201,17 @@ function sendOrg(conv, site, field, opts = {}) {
     return list;
   };
   switch (field) {
-    case 'history': case 'about': {
-      const text = [o.short, o.history].filter(Boolean).join('\n\n');
-      if (!text && !(o.media?.history || []).length) return opts.silent ? false : !!botSay(conv, site, t.org_missing, nav);
-      botSay(conv, site, text ? `🏢 *${name}*\n\n${text}` : `🏢 *${name}*`, nav, (o.media?.history || []).length ? { media: o.media.history } : {});
-      return true;
+    case 'history': {
+      const sec = sectionsOf(site).find(x => x.key === 'history') || sectionsOf(site)[0];
+      if (!sec) return opts.silent ? false : !!botSay(conv, site, t.org_missing, nav);
+      return sendSection(conv, site, sec, opts);
     }
+    case 'about': return sendAbout(conv, site, opts);
     case 'vision': {
-      const parts = [o.vision && `🎯 *${conv.lang === 'en' ? 'Vision' : conv.lang === 'ur' ? 'وژن' : 'الرؤية'}*\n${o.vision}`, o.mission && `📜 *${conv.lang === 'en' ? 'Mission' : conv.lang === 'ur' ? 'مشن' : 'الرسالة'}*\n${o.mission}`, o.goals && `🏁 *${conv.lang === 'en' ? 'Goals' : conv.lang === 'ur' ? 'مقاصد' : 'الأهداف'}*\n${o.goals}`].filter(Boolean);
-      if (!parts.length) return opts.silent ? false : !!botSay(conv, site, t.org_missing, nav);
-      botSay(conv, site, parts.join('\n\n'), nav); return true;
+      const list = sectionsOf(site).filter(x => ['vision', 'mission', 'goals'].includes(x.key));
+      if (!list.length) return opts.silent ? false : !!botSay(conv, site, t.org_missing, nav);
+      list.forEach((sec, i) => sendSection(conv, site, sec, { ...opts, nav: i === list.length - 1 ? opts.nav : false }));
+      return true;
     }
     case 'contact': {
       const list = contacts();
@@ -194,6 +219,7 @@ function sendOrg(conv, site, field, opts = {}) {
       botSay(conv, site, `📞 ${name}`, nav, { contacts: list }); return true;
     }
     case 'hours':
+      if (!o.hours && site.settings.behavior.work_hours?.enabled) { botSay(conv, site, `🕘 ${hoursText(site, t)}`, nav); return true; }
       if (!o.hours) return opts.silent ? false : !!botSay(conv, site, t.org_missing, nav);
       botSay(conv, site, `🕘 ${o.hours}`, nav); return true;
     case 'website':
@@ -213,10 +239,8 @@ function sendOrg(conv, site, field, opts = {}) {
     }
     case 'location': return sendLocation(conv, site, opts);
     default: {
-      if (String(field || '').startsWith('custom:')) {
-        const c = (o.custom || []).find(x => x.id === field.slice(7));
-        if (c) { botSay(conv, site, L(conv, c.answer, c.i18n, 'answer'), nav, c.media?.length ? { media: c.media } : {}); return true; }
-      }
+      const m = /^(?:custom|section):(.+)$/.exec(String(field || ''));
+      if (m) { const sec = sectionsOf(site).find(x => x.id === m[1] || x.key === m[1]); if (sec) return sendSection(conv, site, sec, opts); }
       return opts.silent ? false : !!botSay(conv, site, t.org_missing, nav);
     }
   }
@@ -230,6 +254,71 @@ function sendLocation(conv, site, opts = {}) {
   if ((site.settings.org.media?.location || []).length) extra.media = site.settings.org.media.location;
   botSay(conv, site, `📍 ${loc.label}${loc.address ? '\n' + loc.address : ''}`, nav, extra);
   return true;
+}
+
+const sectionsOf = (site) => (site.settings.org.sections || []).filter(x => x && (x.title || x.text));
+
+function cardOf(site, icon, color, title) {
+  const a = site.settings.appearance, c = color || a.primary_color || '#1a6739';
+  if (icon === 'logo' && a.company_logo) return { title, color: c, logo: a.company_logo };
+  return { title, color: c, svg: ICONS.svg(ICONS.has(icon) ? icon : 'info', c, 20) };
+}
+
+function sendSection(conv, site, sec, opts = {}) {
+  const nav = opts.nav === false ? undefined : navOptions(conv, site);
+  const title = L(conv, sec.title, sec.i18n, 'title'), text = L(conv, sec.text, sec.i18n, 'text');
+  const extra = { card: cardOf(site, sec.icon, sec.color, title) };
+  if ((sec.media || []).length) extra.media = sec.media;
+  botSay(conv, site, text || '', nav, extra);
+  return true;
+}
+
+// "About us": one numbered menu with every section, so visitors reach what they want without typing.
+function sendAbout(conv, site, opts = {}) {
+  const t = tr(conv, site), o = site.settings.org;
+  const items = sectionsOf(site).map(x => ({ label: L(conv, x.title, x.i18n, 'title'), action: 'org', field: 'section:' + x.id, icon: ICONS.has(x.icon) ? x.icon : undefined, color: x.color || undefined }));
+  if (o.hours) items.push({ label: t.hours_label.replace(/^\S+\s/, ''), action: 'org', field: 'hours', icon: 'clock' });
+  if (o.website || Object.values(o.social || {}).some(Boolean)) items.push({ label: t.web_social_label.replace(/^\S+\s/, ''), action: 'org', field: 'social', icon: 'globe' });
+  if (!items.length) return opts.silent ? false : !!botSay(conv, site, t.org_missing, navOptions(conv, site));
+  items.push({ label: t.nav_home, action: 'goto', target: '__menu' });
+  botSay(conv, site, t.about_title, items, { numbered: true, card: cardOf(site, 'logo', null, o.name || site.name) });
+  return true;
+}
+
+function banksOf(site) { return (site.settings.org.banks || []).filter(g => g && (g.accounts || []).some(a => a.iban || a.number)); }
+function bankPayload(site, g) {
+  return {
+    group: { name: g.name || '', color: g.color || site.settings.appearance.primary_color, svg: ICONS.svg(ICONS.has(g.icon) ? g.icon : 'bank', g.color || site.settings.appearance.primary_color, 20) },
+    accounts: (g.accounts || []).filter(a => a.iban || a.number).map(a => { const b = ICONS.bank(a.bank); return { bank: a.bank_name || b.name, color: b.color, holder: a.holder || '', iban: String(a.iban || '').replace(/\s+/g, '').toUpperCase(), number: a.number || '', note: a.note || '' }; })
+  };
+}
+function sendBanks(conv, site, groupId, opts = {}) {
+  const t = tr(conv, site), groups = banksOf(site);
+  if (!groups.length) return opts.silent ? false : !!botSay(conv, site, t.banks_empty, navOptions(conv, site));
+  const g = groupId ? groups.find(x => x.id === groupId) : groups.length === 1 ? groups[0] : null;
+  if (g) { botSay(conv, site, '', navOptions(conv, site), { banks: bankPayload(site, g) }); return true; }
+  botSay(conv, site, t.banks_title, [...groups.map(x => ({ label: x.name, action: 'banks', target: x.id, icon: ICONS.has(x.icon) ? x.icon : 'bank', color: x.color || undefined })), { label: t.nav_home, action: 'goto', target: '__menu' }], { numbered: true });
+  return true;
+}
+
+// FAQ browsing through the bot's mind map (knowledge-base categories).
+function sendKbBrowse(conv, site, catId) {
+  const t = tr(conv, site), lang = conv.lang || 'ar';
+  const qs = db.prepare("SELECT id, question, category_id FROM kb WHERE site_id=? AND active=1 AND (lang IS NULL OR lang='all' OR lang=?) ORDER BY hits DESC, id").all(site.id, lang);
+  if (catId) {
+    const list = qs.filter(q => String(q.category_id || 0) === String(catId)).slice(0, 15);
+    if (!list.length) return botSay(conv, site, t.kb_empty, navOptions(conv, site));
+    return botSay(conv, site, t.kb_cat_title, [...list.map(q => ({ label: q.question, action: 'kb', target: String(q.id) })), { label: t.nav_home, action: 'goto', target: '__menu' }], { numbered: true });
+  }
+  const cats = db.prepare('SELECT * FROM kb_categories WHERE site_id=? ORDER BY sort, id').all(site.id)
+    .map(c => { let i18n = {}; try { i18n = JSON.parse(c.i18n || '{}'); } catch { /* ignore */ } return { ...c, i18n }; })
+    .filter(c => qs.some(q => q.category_id === c.id));
+  const loose = qs.filter(q => !q.category_id || !cats.some(c => c.id === q.category_id));
+  if (!cats.length) return botSay(conv, site, t.kb_cat_title, [...loose.slice(0, 15).map(q => ({ label: q.question, action: 'kb', target: String(q.id) })), { label: t.nav_home, action: 'goto', target: '__menu' }], { numbered: true });
+  const opts = cats.map(c => ({ label: L(conv, c.name, c.i18n, 'name'), action: 'kb_cat', target: String(c.id), icon: ICONS.has(c.icon) ? c.icon : 'question', color: c.color || undefined }));
+  if (loose.length) opts.push({ label: lang === 'en' ? 'Other questions' : lang === 'ur' ? 'دیگر سوالات' : 'أسئلة أخرى', action: 'kb_cat', target: '0', icon: 'list' });
+  opts.push({ label: t.nav_home, action: 'goto', target: '__menu' });
+  return botSay(conv, site, t.kb_browse_title, opts, { numbered: true });
 }
 
 function sendTicketForm(conv, site, type) {
@@ -252,11 +341,16 @@ async function runAction(conv, site, opt, freeText) {
     case 'handoff': return handoff(conv, site, freeText || null, t.handoff);
     case 'order_status': return startLookup(conv, site, 'order', freeText);
     case 'customer_info': return startLookup(conv, site, 'customer', freeText);
+    case 'lookup': return startLookup(conv, site, 'lookup:' + (opt.target || ''), freeText);
     case 'answer': return botSay(conv, site, fill(L(conv, opt.target || '', opt.i18n, 'target'), ctxOf(conv, site)), navOptions(conv, site), opt.media?.length ? { media: opt.media } : {});
     case 'url': return botSay(conv, site, opt.label, navOptions(conv, site), { link: opt.target, link_label: t.open_link });
     case 'location': case 'company_location': return sendLocation(conv, site);
     case 'org': return sendOrg(conv, site, opt.field || 'history');
     case 'company_info': return sendOrg(conv, site, 'history');
+    case 'about': return sendAbout(conv, site);
+    case 'banks': return sendBanks(conv, site, opt.target || null);
+    case 'kb_browse': return sendKbBrowse(conv, site, null);
+    case 'kb_cat': return sendKbBrowse(conv, site, opt.target === '0' ? '0' : opt.target);
     case 'company_website': return sendOrg(conv, site, 'website');
     case 'developer': return sendOrg(conv, site, 'developer');
     case 'ticket': return sendTicketForm(conv, site, opt.field || opt.target || 'complaint');
@@ -282,15 +376,25 @@ function mediaOf(k) {
 
 /* ============================== lookups (datasource) ============================== */
 
+// A look-up = a query on the main database or on one of the extra connections.
+function lookupDef(site, kind) {
+  const d = site.settings.datasource;
+  if (kind === 'order') return { cfg: d, query: d.order_query, template: d.order_template, notes: true, not_found: d.not_found };
+  if (kind === 'customer') return { cfg: d, query: d.customer_query, template: d.customer_template };
+  const id = String(kind).replace(/^lookup:/, ''), l = (d.lookups || []).find(x => x.id === id);
+  if (!l) return null;
+  const cfg = !l.connection || l.connection === 'main' ? d : (d.connections || []).find(c => c.id === l.connection);
+  return cfg ? { cfg, query: l.query, template: l.template || '{*}', not_found: l.not_found, title: l.title } : null;
+}
+
 function startLookup(conv, site, kind, freeText) {
-  const d = site.settings.datasource, t = tr(conv, site);
-  const q = kind === 'order' ? d.order_query : d.customer_query;
-  if (d.type === 'none' || !q) return handoff(conv, site, freeText || null, t.handoff);
-  const names = ds.paramNames(q);
+  const t = tr(conv, site), def = lookupDef(site, kind);
+  if (!def || def.cfg.type === 'none' || !def.query) return handoff(conv, site, freeText || null, t.handoff);
+  const names = ds.paramNames(def.query);
   const params = {};
   if (conv.visitor_phone) params.phone = conv.visitor_phone;
   if (conv.visitor_email && (conv.verified || kind === 'customer')) params.email = conv.visitor_email;
-  if (kind === 'order' && freeText && names.includes('order_no')) {
+  if (kind !== 'customer' && freeText && names.includes('order_no')) {
     const m = nlp.toLatinDigits(freeText).match(/\b\d{3,}\b/);
     if (m) params.order_no = m[0];
   }
@@ -312,28 +416,30 @@ function askNext(conv, site) {
 async function executeLookup(conv, site) {
   const a = conv.state.await, d = site.settings.datasource, t = tr(conv, site);
   saveConv(conv, { state: { ...conv.state, await: null } });
-  const q = a.kind === 'order' ? d.order_query : d.customer_query;
+  const def = lookupDef(site, a.kind);
+  if (!def) return sendNode(conv, site, '__menu');
   let rows;
-  try { rows = await ds.query(d, q, a.params); }
+  try { rows = await ds.query(def.cfg, def.query, a.params); }
   catch (e) { console.error('[datasource]', e.message); return botSay(conv, site, (conv.lang === 'ar' && d.error_message) || t.db_error, navOptions(conv, site)); }
+  const retry = a.kind === 'order' ? 'order_status' : a.kind === 'customer' ? 'customer_info' : 'lookup';
   if (!rows.length) {
-    return botSay(conv, site, a.kind === 'order' ? ((conv.lang === 'ar' && d.not_found) || t.not_found) : t.customer_not_found,
-      [{ label: t.nav_retry, action: a.kind === 'order' ? 'order_status' : 'customer_info' }, ...navOptions(conv, site)]);
+    return botSay(conv, site, a.kind === 'customer' ? t.customer_not_found : ((conv.lang === 'ar' && def.not_found) || t.not_found),
+      [{ label: t.nav_retry, action: retry, target: a.kind.startsWith('lookup:') ? a.kind.slice(7) : undefined }, ...navOptions(conv, site)]);
   }
   if (a.params.phone && !conv.visitor_phone) saveConv(conv, { visitor_phone: a.params.phone });
   if (a.kind === 'customer') {
     const row = rows[0];
     saveConv(conv, { meta: { ...conv.meta, customer: row }, visitor_name: conv.visitor_name || row.name || null });
     broadcastConv(conv);
-    return botSay(conv, site, fill(d.customer_template, { ...a.params, ...row }), navOptions(conv, site));
+    return botSay(conv, site, fill(def.template, { ...a.params, ...row }), navOptions(conv, site));
   }
   const lookups = conv.meta.lookups || [];
-  lookups.push({ at: now(), params: a.params, rows: rows.slice(0, 3) });
+  lookups.push({ at: now(), kind: a.kind, params: a.params, rows: rows.slice(0, 3) });
   saveConv(conv, { meta: { ...conv.meta, lookups: lookups.slice(-10) } });
   for (const row of rows.slice(0, 3)) {
     const ctx = { ...a.params, ...row };
-    let text = fill(d.order_template, ctx);
-    if (row.notes && String(row.notes).trim()) text += '\n' + fill(d.notes_template, ctx);
+    let text = def.template === '{*}' ? Object.keys(row).map(k => `${k}: ${row[k] ?? ''}`).join('\n') : fill(def.template, ctx);
+    if (def.notes && row.notes && String(row.notes).trim()) text += '\n' + fill(d.notes_template, ctx);
     botSay(conv, site, text);
   }
   return botSay(conv, site, t.anything_else, navOptions(conv, site));
@@ -359,8 +465,45 @@ function recordUnanswered(conv, question) {
   else db.prepare('INSERT INTO unanswered(site_id,conversation_id,question,lang,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(conv.site_id, conv.id, question.slice(0, 500), conv.lang || 'ar', now(), now());
 }
 
+/* ---------- working hours ---------- */
+function nowIn(tz) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz || 'Asia/Riyadh', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date()).map(p => [p.type, p.value]));
+  return { day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday), min: (Number(parts.hour) % 24) * 60 + Number(parts.minute) };
+}
+const toMin = (hm) => { const [h, m] = String(hm || '0:0').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+function isOpen(site) {
+  const w = site.settings.behavior.work_hours;
+  if (!w?.enabled) return true;
+  const n = nowIn(w.timezone), d = (w.days || []).find(x => Number(x.day) === n.day);
+  if (!d || !d.open) return false;
+  const a = toMin(d.from), b = toMin(d.to);
+  return b > a ? n.min >= a && n.min < b : (n.min >= a || n.min < b); // also supports night shifts (e.g. 20:00 – 02:00)
+}
+function hoursText(site, t) {
+  const w = site.settings.behavior.work_hours, names = String(t.days || '').split(',');
+  const days = (w.days || []).slice().sort((a, b) => a.day - b.day);
+  const lines = [];
+  for (const d of days) {
+    const val = d.open ? `${d.from} – ${d.to}` : t.closed_day, last = lines[lines.length - 1];
+    if (last && last.val === val) last.to = d.day; else lines.push({ from: d.day, to: d.day, val });
+  }
+  return lines.map(l => `• ${names[l.from] || l.from}${l.to !== l.from ? ' – ' + (names[l.to] || l.to) : ''}: ${l.val}`).join('\n');
+}
+function sendAfterHours(conv, site, question) {
+  const t = tr(conv, site), w = site.settings.behavior.work_hours;
+  const msg = fill((conv.lang === 'ar' && w.message) || t.after_hours, { hours: hoursText(site, t) });
+  return botSay(conv, site, msg, null, {
+    form: { kind: 'ticket', type: 'callback', title: t.ticket_form_callback, name: conv.visitor_name || '', phone: conv.visitor_phone || '', email: '', question: question || (conv.state.pending || []).slice(-1)[0] || '' }
+  });
+}
+
 function handoff(conv, site, question, message) {
   if (conv.status !== 'bot') return;
+  const w = site.settings.behavior.work_hours;
+  if (w?.enabled && !w.allow_handoff && !isOpen(site)) {
+    if (question && isQuestion(question)) saveConv(conv, { state: { ...conv.state, pending: [...(conv.state.pending || []), question].slice(-5) } });
+    return sendAfterHours(conv, site, question);
+  }
   const state = { ...conv.state, await: null };
   if (question && isQuestion(question)) state.pending = [...(state.pending || []), question].slice(-5);
   saveConv(conv, { status: 'waiting', handoff_at: now(), state });
@@ -371,13 +514,14 @@ function handoff(conv, site, question, message) {
   }
   visitorStatus(conv);
   aio.emit('notify', { type: 'waiting', conversation: convSummary(conv) });
+  hooks.emit(site, 'conversation.handoff', convSummary(conv));
 }
 
 // Saves the visitor's pending question with the agent's answer into the knowledge base.
 function learn(conv, question, answer, userId, media) {
   const site = getSite(conv.site_id);
   const items = db.prepare('SELECT * FROM kb WHERE site_id=?').all(conv.site_id);
-  const existing = items.find(k => nlp.normalize(k.question) === nlp.normalize(question)) || nlp.bestMatch(question, items, 0.9)?.item;
+  const existing = items.find(k => nlp.normalize(k.question) === nlp.normalize(question)) || items.find(k => nlp.similarity(k.question, question) >= 0.9); // wording only (keywords would merge different questions)
   const mediaJson = JSON.stringify(media || []);
   let id;
   if (existing) {
@@ -391,6 +535,7 @@ function learn(conv, question, answer, userId, media) {
   for (const u of db.prepare("SELECT id, question FROM unanswered WHERE site_id=? AND status='open'").all(conv.site_id))
     if (nlp.normalize(u.question) === n || nlp.similarity(u.question, question) > 0.8) db.prepare("UPDATE unanswered SET status='answered', kb_id=?, updated_at=? WHERE id=?").run(id, now(), u.id);
   aio.emit('kb:learned', { site_id: conv.site_id, id, question, updated: !!existing });
+  hooks.emit(site, 'kb.learned', { id, question, answer });
   return id;
 }
 
@@ -442,7 +587,10 @@ async function handleVisitorText(conv, site, text) {
   const choice = nlp.parseChoice(text);
   if (choice) {
     // a number refers to the latest numbered menu (e.g. the main menu), otherwise to the latest buttons
-    const numbered = lastOptions(conv, true);
+    // ...unless the latest buttons are plain navigation: then a number means the main menu
+    const latest = db.prepare("SELECT payload FROM messages WHERE conversation_id=? AND sender='bot' AND payload LIKE '%\"options\"%' ORDER BY id DESC LIMIT 1").get(conv.id);
+    const lp = parsePayload(latest?.payload);
+    const numbered = lp?.numbered ? lp.options : (findNode(site, '__menu')?.options || lastOptions(conv, true));
     const pick = numbered[choice - 1] || opts[choice - 1];
     if (pick) return runAction(conv, site, pick, null);
     return sendNode(conv, site, '__menu');
@@ -458,14 +606,26 @@ async function handleVisitorText(conv, site, text) {
   if (intentHit(text, I.complaint)) return sendTicketForm(conv, site, 'complaint');
   if (intentHit(text, I.suggestion)) return sendTicketForm(conv, site, 'suggestion');
   if (intentHit(text, [...I.order, ...(b.order_keywords || [])]) && site.settings.datasource.type !== 'none') return startLookup(conv, site, 'order', text);
+  for (const l of site.settings.datasource.lookups || [])
+    if (l.query && intentHit(text, String(l.keywords || '').split(/[,،\n]/).map(x => x.trim()).filter(Boolean))) return startLookup(conv, site, 'lookup:' + l.id, text);
 
-  // 4) organisation information and custom info cards
-  for (const c of site.settings.org.custom || []) {
-    const kws = String(c.keywords || '').split(/[,،\n]/).map(s => s.trim()).filter(Boolean);
-    if (kws.some(k => nlp.containsPhrase(text, k)) || nlp.similarity(text, c.title || '') > 0.8) return sendOrg(conv, site, 'custom:' + c.id);
+  // 4) organisation information: about menu, bank accounts, sections (by keyword/title), departments
+  if (intentHit(text, I.social) && sendOrg(conv, site, 'social', { silent: true })) return;
+  if (intentHit(text, I.banks) && sendBanks(conv, site, null, { silent: true })) return;
+  for (const g of banksOf(site)) if (g.name && nlp.containsPhrase(text, g.name) && intentHit(text, ['حساب', 'حسابات', 'account', 'اکاؤنٹ'])) return sendBanks(conv, site, g.id);
+  for (const sec of sectionsOf(site)) {
+    const kws = String(sec.keywords || '').split(/[,،\n]/).map(x => x.trim()).filter(Boolean);
+    if (kws.some(k => nlp.containsPhrase(text, k)) || (sec.title && (nlp.normalize(text) === nlp.normalize(sec.title) || nlp.similarity(text, sec.title) > 0.8))) return sendSection(conv, site, sec);
   }
-  for (const f of ['developer', 'location', 'history', 'vision', 'hours', 'contact', 'website', 'social'])
+  if (intentHit(text, I.about) && sendAbout(conv, site, { silent: true })) return;
+  for (const f of ['developer', 'location', 'history', 'vision', 'hours', 'contact', 'website'])
     if (intentHit(text, I[f]) && sendOrg(conv, site, f, { silent: true })) return;
+  for (const d of site.settings.org.departments || []) {
+    if (d.name && d.phones && nlp.containsPhrase(text, d.name)) {
+      const list = String(d.phones).split(/[,،\s]+/).filter(Boolean).map(p => ({ icon: '📱', label: d.name, value: p, href: 'tel:' + p }));
+      return botSay(conv, site, `📞 ${d.name}`, navOptions(conv, site), { contacts: list });
+    }
+  }
 
   // 5) knowledge base (prefers the visitor's language)
   const items = db.prepare("SELECT * FROM kb WHERE site_id=? AND active=1 AND (lang IS NULL OR lang='all' OR lang=?)").all(site.id, conv.lang || 'ar');
@@ -478,16 +638,8 @@ async function handleVisitorText(conv, site, text) {
   // 6) greetings, bare numbers and very short texts are not questions: show the menu again
   if (!isQuestion(text)) return sendNode(conv, site, '__menu');
 
-  // 7) no answer — suggestions (optional), then a human as the last resort
+  // 7) no answer: record the question (it appears in the mind map) and hand off to a human immediately
   recordUnanswered(conv, text);
-  if (b.no_answer_action === 'suggest_then_handoff' && !st.suggested) {
-    const sug = nlp.topMatches(text, items, 3, Number(b.suggest_threshold) || 0.38);
-    if (sug.length) {
-      saveConv(conv, { state: { ...st, suggested: true, pending: [...(st.pending || []), text].slice(-5) } });
-      return botSay(conv, site, t.did_you_mean, [...sug.map(s => ({ label: s.item.question, action: 'kb', target: String(s.item.id) })), { label: t.nav_agent, action: 'handoff' }]);
-    }
-  }
-  if (b.no_answer_action === 'fallback') return botSay(conv, site, t.fallback, navOptions(conv, site));
   return handoff(conv, site, text, t.no_answer_handoff);
 }
 
@@ -502,6 +654,7 @@ function closeConversation(conv, by, userId = null) {
   vio.to('c' + conv.id).emit('closed', { by, rating_max: site.settings.appearance.rating_max });
   visitorStatus(conv);
   aio.emit('notify', { type: 'closed', by, conversation: convSummary(conv) });
+  hooks.emit(site, 'conversation.closed', { ...convSummary(conv), messages: db.prepare('SELECT sender, body, created_at FROM messages WHERE conversation_id=? ORDER BY id').all(conv.id) });
 }
 
 function originAllowed(site, origin) {
@@ -543,6 +696,9 @@ function setup(io, secret) {
 
   vio.on('connection', (socket) => {
     let site = null, conv = null, visitorId = null, identity = null, lang = 'ar';
+    // flood protection per visitor connection
+    const hits = {};
+    const allow = (kind, max, perMs) => { const t = Date.now(), h = hits[kind] = (hits[kind] || []).filter(x => t - x < perMs); if (h.length >= max) return false; h.push(t); return true; };
     const reloadConv = () => (conv = conv ? getConv(conv.id) : null);
     const sendHistory = () => {
       const msgs = db.prepare('SELECT * FROM messages WHERE conversation_id=? ORDER BY id').all(conv.id).map(publicMsg);
@@ -576,6 +732,7 @@ function setup(io, secret) {
 
     socket.on('start', async (p, ack) => {
       if (!site) return ack?.({ error: 'join first' });
+      if (!allow('start', 5, 60000)) return ack?.({ error: 'rate' });
       reloadConv();
       if (conv && conv.status !== 'closed') { sendHistory(); return ack?.({ ok: true }); }
       if (conv) socket.leave('c' + conv.id);
@@ -595,11 +752,13 @@ function setup(io, secret) {
       await loadCustomer(conv, site);
       sendHistory();
       aio.emit('notify', { type: 'new', conversation: convSummary(conv) });
+      hooks.emit(site, 'conversation.started', convSummary(conv));
       sendNode(conv, site, '__root');
       ack?.({ ok: true });
     });
 
     socket.on('message', async (p, ack) => {
+      if (!allow('msg', 20, 30000)) return ack?.({ error: 'rate' });
       reloadConv();
       const text = String(p?.text || '').trim().slice(0, 4000);
       if (!conv || !text || conv.status === 'closed') return ack?.({ error: 'closed' });
@@ -611,6 +770,7 @@ function setup(io, secret) {
     });
 
     socket.on('option', async (p, ack) => {
+      if (!allow('msg', 20, 30000)) return ack?.({ error: 'rate' });
       reloadConv();
       if (!conv || conv.status === 'closed') return ack?.({ error: 'closed' });
       const m = db.prepare("SELECT payload FROM messages WHERE id=? AND conversation_id=? AND sender='bot'").get(Number(p?.mid), conv.id);
@@ -624,6 +784,7 @@ function setup(io, secret) {
     });
 
     socket.on('form_submit', async (p, ack) => {
+      if (!allow('form', 5, 600000)) return ack?.({ error: 'rate' });
       reloadConv();
       if (!conv) return ack?.({ error: 'conv' });
       const row = db.prepare("SELECT id, payload FROM messages WHERE id=? AND conversation_id=? AND sender='bot'").get(Number(p?.mid), conv.id);
@@ -632,7 +793,9 @@ function setup(io, secret) {
       site = getSite(site.id);
       const t = tr(conv, site);
       try {
-        const tk = await tickets.create(site, p.values || {}, { type: payload.form.type, lang: conv.lang, conversationId: conv.id });
+        const vals = { ...(p.values || {}) };
+        if (payload.form.type === 'callback' && !String(vals.text || '').trim()) vals.text = payload.form.question || '';
+        const tk = await tickets.create(site, vals, { type: payload.form.type, lang: conv.lang, conversationId: conv.id });
         payload.form.submitted = tk.number;
         db.prepare('UPDATE messages SET payload=? WHERE id=?').run(JSON.stringify(payload), row.id);
         vio.to('c' + conv.id).emit('form_done', { mid: row.id, number: tk.number });
@@ -642,8 +805,8 @@ function setup(io, secret) {
         if (!conv.visitor_phone && tk.phone) upd.visitor_phone = tk.phone;
         if (!conv.visitor_email && tk.email) upd.visitor_email = tk.email;
         if (Object.keys(upd).length) saveConv(conv, upd);
-        addMessage(conv, 'visitor', `${t['t_' + tk.type]}: ${tk.text}`.slice(0, 600));
-        botSay(conv, site, fill(t.ticket_created, { type: t['t_' + tk.type], number: tk.number, date: tk.created_at.slice(0, 10) }), conv.status === 'bot' ? navOptions(conv, site) : null);
+        addMessage(conv, 'visitor', tk.type === 'callback' ? `${t.t_callback}: ${tk.name} — ${tk.phone}` : `${t['t_' + tk.type]}: ${tk.text}`.slice(0, 600));
+        botSay(conv, site, fill(tk.type === 'callback' ? t.callback_created : t.ticket_created, { type: t['t_' + tk.type], number: tk.number, date: tk.created_at.slice(0, 10) }), conv.status === 'bot' ? navOptions(conv, site) : null);
         aio.emit('ticket:new', { site_id: site.id, id: tk.id, number: tk.number, type: tk.type, name: tk.name, text: tk.text.slice(0, 140) });
         ack?.({ ok: true, number: tk.number });
       } catch (e) {
@@ -663,6 +826,7 @@ function setup(io, secret) {
       if (!(r >= 0.5 && r <= max)) return ack?.({ error: 'value' });
       saveConv(conv, { rating: r, rating_comment: String(p?.comment || '').slice(0, 1000) || null });
       aio.emit('notify', { type: 'rated', conversation: { ...convSummary(conv), rating_max: max } });
+      hooks.emit(getSite(conv.site_id), 'conversation.rated', { ...convSummary(conv), comment: conv.rating_comment });
       broadcastConv(conv);
       ack?.({ ok: true });
     });
@@ -671,8 +835,8 @@ function setup(io, secret) {
   aio.use((socket, next) => {
     try {
       const u = jwt.verify(socket.handshake.auth?.token, JWT_SECRET);
-      const user = db.prepare('SELECT id,name,role,active,job_title,avatar FROM users WHERE id=?').get(u.id);
-      if (!user?.active) return next(new Error('unauthorized'));
+      const user = db.prepare('SELECT id,name,role,active,job_title,avatar,pwd_changed_at FROM users WHERE id=?').get(u.id);
+      if (!user?.active || (user.pwd_changed_at && u.iat * 1000 < user.pwd_changed_at - 1000)) return next(new Error('unauthorized'));
       socket.user = user; next();
     } catch { next(new Error('unauthorized')); }
   });
@@ -784,6 +948,7 @@ function maintenance() {
 }
 
 module.exports = {
-  setup, maintenance, convSummary, publicMsg, closeConversation, learn, locationPayload,
+  isOpen,
+  setup, maintenance, convSummary, publicMsg, closeConversation, learn, locationPayload, resolveMapLink,
   getAio: () => aio, getVio: () => vio, onlineAgents: () => [...online.values()]
 };

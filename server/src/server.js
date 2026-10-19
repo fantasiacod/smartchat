@@ -16,6 +16,7 @@ const tickets = require('./tickets');
 const notify = require('./notify');
 const reports = require('./reports');
 const patterns = require('../public/patterns');
+const ICONS = require('../public/icons');
 const persistence = require('./persist');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -25,6 +26,29 @@ const JWT_SECRET = process.env.JWT_SECRET || (fs.existsSync(secretFile) ? fs.rea
 
 const app = express();
 app.set('trust proxy', true);
+app.disable('x-powered-by');
+// security headers
+app.use((req, res, next) => {
+  res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()' });
+  if (req.secure) res.set('Strict-Transport-Security', 'max-age=15552000');
+  if (req.path.startsWith('/admin')) res.set({
+    'X-Frame-Options': 'DENY',
+    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' ws: wss:; frame-src 'self' https://maps.google.com https://www.google.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+  });
+  else if (req.path.startsWith('/demo')) res.set('X-Frame-Options', 'SAMEORIGIN');
+  next();
+});
+// simple per-IP rate limiter for public endpoints
+const buckets = new Map();
+function limit(max, perMs) {
+  return (req, res, next) => {
+    const k = req.ip + '|' + req.route?.path, now = Date.now(), b = buckets.get(k) || { n: 0, t: now };
+    if (now - b.t > perMs) { b.n = 0; b.t = now; }
+    if (++b.n > max) return res.status(429).json({ error: 'طلبات كثيرة، حاول لاحقاً' });
+    buckets.set(k, b); next();
+  };
+}
+setInterval(() => { const t = Date.now(); for (const [k, b] of buckets) if (t - b.t > 3600000) buckets.delete(k); }, 600000).unref();
 app.use(express.json({ limit: '3mb' }));
 const PUB = path.join(__dirname, '..', 'public');
 const ROOT = path.join(__dirname, '..', '..');
@@ -37,7 +61,7 @@ const cors = (req, res, next) => {
   next();
 };
 
-app.get(['/widget.js', '/patterns.js'], cors, (req, res) => {
+app.get(['/widget.js', '/patterns.js', '/icons.js'], cors, (req, res) => {
   res.set('Cache-Control', 'public, max-age=300');
   res.sendFile(path.join(PUB, req.path.slice(1)));
 });
@@ -67,11 +91,12 @@ function widgetConfig(site, base = '') {
     org: { name: o.name || a.company_name || '', unified_number: o.unified_number || '' },
     languages: { enabled, default: enabled.includes(L.default) ? L.default : enabled[0], show_switcher: L.show_switcher !== false && enabled.length > 1, meta: Object.fromEntries(enabled.map(l => [l, LANGS[l]])) },
     texts: Object.fromEntries(enabled.map(l => [l, texts(site, l)])),
-    tickets: { enabled: site.settings.tickets.enabled, require_email: site.settings.tickets.require_email }
+    tickets: { enabled: site.settings.tickets.enabled, require_email: site.settings.tickets.require_email },
+    work: { enabled: !!site.settings.behavior.work_hours?.enabled, open: chat.isOpen(site) }
   };
 }
 
-app.get('/api/widget/config', cors, (req, res) => {
+app.get('/api/widget/config', cors, limit(120, 60000), (req, res) => {
   const site = getSiteByKey(String(req.query.site || ''));
   if (!site) return res.status(404).json({ error: 'site not found' });
   res.json(widgetConfig(site, `${req.protocol}://${req.get('host')}`));
@@ -146,8 +171,9 @@ function auth(minRole = 'agent') {
     try {
       const tok = (req.headers.authorization || '').replace(/^Bearer /, '') || String(req.query.token || '');
       const p = jwt.verify(tok, JWT_SECRET);
-      const u = db.prepare('SELECT id,name,email,role,active,job_title,avatar,phone,prefs FROM users WHERE id=?').get(p.id);
+      const u = db.prepare('SELECT id,name,email,role,active,job_title,avatar,phone,prefs,pwd_changed_at FROM users WHERE id=?').get(p.id);
       if (!u || !u.active) return res.status(401).json({ error: 'unauthorized' });
+      if (u.pwd_changed_at && p.iat * 1000 < u.pwd_changed_at - 1000) return res.status(401).json({ error: 'unauthorized' }); // password changed: old sessions end
       if (ROLE_LEVEL[u.role] < ROLE_LEVEL[minRole]) return res.status(403).json({ error: 'ليس لديك صلاحية' });
       req.user = u; next();
     } catch { res.status(401).json({ error: 'unauthorized' }); }
@@ -156,7 +182,7 @@ function auth(minRole = 'agent') {
 
 const attempts = new Map();
 app.post('/api/auth/login', (req, res) => {
-  const key = req.ip, a = attempts.get(key) || { n: 0, t: Date.now() };
+  const key = req.ip + '|' + String(req.body.email || '').toLowerCase().trim(), a = attempts.get(key) || { n: 0, t: Date.now() };
   if (Date.now() - a.t > 15 * 60000) { a.n = 0; a.t = Date.now(); }
   if (a.n >= 10) return res.status(429).json({ error: 'محاولات كثيرة، حاول بعد 15 دقيقة' });
   const u = db.prepare('SELECT * FROM users WHERE email=?').get(String(req.body.email || '').toLowerCase().trim());
@@ -183,7 +209,9 @@ app.put('/api/me', auth(), (req, res) => {
   if (password) {
     if (!bcrypt.compareSync(String(current_password || ''), u.password)) return res.status(400).json({ error: 'كلمة المرور الحالية غير صحيحة' });
     if (String(password).length < 8) return res.status(400).json({ error: 'كلمة المرور 8 أحرف على الأقل' });
-    db.prepare('UPDATE users SET password=? WHERE id=?').run(bcrypt.hashSync(String(password), 10), u.id);
+    db.prepare('UPDATE users SET password=?, pwd_changed_at=? WHERE id=?').run(bcrypt.hashSync(String(password), 10), Date.now(), u.id);
+    audit(u.id, 'password.change', {});
+    return res.json({ ...meOut(db.prepare('SELECT * FROM users WHERE id=?').get(u.id)), token: jwt.sign({ id: u.id }, JWT_SECRET, { expiresIn: '7d' }) });
   }
   try {
     if (name !== undefined && String(name).trim()) db.prepare('UPDATE users SET name=? WHERE id=?').run(String(name).slice(0, 80), u.id);
@@ -225,7 +253,7 @@ app.put('/api/users/:id', auth('admin'), (req, res) => {
       name ?? u.name, (email ?? u.email).toLowerCase().trim(), role ?? u.role, active === undefined ? u.active : (active ? 1 : 0),
       job_title ?? u.job_title ?? '', phone ?? u.phone ?? '', avatar === undefined ? (u.avatar || '') : cleanAvatar(avatar), id);
   } catch (e) { return res.status(400).json({ error: /UNIQUE/.test(e.message) ? 'البريد مستخدم مسبقاً' : e.message }); }
-  if (password) db.prepare('UPDATE users SET password=? WHERE id=?').run(bcrypt.hashSync(String(password), 10), id);
+  if (password) db.prepare('UPDATE users SET password=?, pwd_changed_at=? WHERE id=?').run(bcrypt.hashSync(String(password), 10), Date.now(), id);
   audit(req.user.id, 'user.update', { id, role, active });
   res.json({ ok: true });
 });
@@ -244,7 +272,10 @@ function maskSite(s, user) {
   if (user.role !== 'admin') {
     out.settings.security = { allowed_domains: s.settings.security.allowed_domains };
     out.settings.datasource.connection = s.settings.datasource.connection ? '••••••' : '';
+    out.settings.datasource.connections = (s.settings.datasource.connections || []).map(c => ({ id: c.id, name: c.name, type: c.type }));
+    out.settings.datasource.lookups = (s.settings.datasource.lookups || []).map(l => ({ id: l.id, title: l.title }));
     out.settings.notify = { channels: s.settings.notify.channels, whatsapp: { mode: s.settings.notify.whatsapp.mode } };
+    out.settings.integrations = { webhooks: [] };
   } else {
     if (out.settings.notify.email.pass) out.settings.notify.email.pass = '••••••';
     for (const k of ['api_key', 'auth_token']) if (out.settings.notify.sms[k]) out.settings.notify.sms[k] = '••••••';
@@ -252,7 +283,7 @@ function maskSite(s, user) {
   }
   return out;
 }
-const SECTION_ROLE = { appearance: 'supervisor', texts: 'supervisor', prechat: 'supervisor', behavior: 'supervisor', org: 'supervisor', developer: 'supervisor', tickets: 'supervisor', languages: 'supervisor', datasource: 'admin', security: 'admin', notify: 'admin' };
+const SECTION_ROLE = { appearance: 'supervisor', texts: 'supervisor', prechat: 'supervisor', behavior: 'supervisor', org: 'supervisor', developer: 'supervisor', tickets: 'supervisor', languages: 'supervisor', datasource: 'admin', security: 'admin', notify: 'admin', integrations: 'admin' };
 
 app.get('/api/sites', auth(), (req, res) => res.json(db.prepare('SELECT id FROM sites ORDER BY id').all().map(r => maskSite(getSite(r.id), req.user))));
 app.post('/api/sites', auth('admin'), (req, res) => {
@@ -288,9 +319,10 @@ app.put('/api/sites/:id', auth('supervisor'), (req, res) => {
   if (tree && (!Array.isArray(tree.nodes) || !tree.nodes.length || !tree.nodes.some(n => n.id === tree.root)))
     return res.status(400).json({ error: 'الشجرة غير صحيحة: يجب وجود عقدة بداية' });
   if (name && req.user.role !== 'admin') return res.status(403).json({ error: 'ليس لديك صلاحية' });
-  merged.version = 2;
+  merged.version = 3;
   db.prepare('UPDATE sites SET name=?, settings=?, tree=? WHERE id=?').run(name ? String(name).slice(0, 80) : site.name, JSON.stringify(merged), JSON.stringify(tree || site.tree), site.id);
   audit(req.user.id, 'site.update', { id: site.id, sections: Object.keys(settings || {}), tree: !!tree });
+  if (settings?.org) chat.resolveMapLink(site.id).catch(() => { });
   res.json(maskSite(getSite(site.id), req.user));
 });
 
@@ -349,9 +381,18 @@ app.get('/api/sites/:id/wordpress-plugin.zip', auth('admin'), async (req, res) =
 app.post('/api/sites/:id/datasource/test', auth('admin'), async (req, res) => {
   const site = getSite(Number(req.params.id));
   const cfg = keepMasked({ ...site.settings.datasource, ...(req.body.datasource || {}) }, site.settings.datasource);
-  const which = req.body.which === 'customer' ? cfg.customer_query : cfg.order_query;
+  let conn = cfg, which;
+  if (req.body.which === 'customer') which = cfg.customer_query;
+  else if (req.body.which === 'order' || !req.body.which) which = cfg.order_query;
+  else {
+    const l = (cfg.lookups || []).find(x => x.id === req.body.which);
+    if (!l) return res.status(400).json({ error: 'استعلام غير موجود' });
+    which = l.query;
+    conn = !l.connection || l.connection === 'main' ? cfg : (cfg.connections || []).find(c => c.id === l.connection);
+    if (!conn) return res.status(400).json({ error: 'قاعدة البيانات المرتبطة غير موجودة' });
+  }
   ds.resetPools();
-  try { const rows = await ds.query(cfg, which, req.body.params || {}); res.json({ ok: true, params: ds.paramNames(which), rows: rows.slice(0, 5) }); }
+  try { const rows = await ds.query(conn, which, req.body.params || {}); res.json({ ok: true, params: ds.paramNames(which), rows: rows.slice(0, 5) }); }
   catch (e) { res.status(400).json({ error: e.message, params: ds.paramNames(which) }); }
 });
 
@@ -438,11 +479,12 @@ app.get('/api/kb', auth(), (req, res) => {
   res.json(db.prepare(`SELECT * FROM kb WHERE ${w} ORDER BY id DESC`).all(...args).map(k => ({ ...k, media: (() => { try { return JSON.parse(k.media || '[]'); } catch { return []; } })() })));
 });
 app.post('/api/kb', auth(), (req, res) => {
-  const { site_id, question, answer, keywords, lang, unanswered_id } = req.body;
+  const { site_id, question, answer, keywords, lang, unanswered_id, category_id } = req.body;
   if (!site_id || !question?.trim() || !answer?.trim()) return res.status(400).json({ error: 'السؤال والإجابة مطلوبان' });
   let media; try { media = cleanMedia(req.body.media); } catch (e) { return res.status(400).json({ error: e.message }); }
   const r = db.prepare('INSERT INTO kb(site_id,question,answer,keywords,media,source,source_conversation,created_by,lang,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
     .run(Number(site_id), question.trim(), answer.trim(), keywords || '', JSON.stringify(media), req.body.conversation_id || unanswered_id ? 'learned' : 'manual', req.body.conversation_id || null, req.user.id, lang || 'all', now(), now());
+  if (category_id) db.prepare('UPDATE kb SET category_id=? WHERE id=?').run(Number(category_id) || null, r.lastInsertRowid);
   if (unanswered_id) db.prepare("UPDATE unanswered SET status='answered', kb_id=?, updated_at=? WHERE id=?").run(r.lastInsertRowid, now(), Number(unanswered_id));
   res.json({ id: r.lastInsertRowid });
 });
@@ -454,6 +496,7 @@ app.put('/api/kb/:id', auth(), (req, res) => {
   if (req.body.media !== undefined) { try { media = JSON.stringify(cleanMedia(req.body.media)); } catch (e) { return res.status(400).json({ error: e.message }); } }
   db.prepare('UPDATE kb SET question=?, answer=?, keywords=?, media=?, lang=?, active=?, updated_at=? WHERE id=?')
     .run(question ?? k.question, answer ?? k.answer, keywords ?? k.keywords, media, lang ?? k.lang ?? 'all', active === undefined ? k.active : (active ? 1 : 0), now(), k.id);
+  if (req.body.category_id !== undefined) db.prepare('UPDATE kb SET category_id=? WHERE id=?').run(Number(req.body.category_id) || null, k.id);
   res.json({ ok: true });
 });
 app.delete('/api/kb/:id', auth('supervisor'), (req, res) => { db.prepare('DELETE FROM kb WHERE id=?').run(Number(req.params.id)); res.json({ ok: true }); });
@@ -522,6 +565,86 @@ app.delete('/api/tickets/:id', auth('supervisor'), (req, res) => {
   res.json({ ok: true });
 });
 
+/* ============================== mind map (knowledge categories) ============================== */
+const cleanCat = (b) => ({ name: String(b.name || '').trim().slice(0, 80), icon: ICONS.has(b.icon) ? b.icon : 'question', color: /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '', i18n: JSON.stringify(b.i18n || {}) });
+app.get('/api/mindmap', auth(), (req, res) => {
+  const site = Number(req.query.site);
+  res.json({
+    categories: db.prepare('SELECT * FROM kb_categories WHERE site_id=? ORDER BY sort, id').all(site).map(c => ({ ...c, i18n: (() => { try { return JSON.parse(c.i18n || '{}'); } catch { return {}; } })() })),
+    kb: db.prepare('SELECT id, question, answer, keywords, category_id, source, hits, active, lang, media FROM kb WHERE site_id=? ORDER BY id').all(site).map(k => ({ ...k, media: (() => { try { return JSON.parse(k.media || '[]'); } catch { return []; } })() })),
+    unanswered: db.prepare("SELECT id, question, count, lang, conversation_id, updated_at FROM unanswered WHERE site_id=? AND status='open' ORDER BY count DESC, id DESC LIMIT 100").all(site)
+  });
+});
+app.post('/api/kb-categories', auth('supervisor'), (req, res) => {
+  const c = cleanCat(req.body); if (!c.name) return res.status(400).json({ error: 'اسم التصنيف مطلوب' });
+  const sort = (db.prepare('SELECT MAX(sort) m FROM kb_categories WHERE site_id=?').get(Number(req.body.site_id)).m || 0) + 1;
+  const r = db.prepare('INSERT INTO kb_categories(site_id,name,icon,color,sort,i18n,created_at) VALUES(?,?,?,?,?,?,?)').run(Number(req.body.site_id), c.name, c.icon, c.color, sort, c.i18n, now());
+  res.json({ id: r.lastInsertRowid });
+});
+app.put('/api/kb-categories/:id', auth('supervisor'), (req, res) => {
+  const old = db.prepare('SELECT * FROM kb_categories WHERE id=?').get(Number(req.params.id)); if (!old) return res.status(404).json({ error: 'not found' });
+  const c = cleanCat({ ...old, i18n: (() => { try { return JSON.parse(old.i18n || '{}'); } catch { return {}; } })(), ...req.body });
+  db.prepare('UPDATE kb_categories SET name=?, icon=?, color=?, i18n=?, sort=? WHERE id=?').run(c.name || old.name, c.icon, c.color, c.i18n, req.body.sort ?? old.sort, old.id);
+  res.json({ ok: true });
+});
+app.delete('/api/kb-categories/:id', auth('supervisor'), (req, res) => {
+  const id = Number(req.params.id);
+  if (req.query.with_questions === '1') db.prepare('DELETE FROM kb WHERE category_id=?').run(id); else db.prepare('UPDATE kb SET category_id=NULL WHERE category_id=?').run(id);
+  db.prepare('DELETE FROM kb_categories WHERE id=?').run(id);
+  res.json({ ok: true });
+});
+
+/* ============================== backup / restore / reset ============================== */
+const backup = require('./backup');
+const sendBackup = (res, name, buf) => res.set({ 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="${name}"` }).send(buf);
+app.get('/api/backup/download', auth('admin'), (req, res) => {
+  audit(req.user.id, 'backup.download', {});
+  sendBackup(res, `smartchat-${new Date().toISOString().slice(0, 10)}-manual.scb`, backup.dump());
+});
+app.get('/api/backups', auth('admin'), (req, res) => {
+  try { res.json({ config: backup.config(), folder: backup.folder(), last: require('./db').meta.get('backup_last', null), files: backup.list(), persistent: !persistence.enabled() }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.put('/api/backups/config', auth('admin'), (req, res) => {
+  const b = req.body || {}, c = backup.config();
+  const next = {
+    enabled: !!b.enabled, frequency: ['hourly', 'daily', 'weekly'].includes(b.frequency) ? b.frequency : c.frequency,
+    hour: Math.min(23, Math.max(0, Number(b.hour ?? c.hour) || 0)), keep: Math.min(90, Math.max(1, Number(b.keep ?? c.keep) || 7)),
+    folder: String(b.folder ?? c.folder).trim().slice(0, 300), email: String(b.email ?? c.email).trim().slice(0, 200)
+  };
+  if (next.folder) { try { fs.mkdirSync(next.folder, { recursive: true }); fs.accessSync(next.folder, fs.constants.W_OK); } catch (e) { return res.status(400).json({ error: 'لا يمكن الكتابة في المجلد: ' + e.message }); } }
+  require('./db').meta.set('backup', next);
+  audit(req.user.id, 'backup.config', next);
+  res.json(next);
+});
+app.post('/api/backups', auth('admin'), (req, res) => {
+  try { const f = backup.createFile('manual'); audit(req.user.id, 'backup.create', { name: f.name }); res.json({ name: f.name, size: f.size }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.get('/api/backups/:name', auth('admin'), (req, res) => { try { sendBackup(res, req.params.name, backup.readFile(req.params.name)); } catch (e) { res.status(404).json({ error: e.message }); } });
+app.delete('/api/backups/:name', auth('admin'), (req, res) => { try { backup.removeFile(req.params.name); res.json({ ok: true }); } catch (e) { res.status(400).json({ error: e.message }); } });
+async function doRestore(req, res, buf) {
+  try {
+    backup.parse(buf);
+    try { backup.createFile('pre-restore'); } catch { /* ignore */ }
+    const r = backup.restore(buf);
+    await persistence.save(db, true).catch(() => { });
+    chat.maintenance();
+    res.json({ ok: true, ...r });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+}
+app.post('/api/backups/:name/restore', auth('admin'), (req, res) => { let buf; try { buf = backup.readFile(req.params.name); } catch (e) { return res.status(404).json({ error: e.message }); } doRestore(req, res, buf); });
+app.post('/api/backup/restore', auth('admin'), express.raw({ type: 'application/octet-stream', limit: '500mb' }), (req, res) => doRestore(req, res, req.body));
+app.post('/api/reset', auth('admin'), async (req, res) => {
+  const u = db.prepare('SELECT password FROM users WHERE id=?').get(req.user.id);
+  if (!bcrypt.compareSync(String(req.body.password || ''), u.password)) return res.status(400).json({ error: 'كلمة المرور غير صحيحة' });
+  if (String(req.body.confirm || '').trim() !== 'تصفير') return res.status(400).json({ error: 'اكتب كلمة "تصفير" للتأكيد' });
+  backup.reset(req.body.scope || {}, req.user.id);
+  audit(req.user.id, 'system.reset', req.body.scope || {});
+  await persistence.save(db, true).catch(() => { });
+  res.json({ ok: true });
+});
+
 /* ============================== stats & reports ============================== */
 app.get('/api/stats', auth(), (req, res) => res.json(reports.dashboard(req.query)));
 app.get('/api/reports/agents', auth('supervisor'), (req, res) => { const r = reports.agentReport(req.query); delete r.conversations; res.json(r); });
@@ -533,11 +656,18 @@ app.get('/api/reports/agents.xlsx', auth('supervisor'), async (req, res) => {
 app.get('/api/audit', auth('admin'), (req, res) => res.json(db.prepare('SELECT a.*, u.name user_name FROM audit a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.id DESC LIMIT 300').all()));
 app.get('/api/online', auth(), (req, res) => res.json(chat.onlineAgents()));
 
+app.use((err, req, res, next) => { // never leak stack traces
+  if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'الملف أكبر من الحد المسموح' });
+  console.error('[http]', err?.message); res.status(err?.status || 500).json({ error: 'خطأ في الخادم' });
+});
+
 /* ============================== start ============================== */
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: true, credentials: true }, maxHttpBufferSize: 1e6 });
 chat.setup(io, JWT_SECRET);
 setInterval(chat.maintenance, 60 * 1000).unref();
+setInterval(() => require('./backup').tick(), 10 * 60 * 1000).unref();
+setTimeout(() => require('./backup').tick(), 30 * 1000).unref();
 chat.maintenance();
 
 if (require.main === module) server.listen(PORT, () => console.log(`Smart Chat running on http://localhost:${PORT}  (dashboard: /admin/)`));

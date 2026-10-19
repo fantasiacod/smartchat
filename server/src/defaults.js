@@ -35,19 +35,30 @@ function defaultSettings() {
       unified_number: '', email: '', website: '', address: '', map_url: '', lat: '', lng: '', hours: '',
       departments: [], // [{ name, phones }]
       social: { x: '', instagram: '', snapchat: '', tiktok: '', youtube: '', facebook: '', linkedin: '', whatsapp: '' },
-      custom: [],      // [{ id, title, keywords, answer, media: [] }]
-      media: { history: [], location: [] }
+      custom: [],      // legacy cards (migrated into sections)
+      media: { history: [], location: [] },
+      // "About us" sections shown as a menu and answered by keyword: [{ id, key, title, icon, color, text, keywords, media, i18n }]
+      sections: [],
+      // Bank accounts grouped under main categories: [{ id, name, icon, color, accounts: [{ id, bank, holder, iban, number, note }] }]
+      banks: [],
+      sections_v: 0
     },
     developer: { show: true, name: '', description: 'تم تطوير هذا المساعد الذكي بواسطة', url: '', logo: '' },
     behavior: {
       auto_learn: true, kb_threshold: 0.6, suggest_threshold: 0.38,
-      no_answer_action: 'handoff',      // handoff | suggest_then_handoff | fallback
+      no_answer_action: 'handoff',      // always: no answer -> immediate hand-off to a human
       numbered_menus: true, inactivity_minutes: 30, retention_days: 90,
+      // working hours: outside them the visitor leaves name + phone and is called back on a working day
+      work_hours: {
+        enabled: false, allow_handoff: false, timezone: 'Asia/Riyadh', message: '',
+        days: [0, 1, 2, 3, 4, 5, 6].map(d => ({ day: d, open: d <= 4, from: '08:00', to: '16:00' })) // 0 = Sunday
+      },
       order_keywords: [], handoff_keywords: [],
       // legacy (Arabic) message overrides
       handoff_message: '', no_answer_handoff_message: '', fallback_message: '', agent_joined_message: '', closed_message: '', anything_else: ''
     },
-    tickets: { enabled: true, prefix_complaint: 'C', prefix_suggestion: 'S', prefix_inquiry: 'Q', require_email: false, notify_admins: true },
+    integrations: { webhooks: [] }, // [{ id, url, secret, events: [], enabled }]
+    tickets: { enabled: true, prefix_complaint: 'C', prefix_suggestion: 'S', prefix_inquiry: 'Q', prefix_callback: 'R', require_email: false, notify_admins: true },
     notify: {
       admin_emails: '',
       email: { enabled: false, host: '', port: 587, secure: false, user: '', pass: '', from_name: '', from_email: '' },
@@ -69,7 +80,10 @@ function defaultSettings() {
       customer_query: 'SELECT name, city, tier FROM demo_customers WHERE phone = :phone OR email = :email',
       order_template: '📦 طلب رقم {order_no}\nالحالة: *{status}*', notes_template: '📝 ملاحظات: {notes}',
       customer_template: 'بياناتك المسجلة:\nالاسم: {name}\nالمدينة: {city}\nالفئة: {tier}',
-      not_found: '', error_message: '', param_prompts: {}
+      not_found: '', error_message: '', param_prompts: {},
+      // additional databases / APIs and custom look-ups (e.g. beneficiary file, aid schedule, appointments)
+      connections: [],  // [{ id, name, type: mysql|postgres|api, connection, api_url, api_headers }]
+      lookups: []       // [{ id, title, keywords, connection: 'main'|<id>, query, template, not_found }]
     },
     security: { allowed_domains: '', identity_secret: crypto.randomBytes(24).toString('hex') }
   };
@@ -79,30 +93,22 @@ function defaultTree() {
   return {
     root: 'root',
     nodes: [
-      { id: 'root', title: 'الترحيب', x: 1600, y: 80, auto_next: 'menu',
+      { id: 'root', title: 'الترحيب', x: 1500, y: 80, auto_next: 'menu',
         message: 'أهلاً {name} 👋\nأنا {bot}، يسعدني خدمتك.',
         i18n: { en: { message: 'Hello {name} 👋\nI am {bot}, happy to help you.' }, ur: { message: 'السلام علیکم {name} 👋\nمیں {bot} ہوں، آپ کی خدمت کے لیے حاضر ہوں۔' } },
         options: [] },
-      { id: 'menu', title: 'القائمة الرئيسية', x: 1220, y: 80, numbered: true,
+      { id: 'menu', title: 'القائمة الرئيسية', x: 1120, y: 80, numbered: true,
         message: 'اختر رقم الخدمة أو اكتب سؤالك مباشرة:',
         i18n: { en: { message: 'Choose a service number or type your question:' }, ur: { message: 'سروس نمبر منتخب کریں یا اپنا سوال لکھیں:' } },
         options: [
+          { label: '🏢 تعرّف علينا', action: 'about', i18n: { en: { label: '🏢 About us' }, ur: { label: '🏢 ہمارا تعارف' } } },
           { label: '📍 موقعنا على الخريطة', action: 'location', i18n: { en: { label: '📍 Our location' }, ur: { label: '📍 ہمارا مقام' } } },
-          { label: '🏢 تعرّف علينا', action: 'org', field: 'history', i18n: { en: { label: '🏢 About us' }, ur: { label: '🏢 ہمارا تعارف' } } },
           { label: '📞 أرقام التواصل', action: 'org', field: 'contact', i18n: { en: { label: '📞 Contact numbers' }, ur: { label: '📞 رابطہ نمبر' } } },
-          { label: '❓ الأسئلة الشائعة', action: 'goto', target: 'faq', i18n: { en: { label: '❓ FAQ' }, ur: { label: '❓ عام سوالات' } } },
-          { label: '📝 الشكاوى والاقتراحات', action: 'goto', target: 'tickets', i18n: { en: { label: '📝 Complaints & suggestions' }, ur: { label: '📝 شکایات و تجاویز' } } },
-          { label: '💬 التحدث مع موظف', action: 'handoff', i18n: { en: { label: '💬 Talk to an agent' }, ur: { label: '💬 نمائندے سے بات کریں' } } }
+          { label: '🏦 الحسابات البنكية', action: 'banks', i18n: { en: { label: '🏦 Bank accounts' }, ur: { label: '🏦 بینک اکاؤنٹس' } } },
+          { label: '❓ الأسئلة الشائعة', action: 'kb_browse', i18n: { en: { label: '❓ FAQ' }, ur: { label: '❓ عام سوالات' } } },
+          { label: '📝 الشكاوى والاقتراحات', action: 'goto', target: 'tickets', i18n: { en: { label: '📝 Complaints & suggestions' }, ur: { label: '📝 شکایات و تجاویز' } } }
         ] },
-      { id: 'faq', title: 'الأسئلة الشائعة', x: 840, y: 40, numbered: true,
-        message: 'اختر سؤالك:', i18n: { en: { message: 'Choose your question:' }, ur: { message: 'اپنا سوال منتخب کریں:' } },
-        options: [
-          { label: 'ساعات العمل', action: 'org', field: 'hours', i18n: { en: { label: 'Working hours' }, ur: { label: 'اوقات کار' } } },
-          { label: 'الموقع الإلكتروني وحسابات التواصل', action: 'org', field: 'social', i18n: { en: { label: 'Website & social media' }, ur: { label: 'ویب سائٹ اور سوشل میڈیا' } } },
-          { label: 'رؤيتنا ورسالتنا', action: 'org', field: 'vision', i18n: { en: { label: 'Vision & mission' }, ur: { label: 'وژن اور مشن' } } },
-          { label: '↩️ القائمة الرئيسية', action: 'goto', target: 'menu', i18n: { en: { label: '↩️ Main menu' }, ur: { label: '↩️ مین مینو' } } }
-        ] },
-      { id: 'tickets', title: 'الشكاوى والاقتراحات', x: 840, y: 420, numbered: true,
+      { id: 'tickets', title: 'الشكاوى والاقتراحات', x: 740, y: 260, numbered: true,
         message: 'نسعد بسماع ملاحظاتك. ماذا تريد أن تفعل؟',
         i18n: { en: { message: 'We value your feedback. What would you like to do?' }, ur: { message: 'ہم آپ کی رائے کی قدر کرتے ہیں۔ آپ کیا کرنا چاہتے ہیں؟' } },
         options: [
@@ -143,6 +149,15 @@ function migrateSettings(s) {
   const t = (s.texts = s.texts || {}); t.ar = t.ar || {};
   const map = { title: 'title', subtitle: 'subtitle', bot_name: 'bot_name', placeholder: 'placeholder', teaser: 'teaser', start_label: 'start', end_label: 'end_chat', new_chat_label: 'new_chat', rating_title: 'rating_title', rating_comment_placeholder: 'rating_comment', rating_thanks: 'rating_thanks' };
   for (const [from, to] of Object.entries(map)) if (a[from] && !t.ar[to]) t.ar[to] = a[from];
+  if (!o.sections_v) { // v3: history/vision/mission/goals + custom cards -> icon sections
+    const sec = (o.sections = Array.isArray(o.sections) ? o.sections : []);
+    const add = (key, title, icon, text, media) => { if (text || (media || []).length) sec.push({ id: key, key, title, icon, color: '', text: text || '', keywords: '', media: media || [], i18n: {} }); };
+    add('history', 'نبذة عن الجمعية', 'building', [o.short, o.history].filter(Boolean).join('\n\n'), o.media?.history);
+    add('vision', 'رؤيتنا', 'eye', o.vision); add('mission', 'رسالتنا', 'flag', o.mission); add('goals', 'أهدافنا', 'target', o.goals);
+    for (const c of o.custom || []) sec.push({ id: c.id || ('c' + Math.random().toString(36).slice(2, 7)), key: '', title: c.title || '', icon: 'info', color: '', text: c.answer || '', keywords: c.keywords || '', media: c.media || [], i18n: c.i18n || {} });
+    o.sections_v = 1;
+  }
+  if (!Array.isArray(o.banks)) o.banks = [];
   const b = s.behavior || {};
   const bmap = { handoff_message: 'handoff', no_answer_handoff_message: 'no_answer_handoff', fallback_message: 'fallback', agent_joined_message: 'agent_joined', closed_message: 'closed', anything_else: 'anything_else' };
   for (const [from, to] of Object.entries(bmap)) if (b[from] && !t.ar[to]) t.ar[to] = b[from];

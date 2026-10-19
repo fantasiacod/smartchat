@@ -1,0 +1,408 @@
+/* v3: organisation (sections with icons, location, bank accounts), bot mind map, settings hub, AI, backup & reset */
+(function () {
+  'use strict';
+  var A = App, S = A.state, esc = A.esc, f = A.f, IC = window.SCIcons;
+  var PALETTE = ['#1a6739', '#bc9525', '#0f766e', '#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#0891b2', '#475569', '#111827'];
+  function card(title, body, sub, extra) { return '<div class="card" style="margin-bottom:16px' + (extra || '') + '"><h3>' + title + '</h3>' + (sub ? '<p class="sub">' + sub + '</p>' : '') + body + '</div>'; }
+  function uid(p) { return (p || 'x') + Math.random().toString(36).slice(2, 8); }
+  var logoUrl = function () { return S.site.settings.appearance.company_logo; };
+
+  /* ---------- icon + colour picker ---------- */
+  A.iconHTML = function (icon, color, size) {
+    var c = color || S.site.settings.appearance.primary_color;
+    if (icon === 'logo') return logoUrl() ? '<img src="' + esc(logoUrl()) + '" alt="">' : '🏢';
+    return IC.svg(IC.has(icon) ? icon : 'info', c, size || 22);
+  };
+  A.iconPicker = function (el, obj, onChange, opts) {
+    opts = opts || {};
+    function draw() { el.innerHTML = '<button type="button" class="icon-btn" style="--ic:' + (obj.color || S.site.settings.appearance.primary_color) + '" title="تغيير الأيقونة واللون">' + A.iconHTML(obj.icon, obj.color) + '</button>'; el.firstChild.onclick = open; }
+    function open() {
+      var cur = { icon: obj.icon || 'info', color: obj.color || '' };
+      var m = A.modal({ title: '🎨 اختر الأيقونة واللون', size: 'wide', body: '<div id="ipc"></div>',
+        buttons: [{ label: 'إلغاء', ghost: true }, { label: 'اعتماد', onClick: function () { obj.icon = cur.icon; obj.color = cur.color; draw(); onChange && onChange(); } }] });
+      function paint() {
+        var col = cur.color || S.site.settings.appearance.primary_color;
+        m.body.querySelector('#ipc').innerHTML = '<label class="f">اللون</label><div class="colors" style="margin-bottom:14px">' + PALETTE.map(function (c) { return '<button type="button" data-c="' + c + '" style="background:' + c + '" class="' + (cur.color === c ? 'on' : '') + '"></button>'; }).join('') +
+          '<input type="color" value="' + col + '" id="ipcc" style="width:38px;height:32px;border:0;background:none;cursor:pointer" title="لون مخصص"><button type="button" class="btn sm ghost" data-c="">لون الهوية</button></div>' +
+          '<label class="f">الأيقونة</label><div class="icon-grid">' + (opts.logo !== false ? '<button type="button" data-i="logo" class="' + (cur.icon === 'logo' ? 'on' : '') + '"><span style="width:28px;height:28px;display:grid;place-items:center;overflow:hidden;border-radius:8px">' + (logoUrl() ? '<img src="' + esc(logoUrl()) + '" style="width:100%;height:100%;object-fit:contain">' : '🏢') + '</span>شعار الجهة</button>' : '') +
+          IC.list.map(function (i) { return '<button type="button" data-i="' + i.id + '" class="' + (cur.icon === i.id ? 'on' : '') + '">' + IC.svg(i.id, col, 26) + esc(i.name) + '</button>'; }).join('') + '</div>';
+        A.$$('[data-c]', m.body).forEach(function (b) { b.onclick = function () { cur.color = b.getAttribute('data-c'); paint(); }; });
+        A.$('#ipcc', m.body).oninput = function () { cur.color = this.value; paint(); };
+        A.$$('[data-i]', m.body).forEach(function (b) { b.onclick = function () { cur.icon = b.getAttribute('data-i'); paint(); }; });
+      }
+      paint();
+    }
+    draw();
+  };
+
+  function ibanOk(v) {
+    var s = String(v || '').replace(/\s+/g, '').toUpperCase();
+    if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(s)) return false;
+    var r = (s.slice(4) + s.slice(0, 4)).replace(/[A-Z]/g, function (c) { return c.charCodeAt(0) - 55; }), mod = 0;
+    for (var i = 0; i < r.length; i++) mod = (mod * 10 + Number(r[i])) % 97;
+    return mod === 1 && (!/^SA/.test(s) || s.length === 24);
+  }
+
+  /* ============================== organisation ============================== */
+  var QUICK = [['نبذة عن الجمعية', 'building', 'history'], ['رؤيتنا', 'eye', 'vision'], ['رسالتنا', 'flag', 'mission'], ['أهدافنا', 'target', 'goals'], ['قيمنا', 'heart', ''], ['خدماتنا وبرامجنا', 'hands', ''],
+    ['طريقة التسجيل', 'document', ''], ['شروط الاستفادة', 'shield', ''], ['مجلس الإدارة', 'users', ''], ['شركاؤنا', 'award', ''], ['التطوع معنا', 'volunteer', ''], ['إنجازاتنا', 'chart', '']];
+  A.page('org', {
+    title: 'بيانات الجمعية', icon: '🏢', role: 'supervisor', hint: 'كل ما يحتاج البوت معرفته عنكم: التعريف، التواصل والموقع، الحسابات البنكية',
+    render: function (root, sub) {
+      var tab = sub[0] || 'about';
+      A.settingsPage(root, ['org', 'developer'], function (el, d, ch) {
+        var o = d.org; o.sections = o.sections || []; o.banks = o.banks || []; o.departments = o.departments || []; o.social = o.social || {}; o.media = o.media || {}; o.media.location = o.media.location || [];
+        el.innerHTML = '<div class="tabs big" id="otabs"><button data-t="about">🏢 عن الجمعية</button><button data-t="contact">📞 التواصل والموقع</button><button data-t="banks">🏦 الحسابات البنكية</button><button data-t="dev">🛠️ المطوّر</button></div>' +
+          '<div data-pane="about">' + card('🏢 أقسام «عن الجمعية»', '<div class="quick" id="quick"></div><div id="secs" style="margin-top:14px"></div><button class="btn soft" id="addsec">+ قسم جديد</button>',
+            'يعرضها البوت كقائمة مرقّمة بأيقوناتها عندما يختار المستفيد «تعرّف علينا»، ويجيب عن أي قسم إذا سُئل عنه مباشرة. اختر لكل قسم أيقونة ولوناً أو شعار الجمعية.') + '</div>' +
+          '<div data-pane="contact" class="hidden"><div class="grid g2">' + card('📇 بيانات التواصل', f.text('org.name', 'اسم الجمعية') + '<div class="grid g2">' + f.text('org.unified_number', 'الرقم الموحّد', { ltr: true, ph: '9200xxxxx' }) + f.text('org.email', 'البريد', { ltr: true }) + '</div>' +
+              f.text('org.website', 'الموقع الإلكتروني', { ltr: true, ph: 'https://' }) + f.area('org.hours', 'ساعات العمل', { rows: 2, ph: 'الأحد – الخميس: 8 صباحاً – 4 عصراً' })) +
+            card('📍 الموقع', f.text('org.map_url', 'رابط الموقع في خرائط Google', { ltr: true, ph: 'https://maps.app.goo.gl/…', hint: 'افتح موقعكم في خرائط Google ← مشاركة ← نسخ الرابط، والصقه هنا. يكفي هذا الرابط.' }) +
+              f.text('org.address', 'العنوان (اختياري)', { ph: 'المدينة المنورة – حي …' }) + '<div id="mapprev"></div><label class="f" style="margin-top:12px">صور الموقع <small>(اختياري — مثل صورة المبنى أو المدخل)</small></label><div id="m-loc"></div>') + '</div>' +
+            card('☎️ الأقسام وأرقامها', '<div id="deps"></div><button class="btn soft sm" id="adddep">+ إضافة قسم</button>', 'إذا كتب المستفيد اسم القسم يرسل له البوت أرقامه.') +
+            card('📱 حسابات التواصل الاجتماعي', '<div class="grid g4">' + [['x', 'X (تويتر)'], ['instagram', 'إنستغرام'], ['snapchat', 'سناب شات'], ['tiktok', 'تيك توك'], ['youtube', 'يوتيوب'], ['facebook', 'فيسبوك'], ['linkedin', 'لينكدإن'], ['whatsapp', 'واتساب']].map(function (x) { return f.text('org.social.' + x[0], x[1], { ltr: true }); }).join('') + '</div>') + '</div>' +
+          '<div data-pane="banks" class="hidden">' + card('🏦 الحسابات البنكية', '<div class="quick" id="bquick"></div><div id="bgroups" style="margin-top:14px"></div><button class="btn soft" id="addgrp">+ تصنيف جديد</button>',
+            'أنشئ تصنيفاً رئيسياً (مثل: الحساب العام) وأضف تحته أكثر من حساب في بنوك مختلفة. عندما يسأل المستفيد عن التبرع أو الآيبان يعرض البوت التصنيفات ثم الحسابات مع زر نسخ.') + '</div>' +
+          '<div data-pane="dev" class="hidden">' + card('🛠️ مطوّر البرنامج', f.sw('developer.show', 'الرد على سؤال «من صمّم/طوّر البرنامج؟»') + '<div class="grid g2" style="margin-top:10px">' + f.text('developer.name', 'اسم المطوّر') + f.text('developer.url', 'رابط المطوّر (متجر سلة مثلاً)', { ltr: true }) + '</div>' + f.text('developer.description', 'نص التعريف') + '<label class="f">شعار المطوّر</label><div id="devlogo"></div>') + '</div>';
+        function tabs() { A.$$('#otabs button', el).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-t') === tab); b.onclick = function () { tab = b.getAttribute('data-t'); tabs(); }; }); A.$$('[data-pane]', el).forEach(function (p) { p.classList.toggle('hidden', p.getAttribute('data-pane') !== tab); }); }
+        tabs();
+        A.bind(el, d, function (k) { ch(); if (/map_url|address|org\.name/.test(k)) mapPrev(); });
+        A.mediaEditor(A.$('#m-loc', el), o.media.location, ch);
+        A.imageField(A.$('#devlogo', el), function () { return d.developer.logo; }, function (v) { d.developer.logo = v; ch(); });
+
+        /* sections */
+        function quick() {
+          A.$('#quick', el).innerHTML = '<span class="small muted" style="align-self:center">إضافة سريعة:</span>' + QUICK.filter(function (q) { return !o.sections.some(function (x) { return x.title === q[0]; }); }).map(function (q, i) { return '<button class="btn sm ghost" data-q="' + esc(q[0]) + '">' + IC.svg(q[1], null, 16) + ' ' + esc(q[0]) + '</button>'; }).join('');
+          A.$$('[data-q]', el).forEach(function (b) { b.onclick = function () { var q = QUICK.find(function (x) { return x[0] === b.getAttribute('data-q'); }); o.sections.push({ id: q[2] || uid('s'), key: q[2], title: q[0], icon: q[1], color: '', text: '', keywords: '', media: [], i18n: {} }); ch(); secs(); quick(); }; });
+        }
+        function secs() {
+          var box = A.$('#secs', el);
+          box.innerHTML = o.sections.map(function (x, i) {
+            return '<div class="sec-card" data-i="' + i + '" style="--sc:' + (x.color || S.site.settings.appearance.primary_color) + '"><div class="sh"><span data-ip></span><input class="in" data-k="title" placeholder="عنوان القسم"><button class="btn sm ghost icon" data-up title="أعلى">↑</button><button class="btn sm ghost icon" data-dn title="أسفل">↓</button><button class="btn sm danger ghost icon" data-rm title="حذف">✕</button></div>' +
+              '<textarea class="in" data-k="text" rows="4" placeholder="اكتب المحتوى هنا…"></textarea><div data-m style="margin-top:8px"></div>' +
+              '<details style="margin-top:8px"><summary class="small muted" style="cursor:pointer">⚙️ كلمات مفتاحية وترجمة</summary><div style="margin-top:8px">' + f.text('keywords', 'كلمات يُفهم بها السؤال', { ph: 'مثال: اهداف, هدفكم, ماذا تريدون' }) +
+              '<div class="grid g2">' + f.text('i18n.en.title', 'English title') + f.text('i18n.ur.title', 'اردو عنوان') + f.area('i18n.en.text', 'English text', { rows: 2 }) + f.area('i18n.ur.text', 'اردو متن', { rows: 2 }) + '</div></div></details></div>';
+          }).join('') || '<div class="empty"><div class="ic">🏢</div>لا توجد أقسام — استخدم الإضافة السريعة أعلاه</div>';
+          A.$$('.sec-card', box).forEach(function (c) {
+            var i = Number(c.getAttribute('data-i')), x = o.sections[i]; x.i18n = x.i18n || {}; x.i18n.en = x.i18n.en || {}; x.i18n.ur = x.i18n.ur || {}; x.media = x.media || [];
+            A.bind(c, x, ch);
+            A.iconPicker(c.querySelector('[data-ip]'), x, function () { c.style.setProperty('--sc', x.color || S.site.settings.appearance.primary_color); ch(); });
+            A.mediaEditor(c.querySelector('[data-m]'), x.media, ch);
+            c.querySelector('[data-rm]').onclick = function () { A.confirm('حذف قسم «' + (x.title || '') + '»؟', true).then(function (ok) { if (ok) { o.sections.splice(i, 1); ch(); secs(); quick(); } }); };
+            c.querySelector('[data-up]').onclick = function () { if (i > 0) { o.sections.splice(i - 1, 0, o.sections.splice(i, 1)[0]); ch(); secs(); } };
+            c.querySelector('[data-dn]').onclick = function () { if (i < o.sections.length - 1) { o.sections.splice(i + 1, 0, o.sections.splice(i, 1)[0]); ch(); secs(); } };
+          });
+        }
+        A.$('#addsec', el).onclick = function () { o.sections.push({ id: uid('s'), key: '', title: '', icon: 'info', color: '', text: '', keywords: '', media: [], i18n: {} }); ch(); secs(); };
+        quick(); secs();
+
+        /* location preview */
+        function mapPrev() {
+          var m = /@(-?\d+\.\d+),(-?\d+\.\d+)/.exec(o.map_url || '') || /[?&](?:q|query|ll|destination)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i.exec(o.map_url || '');
+          var q = m ? m[1] + ',' + m[2] : [o.name, o.address].filter(Boolean).join(' ');
+          A.$('#mapprev', el).innerHTML = (o.map_url || o.address) && q ? '<iframe style="width:100%;height:180px;border:0;border-radius:12px;margin-top:6px" loading="lazy" src="https://maps.google.com/maps?q=' + encodeURIComponent(q) + '&z=16&output=embed"></iframe>' : '';
+        }
+        mapPrev();
+        /* departments */
+        function deps() {
+          A.$('#deps', el).innerHTML = o.departments.map(function (x, i) { return '<div class="row" style="margin-bottom:8px" data-i="' + i + '"><input class="in" data-k="name" placeholder="اسم القسم (مثال: خدمة المستفيدين)"><input class="in" data-k="phones" placeholder="الأرقام مفصولة بفواصل" dir="ltr"><button class="btn sm danger ghost icon" data-rm>✕</button></div>'; }).join('') || '<p class="small muted">لا توجد أقسام</p>';
+          A.$$('[data-i]', A.$('#deps', el)).forEach(function (r) { var x = o.departments[Number(r.getAttribute('data-i'))]; A.bind(r, x, ch); r.querySelector('[data-rm]').onclick = function () { o.departments.splice(Number(r.getAttribute('data-i')), 1); ch(); deps(); }; });
+        }
+        A.$('#adddep', el).onclick = function () { o.departments.push({ name: '', phones: '' }); ch(); deps(); };
+        deps();
+
+        /* banks */
+        var BQ = [['الحساب العام', 'bank'], ['حساب الزكاة', 'money'], ['حساب الصدقات', 'hands'], ['حساب الأوقاف', 'mosque'], ['كفالة الأيتام', 'family'], ['السلة الغذائية', 'basket']];
+        function bquick() {
+          A.$('#bquick', el).innerHTML = '<span class="small muted" style="align-self:center">إضافة سريعة:</span>' + BQ.filter(function (q) { return !o.banks.some(function (g) { return g.name === q[0]; }); }).map(function (q) { return '<button class="btn sm ghost" data-bq="' + esc(q[0]) + '">' + IC.svg(q[1], null, 16) + ' ' + esc(q[0]) + '</button>'; }).join('');
+          A.$$('[data-bq]', el).forEach(function (b) { b.onclick = function () { var q = BQ.find(function (x) { return x[0] === b.getAttribute('data-bq'); }); o.banks.push({ id: uid('g'), name: q[0], icon: q[1], color: '', accounts: [{ id: uid('a'), bank: 'rajhi', holder: o.name || '', iban: '', number: '', note: '' }] }); ch(); groups(); bquick(); }; });
+        }
+        function groups() {
+          var box = A.$('#bgroups', el);
+          box.innerHTML = o.banks.map(function (g, gi) {
+            return '<div class="bank-group" data-g="' + gi + '" style="--gc:' + (g.color || S.site.settings.appearance.primary_color) + '"><div class="bgh"><span data-ip></span><input class="in" data-k="name" placeholder="اسم التصنيف (مثال: الحساب العام)" style="font-weight:700;max-width:360px"><span class="grow"></span><span class="small muted">' + (g.accounts || []).length + ' حساب</span><button class="btn sm danger ghost" data-rmg>حذف التصنيف</button></div>' +
+              (g.accounts || []).map(function (a, ai) {
+                return '<div class="bank-acc" data-a="' + ai + '"><select class="in" data-k="bank">' + IC.banks.map(function (b) { return '<option value="' + b.id + '">' + esc(b.name) + '</option>'; }).join('') + '</select>' +
+                  '<input class="in" data-k="holder" placeholder="اسم صاحب الحساب"><input class="in" data-k="number" placeholder="رقم الحساب" dir="ltr"><div class="row" style="gap:4px"><input class="in" data-k="iban" placeholder="SA00 0000 0000 0000 0000 0000" dir="ltr" style="font-family:ui-monospace,monospace"><span data-ok style="width:22px;text-align:center"></span></div><button class="btn sm danger ghost icon" data-rma>✕</button>' +
+                  '<input class="in" data-k="note" placeholder="ملاحظة (اختياري)" style="grid-column:1/-1;font-size:12.5px"></div>';
+              }).join('') + '<div style="padding:10px 14px"><button class="btn sm soft" data-adda>+ حساب في هذا التصنيف</button></div></div>';
+          }).join('') || '<div class="empty"><div class="ic">🏦</div>لا توجد حسابات — استخدم الإضافة السريعة أعلاه</div>';
+          A.$$('.bank-group', box).forEach(function (gEl) {
+            var gi = Number(gEl.getAttribute('data-g')), g = o.banks[gi]; g.accounts = g.accounts || [];
+            A.bind(gEl.querySelector('.bgh'), g, ch);
+            A.iconPicker(gEl.querySelector('[data-ip]'), g, function () { gEl.style.setProperty('--gc', g.color || S.site.settings.appearance.primary_color); ch(); }, { logo: true });
+            gEl.querySelector('[data-rmg]').onclick = function () { A.confirm('حذف تصنيف «' + g.name + '» وكل حساباته؟', true).then(function (ok) { if (ok) { o.banks.splice(gi, 1); ch(); groups(); bquick(); } }); };
+            gEl.querySelector('[data-adda]').onclick = function () { g.accounts.push({ id: uid('a'), bank: 'rajhi', holder: o.name || '', iban: '', number: '', note: '' }); ch(); groups(); };
+            A.$$('.bank-acc', gEl).forEach(function (aEl) {
+              var ai = Number(aEl.getAttribute('data-a')), a = g.accounts[ai];
+              var check = function () { var okEl = aEl.querySelector('[data-ok]'); okEl.textContent = a.iban ? (ibanOk(a.iban) ? '✅' : '⚠️') : ''; okEl.title = a.iban && !ibanOk(a.iban) ? 'تحقق من رقم الآيبان' : ''; };
+              A.bind(aEl, a, function () { ch(); check(); });
+              check();
+              aEl.querySelector('[data-rma]').onclick = function () { g.accounts.splice(ai, 1); ch(); groups(); };
+            });
+          });
+        }
+        A.$('#addgrp', el).onclick = function () { o.banks.push({ id: uid('g'), name: '', icon: 'bank', color: '', accounts: [] }); ch(); groups(); };
+        bquick(); groups();
+      });
+      this.onSub = function (s) { tab = s[0] || 'about'; var b = A.$('#otabs [data-t="' + tab + '"]'); if (b) b.click(); };
+    }
+  });
+
+  /* ============================== mind map ============================== */
+  var origEditKB = A.editKB;
+  A.loadCats = function () { return A.GET('/api/mindmap?site=' + S.site.id).then(function (d) { S.kbCats = d.categories; return d; }); };
+  A.editKB = function (k, onDone, extra) { A.loadCats().then(function () { origEditKB(k, onDone, extra); }, function () { origEditKB(k, onDone, extra); }); };
+  function editCat(c, onDone) {
+    c = Object.assign({ name: '', icon: 'question', color: PALETTE[Math.floor(Math.random() * 6)], i18n: {} }, c || {});
+    c.i18n = c.i18n || {}; c.i18n.en = c.i18n.en || {}; c.i18n.ur = c.i18n.ur || {};
+    var m = A.modal({ title: c.id ? '✏️ تعديل التصنيف' : '➕ تصنيف جديد في الخريطة الذهنية',
+      body: '<div class="row" style="align-items:flex-end;gap:12px"><div><label class="f">الأيقونة</label><span id="cip"></span></div><div class="grow">' + f.text('name', 'اسم التصنيف', { ph: 'مثال: التسجيل والخدمات، التبرعات، المساعدات' }) + '</div></div><div class="grid g2">' + f.text('i18n.en.name', 'English') + f.text('i18n.ur.name', 'اردو') + '</div>',
+      buttons: [{ label: 'إلغاء', ghost: true }, { label: 'حفظ', onClick: function () { var body = { site_id: S.site.id, name: c.name, icon: c.icon, color: c.color, i18n: c.i18n }; return (c.id ? A.api('PUT', '/api/kb-categories/' + c.id, body) : A.api('POST', '/api/kb-categories', body)).then(function () { onDone && onDone(); }); } }] });
+    A.bind(m.body, c); A.iconPicker(m.body.querySelector('#cip'), c, null, { logo: false });
+  }
+  function testBot() {
+    var m = A.modal({ title: '🧪 اختبار البوت', size: 'wide', body: '<p class="muted small" style="margin-top:0">اكتب سؤالاً كما يكتبه المستفيد:</p><div class="row"><input class="in" id="tq" placeholder="مثال: كيف اسجل عندكم؟"><button class="btn" id="tb">اختبار</button></div><div id="tr" style="margin-top:14px"></div>' });
+    var go = function () {
+      A.api('POST', '/api/kb/test', { site_id: S.site.id, text: A.$('#tq', m.body).value }).then(function (r) {
+        A.$('#tr', m.body).innerHTML = r.best ? '<div class="alert ok"><div><b>✅ سيجيب البوت (تطابق ' + Math.round(r.best.score * 100) + '%):</b><div style="white-space:pre-wrap;margin-top:6px">' + esc(r.best.answer) + '</div></div></div>' : '<div class="alert warn">⚠️ لا توجد إجابة في الخريطة الذهنية' + ' — سيحوّل المستفيد لموظف فوراً ويُسجَّل السؤال، وردّ الموظف يُضاف للخريطة تلقائياً.' + '</div>';
+      }).catch(A.fail);
+    };
+    A.$('#tb', m.body).onclick = go; A.$('#tq', m.body).onkeydown = function (e) { if (e.key === 'Enter') go(); };
+  }
+
+  A.page('mindmap', {
+    title: 'الخريطة الذهنية للبوت', icon: '🧠', hint: 'كل ما يعرفه البوت: أسئلة وأجوبة مصنّفة. ما يجيب عنه الموظفون يُضاف هنا تلقائياً',
+    render: function (root) {
+      var view = 'map', q = '', zoom = 1, data = null, open = {};
+      root.innerHTML = '<div class="mm-tools"><div class="seg" id="mv"><button data-v="map" class="on">🧠 الخريطة</button><button data-v="list">📋 قائمة</button></div><input class="in" id="mq" placeholder="🔎 ابحث في الأسئلة والأجوبة" style="max-width:300px"><span class="grow"></span>' +
+        '<button class="btn ghost sm" id="mt">🧪 اختبار البوت</button>' + (A.can('supervisor') ? '<button class="btn soft sm" id="mc">+ تصنيف</button>' : '') + '<button class="btn sm" id="mn">+ سؤال وجواب</button>' +
+        '<button class="btn ghost icon" id="zi">＋</button><button class="btn ghost icon" id="zo">－</button></div><div id="mbody"></div>';
+      var body = A.$('#mbody');
+      function load() { return A.loadCats().then(function (d) { data = d; draw(); }).catch(A.fail); }
+      function draw() {
+        if (view === 'list') { body.innerHTML = ''; A.pages.kb.render.call({}, body, []); return; }
+        var o = S.site.settings.org, a = S.site.settings.appearance;
+        var match = function (k) { return !q || (k.question + ' ' + k.answer + ' ' + (k.keywords || '')).toLowerCase().indexOf(q) >= 0; };
+        var branches = data.categories.map(function (c) { return { id: c.id, cat: c, name: c.name, icon: c.icon, color: c.color || a.primary_color, items: data.kb.filter(function (k) { return k.category_id === c.id && match(k); }) }; });
+        var loose = data.kb.filter(function (k) { return (!k.category_id || !data.categories.some(function (c) { return c.id === k.category_id; })) && match(k); });
+        if (loose.length || !branches.length) branches.push({ id: 0, name: 'أسئلة بدون تصنيف', icon: 'list', color: '#64748b', items: loose, sub: 'منها ما تعلّمه البوت من الموظفين 🧠' });
+        var un = data.unanswered.filter(function (u) { return !q || u.question.toLowerCase().indexOf(q) >= 0; });
+        if (un.length) branches.push({ id: 'un', name: 'بحاجة لإجابة', icon: 'question', color: '#ea580c', items: un, unanswered: true, sub: 'سُئل عنها البوت ولم يعرفها' });
+        body.innerHTML = '<div class="mm-wrap"><div class="mm" id="mm" style="transform:scale(' + zoom + ');transform-origin:top right"><svg class="mml" id="mml"></svg>' +
+          '<div class="mm-root" id="mmr"><div class="lg">' + (a.company_logo ? '<img src="' + esc(a.company_logo) + '">' : '🤖') + '</div><b>' + esc(o.name || a.company_name || 'البوت') + '</b><small>' + data.kb.length + ' سؤال · ' + data.categories.length + ' تصنيف</small></div>' +
+          '<div class="mm-cats">' + branches.map(function (b) {
+            var shown = open[b.id] === 'all' ? b.items : b.items.slice(0, 8), collapsed = open[b.id] === false;
+            return '<div class="mm-branch" data-b="' + b.id + '"><div class="mm-cat" style="--cc:' + b.color + '" data-cat="' + b.id + '"><span class="ci">' + IC.svg(b.icon, b.color, 22) + '</span><div style="min-width:0"><b>' + esc(b.name) + '</b><small>' + b.items.length + (b.unanswered ? ' سؤال ينتظر' : ' سؤال') + (b.sub ? ' · ' + b.sub : '') + '</small></div>' +
+              '<span class="acts">' + (!b.unanswered ? '<button data-addq="' + b.id + '" title="إضافة سؤال">＋</button>' : '') + (b.cat && A.can('supervisor') ? '<button data-ec="' + b.id + '" title="تعديل">✏️</button><button data-dc="' + b.id + '" title="حذف">🗑</button>' : '') + '</span></div>' +
+              '<div class="mm-qs">' + (collapsed ? '' : shown.map(function (k) {
+                if (b.unanswered) return '<div class="mm-q new" style="--cc:' + b.color + '" data-un="' + k.id + '"><span title="' + esc(k.question) + '">❓ ' + esc(k.question) + '</span><span class="hits">' + k.count + '×</span></div>';
+                return '<div class="mm-q' + (k.active ? '' : ' off') + '" draggable="true" style="--cc:' + b.color + '" data-q="' + k.id + '"><span title="' + esc(k.answer) + '">' + (k.source === 'learned' ? '🧠 ' : '') + esc(k.question) + '</span><span class="hits" title="مرات الاستخدام">' + (k.hits || 0) + '</span></div>';
+              }).join('') + (b.items.length > 8 && open[b.id] !== 'all' ? '<button class="mm-add" data-more="' + b.id + '">عرض الكل (' + b.items.length + ')</button>' : '') +
+                (!b.unanswered ? '<button class="mm-add" data-addq="' + b.id + '">＋ سؤال في «' + esc(b.name) + '»</button>' : '')) + '</div></div>';
+          }).join('') + '</div></div></div>';
+        A.$$('[data-addq]', body).forEach(function (x) { x.onclick = function (e) { e.stopPropagation(); A.editKB({ category_id: Number(x.getAttribute('data-addq')) || '' }, load); }; });
+        A.$$('[data-ec]', body).forEach(function (x) { x.onclick = function (e) { e.stopPropagation(); editCat(data.categories.find(function (c) { return c.id === Number(x.getAttribute('data-ec')); }), load); }; });
+        A.$$('[data-dc]', body).forEach(function (x) { x.onclick = function (e) { e.stopPropagation(); A.confirm('حذف التصنيف؟ أسئلته ستنتقل إلى «بدون تصنيف» ولن تُحذف.', true).then(function (ok) { if (ok) A.api('DELETE', '/api/kb-categories/' + x.getAttribute('data-dc')).then(load, A.fail); }); }; });
+        A.$$('[data-more]', body).forEach(function (x) { x.onclick = function () { open[x.getAttribute('data-more')] = 'all'; draw(); }; });
+        A.$$('.mm-cat', body).forEach(function (x) { x.onclick = function () { var id = x.getAttribute('data-cat'); open[id] = open[id] === false ? true : false; draw(); }; });
+        A.$$('[data-q]', body).forEach(function (x) {
+          x.onclick = function () { A.editKB(data.kb.find(function (k) { return k.id === Number(x.getAttribute('data-q')); }), load); };
+          x.ondragstart = function (e) { e.dataTransfer.setData('text/plain', x.getAttribute('data-q')); };
+        });
+        A.$$('[data-un]', body).forEach(function (x) { x.onclick = function () { var u = data.unanswered.find(function (z) { return z.id === Number(x.getAttribute('data-un')); }); A.editKB({ question: u.question, lang: u.lang === 'ar' ? 'all' : u.lang }, function () { load(); A.refreshCounts(); }, { unanswered_id: u.id }); }; });
+        A.$$('.mm-cat', body).forEach(function (c) {
+          var id = c.getAttribute('data-cat'); if (id === 'un') return;
+          c.ondragover = function (e) { e.preventDefault(); c.classList.add('drop'); };
+          c.ondragleave = function () { c.classList.remove('drop'); };
+          c.ondrop = function (e) { e.preventDefault(); c.classList.remove('drop'); var kid = e.dataTransfer.getData('text/plain'); if (kid) A.api('PUT', '/api/kb/' + kid, { category_id: Number(id) || null }).then(load, A.fail); };
+        });
+        links();
+      }
+      function links() {
+        var mm = A.$('#mm', body), svg = A.$('#mml', body); if (!mm) return;
+        var R = mm.getBoundingClientRect(), z = zoom, pt = function (el, side) { var r = el.getBoundingClientRect(); return { x: ((side === 'r' ? r.right : r.left) - R.left) / z, y: (r.top + r.height / 2 - R.top) / z }; };
+        svg.setAttribute('width', mm.scrollWidth); svg.setAttribute('height', mm.scrollHeight);
+        var root = A.$('#mmr', body), out = '', a = pt(root, 'l');
+        A.$$('.mm-branch', body).forEach(function (br) {
+          var cat = br.querySelector('.mm-cat'), col = getComputedStyle(cat).getPropertyValue('--cc'), b = pt(cat, 'r'), dx = Math.max(30, (a.x - b.x) / 2);
+          out += '<path d="M' + a.x + ' ' + a.y + ' C' + (a.x - dx) + ' ' + a.y + ' ' + (b.x + dx) + ' ' + b.y + ' ' + b.x + ' ' + b.y + '" stroke="' + col + '"/>';
+          var c0 = pt(cat, 'l');
+          A.$$('.mm-q', br).forEach(function (qq) { var e = pt(qq, 'r'), d2 = Math.max(16, (c0.x - e.x) / 2); out += '<path d="M' + c0.x + ' ' + c0.y + ' C' + (c0.x - d2) + ' ' + c0.y + ' ' + (e.x + d2) + ' ' + e.y + ' ' + e.x + ' ' + e.y + '" stroke="' + col + '" stroke-width="1.6"/>'; });
+        });
+        svg.innerHTML = out;
+      }
+      A.$$('#mv button').forEach(function (b) { b.onclick = function () { view = b.getAttribute('data-v'); A.$$('#mv button').forEach(function (x) { x.classList.toggle('on', x === b); }); draw(); }; });
+      A.$('#mq').oninput = A.debounce(function () { q = this.value.trim().toLowerCase(); if (view === 'map') draw(); }, 250);
+      A.$('#mt').onclick = testBot;
+      if (A.$('#mc')) A.$('#mc').onclick = function () { editCat(null, load); };
+      A.$('#mn').onclick = function () { A.editKB(null, load); };
+      A.$('#zi').onclick = function () { zoom = Math.min(1.4, zoom + 0.1); draw(); };
+      A.$('#zo').onclick = function () { zoom = Math.max(0.5, zoom - 0.1); draw(); };
+      var onL = function () { load(); };
+      A.on('learned', onL); window.addEventListener('resize', links);
+      load();
+      return function () { A.off('learned', onL); window.removeEventListener('resize', links); };
+    }
+  });
+
+  /* ============================== settings hub ============================== */
+  var TABS = [['behavior', '⚙️ سلوك البوت', 'supervisor'], ['notify', '📨 الإشعارات', 'admin'], ['datasource', '🗄️ قواعد البيانات', 'admin'], ['integrations', '🔗 الربط مع الأنظمة', 'admin'], ['sites', '🌐 المواقع', 'admin'], ['audit', '📜 سجل العمليات', 'admin']];
+  A.page('settings', {
+    title: 'الإعدادات العامة', icon: '⚙️', role: 'supervisor', hint: 'سلوك البوت، الإشعارات، قواعد البيانات، الربط، المواقع',
+    render: function (root, sub) {
+      var tabs = TABS.filter(function (t) { return A.can(t[2]); }), cur = tabs.some(function (t) { return t[0] === sub[0]; }) ? sub[0] : tabs[0][0], clean = null;
+      root.innerHTML = '<div class="tabs big" id="stabs">' + tabs.map(function (t) { return '<button data-t="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div><div id="sinner"></div>';
+      function show() {
+        A.$$('#stabs button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-t') === cur); });
+        if (clean) { try { clean(); } catch (e) { } clean = null; }
+        var inner = A.$('#sinner'); inner.innerHTML = ''; A.dirty = false;
+        clean = A.pages[cur].render.call(A.pages[cur], inner, []) || null;
+      }
+      A.$$('#stabs button').forEach(function (b) { b.onclick = function () { if (A.dirty && !confirm('لديك تغييرات غير محفوظة. متابعة دون حفظ؟')) return; cur = b.getAttribute('data-t'); history.replaceState(null, '', '#/settings/' + cur); show(); }; });
+      show();
+      this.onSub = function (s) { if (s[0] && s[0] !== cur) { cur = s[0]; show(); } };
+      return function () { if (clean) clean(); };
+    }
+  });
+
+  /* ============================== backup, restore & reset ============================== */
+  A.page('backup', {
+    title: 'النسخ الاحتياطي والتصفير', icon: '💾', role: 'admin', hint: 'احفظ نسخة من كل شيء، استرجعها، أو جدولها تلقائياً',
+    render: function (root) {
+      function load() {
+        A.GET('/api/backups').then(function (r) {
+          var c = r.config;
+          root.innerHTML = '<div class="grid g2"><div>' +
+            card('💾 نسخة الآن', '<p class="small muted" style="margin-top:0">تشمل كل شيء: الإعدادات، الشجرة، الخريطة الذهنية، المحادثات، الشكاوى، المستخدمين والصور.</p><div class="row wrap"><button class="btn" id="bdl">⬇️ تنزيل نسخة على جهازي</button><button class="btn soft" id="bmk">💾 حفظ نسخة في مجلد الخادم</button></div>') +
+            card('♻️ استرجاع نسخة سابقة', '<p class="small muted" style="margin-top:0">اختر ملف نسخة (‎.scb) من جهازك. سيتم استبدال كل البيانات الحالية بمحتوى النسخة (تُحفظ نسخة أمان تلقائياً قبل الاسترجاع).</p><button class="btn gold" id="brs">📂 استرجاع من ملف…</button>') +
+            card('⏰ النسخ التلقائي', f.sw('enabled', 'تفعيل النسخ الاحتياطي التلقائي') + '<div class="grid g3" style="margin-top:10px">' + f.select('frequency', 'التكرار', [['hourly', 'كل ساعة'], ['daily', 'يومياً'], ['weekly', 'أسبوعياً']]) + f.num('hour', 'الساعة (بتوقيت الرياض)', { min: 0, max: 23 }) + f.num('keep', 'عدد النسخ المحفوظة', { min: 1, max: 90 }) + '</div>' +
+              f.text('folder', 'المجلد على الخادم', { ltr: true, ph: r.folder, hint: 'اتركه فارغاً لاستخدام المجلد الافتراضي: ' + esc(r.folder) }) + f.text('email', 'إرسال كل نسخة تلقائية إلى البريد', { ltr: true, ph: 'backup@example.org', hint: 'يتطلب تفعيل البريد في الإشعارات' }) +
+              (r.persistent ? '' : '<div class="alert warn" style="margin-bottom:10px">⚠️ الاستضافة الحالية مؤقتة الملفات (مثل Render المجاني): مجلد الخادم يُمسح عند إعادة التشغيل. البيانات نفسها محفوظة في قاعدة البيانات، لكن للنسخ الاحتياطية استخدم «التنزيل» أو «الإرسال للبريد».</div>') +
+              '<div class="row"><button class="btn" id="bcs">حفظ الجدولة</button><span class="small muted">آخر نسخة تلقائية: ' + (r.last ? A.fmtDate(r.last) : '—') + '</span></div>') + '</div><div>' +
+            card('🗂️ النسخ المحفوظة على الخادم', r.files.length ? '<div class="tbl-wrap"><table class="t"><thead><tr><th>الملف</th><th>النوع</th><th>الحجم</th><th>التاريخ</th><th></th></tr></thead><tbody>' + r.files.map(function (x) {
+              return '<tr><td class="ltr tiny">' + esc(x.name) + '</td><td>' + ({ auto: '<span class="tag blue">تلقائية</span>', manual: '<span class="tag green">يدوية</span>', 'pre-reset': '<span class="tag red">قبل التصفير</span>', 'pre-restore': '<span class="tag amber">قبل الاسترجاع</span>' }[x.kind] || x.kind) + '</td><td class="small">' + (x.size / 1024 / 1024).toFixed(2) + ' MB</td><td class="small muted">' + A.fmtDate(x.created_at) + '</td>' +
+                '<td style="white-space:nowrap"><button class="btn sm ghost" data-d="' + esc(x.name) + '">⬇️</button> <button class="btn sm soft" data-r="' + esc(x.name) + '">استرجاع</button> <button class="btn sm danger ghost" data-x="' + esc(x.name) + '">✕</button></td></tr>';
+            }).join('') + '</tbody></table></div>' : '<div class="empty">لا توجد نسخ محفوظة بعد</div>') +
+            '<div class="card reset-box"><h3>🧨 تصفير البرنامج</h3><p class="sub">يحذف البيانات المختارة نهائياً. «الإعدادات والربط» تنشئ موقعاً جديداً بمفتاح جديد، فيتوقف كود التركيب القديم وإضافة ووردبريس عن العمل. تُحفظ نسخة أمان تلقائياً قبل التصفير.</p>' +
+            '<div class="checks">' + [['conversations', '💬 المحادثات'], ['tickets', '📝 الشكاوى والاقتراحات'], ['knowledge', '🧠 الخريطة الذهنية'], ['media', '🖼️ الصور والملفات'], ['users', '👥 المستخدمون (عدا حسابك)'], ['settings', '⚙️ الإعدادات والشجرة والربط'], ['logs', '📜 السجلات']].map(function (x) { return '<label><input type="checkbox" data-s="' + x[0] + '" checked> ' + x[1] + '</label>'; }).join('') + '</div>' +
+            '<div class="grid g2" style="margin-top:12px"><div class="field"><label class="f">كلمة مرورك</label><input class="in" type="password" id="rpw" dir="ltr"></div><div class="field"><label class="f">اكتب كلمة <b>تصفير</b> للتأكيد</label><input class="in" id="rcf"></div></div><button class="btn danger" id="rgo">🧨 تصفير الآن</button></div></div></div>';
+          A.bind(root.querySelector('.grid > div:first-child .card:nth-child(3)'), c);
+          A.$('#bdl').onclick = function () { A.download('/api/backup/download'); };
+          A.$('#bmk').onclick = function () { A.api('POST', '/api/backups', {}).then(function (x) { A.toast('تم حفظ ' + x.name, 'ok'); load(); }, A.fail); };
+          A.$('#bcs').onclick = function () { A.api('PUT', '/api/backups/config', c).then(function () { A.toast('تم حفظ الجدولة', 'ok'); load(); }, A.fail); };
+          A.$('#brs').onclick = function () {
+            A.pickFile('.scb,.gz,.json').then(function (fs) {
+              if (!fs[0]) return;
+              A.confirm('سيتم استبدال كل البيانات الحالية بمحتوى «' + fs[0].name + '». متابعة؟', true).then(function (ok) {
+                if (!ok) return; A.toast('جارٍ الاسترجاع…');
+                fetch('/api/backup/restore', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Authorization: 'Bearer ' + S.token }, body: fs[0] })
+                  .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error); return j; }); })
+                  .then(function () { A.toast('تم الاسترجاع ✅ — سيتم إعادة التحميل', 'ok'); setTimeout(function () { location.reload(); }, 1200); }, A.fail);
+              });
+            });
+          };
+          A.$$('[data-d]', root).forEach(function (b) { b.onclick = function () { A.download('/api/backups/' + encodeURIComponent(b.getAttribute('data-d'))); }; });
+          A.$$('[data-x]', root).forEach(function (b) { b.onclick = function () { A.confirm('حذف هذه النسخة؟', true).then(function (ok) { if (ok) A.api('DELETE', '/api/backups/' + encodeURIComponent(b.getAttribute('data-x'))).then(load, A.fail); }); }; });
+          A.$$('[data-r]', root).forEach(function (b) { b.onclick = function () { A.confirm('استرجاع «' + b.getAttribute('data-r') + '»؟ ستُستبدل كل البيانات الحالية.', true).then(function (ok) { if (ok) A.api('POST', '/api/backups/' + encodeURIComponent(b.getAttribute('data-r')) + '/restore', {}).then(function () { A.toast('تم الاسترجاع ✅', 'ok'); setTimeout(function () { location.reload(); }, 1200); }, A.fail); }); }; });
+          A.$('#rgo').onclick = function () {
+            var scope = {}; A.$$('[data-s]', root).forEach(function (x) { scope[x.getAttribute('data-s')] = x.checked; });
+            A.confirm('هل أنت متأكد؟ لا يمكن التراجع إلا باسترجاع نسخة احتياطية.', true).then(function (ok) {
+              if (!ok) return;
+              A.api('POST', '/api/reset', { password: A.$('#rpw').value, confirm: A.$('#rcf').value, scope: scope }).then(function () { A.toast('تم التصفير', 'ok'); setTimeout(function () { location.reload(); }, 1200); }, A.fail);
+            });
+          };
+        }).catch(A.fail);
+      }
+      load();
+    }
+  });
+
+  /* ============================== databases (main + extra + custom look-ups) ============================== */
+  A.page('datasource', {
+    title: 'قواعد البيانات', icon: '🗄️', role: 'admin',
+    render: function (root) {
+      A.settingsPage(root, ['datasource'], function (el, d, ch) {
+        var D = d.datasource; D.connections = D.connections || []; D.lookups = D.lookups || [];
+        var TYPES = [['mysql', 'MySQL / MariaDB'], ['postgres', 'PostgreSQL'], ['api', 'REST API']];
+        el.innerHTML = '<div class="alert info" style="margin-bottom:16px">🔗 اربط البوت بقاعدة بيانات واحدة أو أكثر ليجيب المستفيد من بياناته: حالة الطلب، ملف المستفيد، موعد الصرف… اكتب في الاستعلام متغيرات مثل <code>:phone</code> و <code>:id_number</code> وسيطلبها البوت من المستفيد تلقائياً. 🔒 يُسمح فقط باستعلامات القراءة SELECT، ويُنصح بمستخدم قراءة فقط.</div>' +
+          card('🗄️ قاعدة البيانات الرئيسية', '<div class="grid g2">' + f.select('datasource.type', 'النوع', [['demo', 'بيانات تجريبية'], ['none', 'بدون'], ['mysql', 'MySQL / MariaDB'], ['postgres', 'PostgreSQL'], ['api', 'REST API']]) +
+            f.text('datasource.connection', 'رابط الاتصال', { ltr: true, mono: true, ph: 'mysql://user:pass@host:3306/db' }) + '</div><div class="grid g2">' + f.text('datasource.api_url', 'رابط API (لنوع REST)', { ltr: true }) + f.text('datasource.api_headers', 'API Headers (JSON)', { ltr: true, mono: true }) + '</div>') +
+          card('➕ قواعد بيانات إضافية', '<div id="conns"></div><button class="btn soft sm" id="addc">+ إضافة قاعدة بيانات</button>', 'مثال: قاعدة نظام المستفيدين، ونظام المواعيد، وواجهة API لنظام آخر — كل واحدة باسم.') +
+          card('🔎 استعلامات البوت', '<details open><summary class="b" style="cursor:pointer;margin-bottom:10px">📦 حالة الطلب (مدمج)</summary>' + f.area('datasource.order_query', 'الاستعلام', { mono: true, rows: 2 }) + '<div class="grid g2">' + f.area('datasource.order_template', 'قالب الرد', { rows: 2 }) + f.area('datasource.notes_template', 'قالب الملاحظات', { rows: 2 }) + '</div></details>' +
+            '<details><summary class="b" style="cursor:pointer;margin-bottom:10px">🪪 بيانات المستفيد (مدمج)</summary>' + f.area('datasource.customer_query', 'الاستعلام', { mono: true, rows: 2 }) + f.area('datasource.customer_template', 'قالب الرد', { rows: 3 }) + '</details>' +
+            '<div class="section-title" style="margin-top:16px"><h2>استعلامات مخصصة</h2></div><div id="lks"></div><button class="btn soft sm" id="addl">+ استعلام جديد</button>', 'كل استعلام مخصص له كلمات يفهم بها البوت الطلب، ويمكن ربطه بزر في «القوائم والأزرار» (إجراء: استعلام من قاعدة بيانات).');
+        A.bind(el, d, ch);
+        function conns() {
+          A.$('#conns', el).innerHTML = D.connections.map(function (c, i) {
+            return '<div class="repeat" data-i="' + i + '"><div class="row" style="margin-bottom:8px"><input class="in" data-k="name" placeholder="الاسم (مثال: نظام المستفيدين)" style="font-weight:700"><select class="in" data-k="type" style="width:auto">' + TYPES.map(function (t) { return '<option value="' + t[0] + '">' + t[1] + '</option>'; }).join('') + '</select><button class="btn sm danger ghost icon" data-rm>✕</button></div>' +
+              (c.type === 'api' ? '<div class="grid g2">' + f.text('api_url', 'رابط API', { ltr: true }) + f.text('api_headers', 'Headers (JSON)', { ltr: true, mono: true }) + '</div>' : f.text('connection', 'رابط الاتصال', { ltr: true, mono: true, ph: c.type === 'postgres' ? 'postgres://user:pass@host:5432/db' : 'mysql://user:pass@host:3306/db' })) + '</div>';
+          }).join('') || '<p class="small muted">لا توجد قواعد إضافية</p>';
+          A.$$('.repeat', A.$('#conns', el)).forEach(function (r) { var i = Number(r.getAttribute('data-i')), c = D.connections[i]; A.bind(r, c, function (k) { ch(); if (k === 'type') conns(); }); r.querySelector('[data-rm]').onclick = function () { D.connections.splice(i, 1); ch(); conns(); lks(); }; });
+        }
+        function lks() {
+          var opts = [['main', 'الرئيسية']].concat(D.connections.map(function (c) { return [c.id, c.name || c.id]; }));
+          A.$('#lks', el).innerHTML = D.lookups.map(function (l, i) {
+            return '<div class="repeat" data-i="' + i + '"><div class="row" style="margin-bottom:8px"><input class="in" data-k="title" placeholder="اسم الاستعلام (مثال: موعد صرف المساعدة)" style="font-weight:700"><select class="in" data-k="connection" style="width:auto">' + opts.map(function (o) { return '<option value="' + esc(o[0]) + '">🗄️ ' + esc(o[1]) + '</option>'; }).join('') + '</select><button class="btn sm danger ghost icon" data-rm>✕</button></div>' +
+              f.text('keywords', 'كلمات يُفهم بها الطلب', { ph: 'موعد الصرف, متى الصرف, صرف المساعدة' }) + f.area('query', 'الاستعلام (أو مسار API)', { mono: true, rows: 2, ph: 'SELECT next_date, amount FROM aid WHERE id_number = :id_number' }) +
+              '<div class="grid g2">' + f.area('template', 'قالب الرد', { rows: 2, ph: 'موعد الصرف القادم: {next_date}\nالمبلغ: {amount} ريال' }) + f.text('not_found', 'عند عدم وجود نتيجة', { ph: 'لم أجد بيانات بهذه المعلومات.' }) + '</div>' +
+              '<div class="row"><input class="in" data-tp placeholder=\'{"id_number":"1234567890"}\' dir="ltr" style="font-family:ui-monospace,monospace"><button class="btn sm soft" data-t>🧪 اختبار</button></div><pre class="code hidden" data-r style="margin-top:8px;max-height:200px;overflow:auto"></pre></div>';
+          }).join('') || '<p class="small muted">لا توجد استعلامات مخصصة</p>';
+          A.$$('.repeat', A.$('#lks', el)).forEach(function (r) {
+            var i = Number(r.getAttribute('data-i')), l = D.lookups[i];
+            A.bind(r, l, ch);
+            r.querySelector('[data-rm]').onclick = function () { D.lookups.splice(i, 1); ch(); lks(); };
+            r.querySelector('[data-t]').onclick = function () {
+              var params = {}, out = r.querySelector('[data-r]'); try { params = JSON.parse(r.querySelector('[data-tp]').value || '{}'); } catch (e) { return A.toast('صيغة JSON غير صحيحة', 'err'); }
+              out.classList.remove('hidden'); out.textContent = '…';
+              A.api('POST', '/api/sites/' + S.site.id + '/datasource/test', { which: l.id, params: params, datasource: D }).then(function (x) { out.textContent = '✅ المتغيرات: ' + x.params.join(', ') + '\n' + JSON.stringify(x.rows, null, 2); }).catch(function (e) { out.textContent = '❌ ' + e.message + (A.dirty ? '\n(احفظ التغييرات أولاً إذا أضفت قاعدة بيانات جديدة)' : ''); });
+            };
+          });
+        }
+        A.$('#addc', el).onclick = function () { D.connections.push({ id: uid('db'), name: '', type: 'mysql', connection: '', api_url: '', api_headers: '{}' }); ch(); conns(); lks(); };
+        A.$('#addl', el).onclick = function () { D.lookups.push({ id: uid('lk'), title: '', keywords: '', connection: 'main', query: '', template: '', not_found: '' }); ch(); lks(); };
+        conns(); lks();
+      });
+    }
+  });
+
+  /* ============================== integrations (webhooks) ============================== */
+  var EV = { 'conversation.started': 'بدء محادثة', 'conversation.handoff': 'تحويل لموظف', 'conversation.closed': 'إنهاء محادثة (مع النص كاملاً)', 'conversation.rated': 'تقييم', 'ticket.created': 'شكوى/اقتراح جديد', 'ticket.updated': 'تحديث شكوى/اقتراح', 'kb.learned': 'تعلّم إجابة جديدة' };
+  A.page('integrations', {
+    title: 'الربط مع الأنظمة', icon: '🔗', role: 'admin',
+    render: function (root) {
+      A.settingsPage(root, ['integrations'], function (el, d, ch) {
+        var W = d.integrations.webhooks = d.integrations.webhooks || [];
+        el.innerHTML = '<div class="alert info" style="margin-bottom:16px">🔗 لتطوير البرنامج وربطه بأنظمتكم (نظام المستفيدين، CRM، n8n، Make، Zapier…): يرسل البرنامج إشعاراً فورياً (Webhook) بصيغة JSON إلى الرابط الذي تحدده عند كل حدث، موقّعاً بـ HMAC-SHA256 في الترويسة <code>X-SmartChat-Signature</code>. وللقراءة والكتابة البرمجية تتوفر واجهة REST كاملة (موثّقة في ملف DEVELOPERS.md).</div>' +
+          card('📡 Webhooks', '<div id="whs"></div><button class="btn soft sm" id="addw">+ إضافة رابط</button>');
+        function draw() {
+          A.$('#whs', el).innerHTML = W.map(function (w, i) {
+            w.events = w.events || [];
+            return '<div class="repeat" data-i="' + i + '"><div class="row" style="margin-bottom:8px"><label class="switch"><input type="checkbox" data-k="enabled"><span class="tr"></span></label><input class="in" data-k="url" placeholder="https://example.com/webhook" dir="ltr"><button class="btn sm ghost" data-t>🧪 تجربة</button><button class="btn sm danger ghost icon" data-rm>✕</button></div>' +
+              f.text('secret', 'المفتاح السري للتوقيع', { ltr: true, mono: true }) + '<label class="f">الأحداث <small>(بدون اختيار = كل الأحداث)</small></label><div class="checks">' + Object.keys(EV).map(function (e) { return '<label><input type="checkbox" data-e="' + e + '"' + (w.events.indexOf(e) >= 0 ? ' checked' : '') + '> ' + EV[e] + ' <span class="tiny muted ltr">' + e + '</span></label>'; }).join('') + '</div></div>';
+          }).join('') || '<p class="small muted">لا توجد روابط</p>';
+          A.$$('.repeat', A.$('#whs', el)).forEach(function (r) {
+            var i = Number(r.getAttribute('data-i')), w = W[i];
+            A.bind(r, w, ch);
+            A.$$('[data-e]', r).forEach(function (c) { c.onchange = function () { var e = c.getAttribute('data-e'); w.events = w.events.filter(function (x) { return x !== e; }); if (c.checked) w.events.push(e); ch(); }; });
+            r.querySelector('[data-rm]').onclick = function () { W.splice(i, 1); ch(); draw(); };
+            r.querySelector('[data-t]').onclick = function () { A.api('POST', '/api/sites/' + S.site.id + '/webhooks/test', w).then(function () { A.toast('تم إرسال حدث تجريبي إلى الرابط', 'ok'); }, A.fail); };
+          });
+        }
+        A.$('#addw', el).onclick = function () { W.push({ id: uid('wh'), url: '', secret: Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2), events: [], enabled: true }); ch(); draw(); };
+        draw();
+      });
+    }
+  });
+
+  /* ============================== simpler titles & hints for existing pages ============================== */
+  var H = {
+    live: ['المحادثات', 'المحادثات الجارية الآن — من ينتظر موظفاً يظهر أولاً مع رنين'], history: ['السجل', 'كل المحادثات السابقة مع البحث والتصفية'],
+    tickets: ['الشكاوى والاقتراحات', 'متابعة الطلبات والرد عليها وإشعار صاحبها'], tree: ['القوائم والأزرار', 'ما يظهر للمستفيد من قوائم مرقّمة وأزرار'],
+    stats: ['الإحصائيات', 'نظرة عامة على الأداء'], reports: ['تقارير الموظفين', 'أداء كل موظف مع تصدير Excel'],
+    appearance: ['الشكل والألوان', 'شكل نافذة المحادثة في موقعك'], languages: ['اللغات والنصوص', 'العربية والإنجليزية والأردية'],
+    install: ['تركيب المحادثة', 'اربط المحادثة بموقعك خطوة بخطوة'], users: ['المستخدمون والصلاحيات', 'إضافة الموظفين وتحديد صلاحياتهم — لمدير النظام فقط'],
+    account: ['حسابي', 'بياناتك وكلمة المرور والتنبيهات ومظهر اللوحة']
+  };
+  Object.keys(H).forEach(function (k) { if (A.pages[k]) { A.pages[k].title = H[k][0]; A.pages[k].hint = H[k][1]; } });
+})();

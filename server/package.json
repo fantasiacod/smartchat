@@ -19,12 +19,15 @@
     "jsonwebtoken": "^9.0.2",
     "jszip": "^3.10.2",
     "mysql2": "^3.11.5",
-    "nodemailer": "^6.10.1",
+    "nodemailer": "^10.1.7",
     "pg": "^8.13.1",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "smtp-server": "^3.20.2",
     "socket.io-client": "^4.8.1"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

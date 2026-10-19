@@ -7,6 +7,8 @@ const LANGS = {
 
 const T = {
   ar: {
+    after_hours: 'نعتذر، نحن الآن خارج أوقات العمل 🌙\nأوقات العمل:\n{hours}\n\nاترك اسمك ورقم جوالك وسنتواصل معك في أقرب يوم عمل بإذن الله.', t_callback: 'طلب تواصل', ticket_form_callback: 'اترك بياناتك وسنتواصل معك', callback_created: '✅ تم تسجيل طلبك برقم *{number}*.\nسنتواصل معك خلال أوقات العمل الرسمية بإذن الله.', closed_day: 'مغلق', days: 'الأحد,الإثنين,الثلاثاء,الأربعاء,الخميس,الجمعة,السبت', off_hours_status: 'خارج أوقات العمل',
+    about_title: 'ماذا تحب أن تعرف عنا؟ اختر من القائمة:', hours_label: '🕘 ساعات العمل', web_social_label: '🌐 موقعنا وحساباتنا', banks_title: '🏦 حساباتنا البنكية — اختر التصنيف:', banks_group: '🏦 {group}', banks_empty: 'لم تتم إضافة حسابات بنكية بعد.', iban: 'الآيبان', account_no: 'رقم الحساب', copy: 'نسخ', copied: 'تم النسخ ✓', kb_browse_title: 'اختر الموضوع:', kb_cat_title: 'اختر سؤالك:', kb_empty: 'لا توجد أسئلة في هذا الموضوع بعد.',
     title: 'خدمة العملاء', subtitle: 'نرد عادة خلال دقائق', bot_name: 'المساعد الذكي', teaser: 'مرحباً 👋 هل تحتاج مساعدة؟',
     placeholder: 'اكتب رسالتك...', start: 'ابدأ المحادثة', end_chat: 'إنهاء المحادثة', new_chat: 'بدء محادثة جديدة', confirm_end: 'هل تريد إنهاء المحادثة؟',
     rating_title: 'كيف تقيّم تجربتك معنا؟', rating_comment: 'ملاحظاتك (اختياري)', rating_send: 'إرسال التقييم', rating_thanks: 'شكراً لتقييمك 🌟', ended: 'تم إنهاء المحادثة',
@@ -33,6 +35,8 @@ const T = {
     s_new: 'جديدة', s_in_progress: 'قيد المعالجة', s_resolved: 'تم الحل', s_closed: 'مغلقة', s_rejected: 'مرفوضة'
   },
   en: {
+    after_hours: 'Sorry, we are currently outside working hours 🌙\nWorking hours:\n{hours}\n\nLeave your name and mobile number and we will contact you on the next working day.', t_callback: 'Callback request', ticket_form_callback: 'Leave your details and we will call you back', callback_created: '✅ Your request was registered with number *{number}*.\nWe will contact you during official working hours.', closed_day: 'Closed', days: 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday', off_hours_status: 'Outside working hours',
+    about_title: 'What would you like to know about us?', hours_label: '🕘 Working hours', web_social_label: '🌐 Website & social', banks_title: '🏦 Our bank accounts — choose a category:', banks_group: '🏦 {group}', banks_empty: 'No bank accounts have been added yet.', iban: 'IBAN', account_no: 'Account no.', copy: 'Copy', copied: 'Copied ✓', kb_browse_title: 'Choose a topic:', kb_cat_title: 'Choose your question:', kb_empty: 'No questions in this topic yet.',
     title: 'Customer Service', subtitle: 'We usually reply within minutes', bot_name: 'Smart Assistant', teaser: 'Hi 👋 Need help?',
     placeholder: 'Type your message...', start: 'Start chat', end_chat: 'End chat', new_chat: 'Start a new chat', confirm_end: 'End this conversation?',
     rating_title: 'How would you rate your experience?', rating_comment: 'Your feedback (optional)', rating_send: 'Send rating', rating_thanks: 'Thanks for your rating 🌟', ended: 'Conversation ended',
@@ -59,6 +63,8 @@ const T = {
     s_new: 'New', s_in_progress: 'In progress', s_resolved: 'Resolved', s_closed: 'Closed', s_rejected: 'Rejected'
   },
   ur: {
+    after_hours: 'معذرت، اس وقت دفتری اوقات ختم ہو چکے ہیں 🌙\nاوقات کار:\n{hours}\n\nاپنا نام اور موبائل نمبر چھوڑیں، ہم اگلے کام کے دن آپ سے رابطہ کریں گے۔', t_callback: 'رابطے کی درخواست', ticket_form_callback: 'اپنی تفصیلات چھوڑیں، ہم رابطہ کریں گے', callback_created: '✅ آپ کی درخواست نمبر *{number}* کے ساتھ درج ہو گئی۔\nہم دفتری اوقات میں آپ سے رابطہ کریں گے۔', closed_day: 'بند', days: 'اتوار,پیر,منگل,بدھ,جمعرات,جمعہ,ہفتہ', off_hours_status: 'دفتری اوقات کے بعد',
+    about_title: 'آپ ہمارے بارے میں کیا جاننا چاہتے ہیں؟', hours_label: '🕘 اوقات کار', web_social_label: '🌐 ویب سائٹ اور سوشل میڈیا', banks_title: '🏦 ہمارے بینک اکاؤنٹس — زمرہ منتخب کریں:', banks_group: '🏦 {group}', banks_empty: 'ابھی کوئی بینک اکاؤنٹ شامل نہیں کیا گیا۔', iban: 'IBAN', account_no: 'اکاؤنٹ نمبر', copy: 'کاپی', copied: 'کاپی ہو گیا ✓', kb_browse_title: 'موضوع منتخب کریں:', kb_cat_title: 'اپنا سوال منتخب کریں:', kb_empty: 'اس موضوع میں ابھی کوئی سوال نہیں۔',
     title: 'کسٹمر سروس', subtitle: 'ہم عام طور پر چند منٹوں میں جواب دیتے ہیں', bot_name: 'سمارٹ اسسٹنٹ', teaser: 'السلام علیکم 👋 کیا آپ کو مدد چاہیے؟',
     placeholder: 'اپنا پیغام لکھیں...', start: 'گفتگو شروع کریں', end_chat: 'گفتگو ختم کریں', new_chat: 'نئی گفتگو شروع کریں', confirm_end: 'کیا آپ گفتگو ختم کرنا چاہتے ہیں؟',
     rating_title: 'آپ ہماری سروس کو کیسا درجہ دیں گے؟', rating_comment: 'آپ کی رائے (اختیاری)', rating_send: 'درجہ بندی بھیجیں', rating_thanks: 'آپ کی رائے کا شکریہ 🌟', ended: 'گفتگو ختم ہو گئی',
@@ -100,6 +106,8 @@ const INTENTS = {
   developer: ['من صمم', 'من برمج', 'من طور', 'من سوى', 'المطور', 'الشركة المطورة', 'who made', 'who developed', 'developer', 'built by', 'کس نے بنایا'],
   complaint: ['شكوى', 'اشتكي', 'أشتكي', 'complaint', 'complain', 'شکایت'],
   suggestion: ['اقتراح', 'مقترح', 'suggestion', 'suggest', 'تجویز'],
+  banks: ['رقم الحساب', 'ارقام الحسابات', 'أرقام الحسابات', 'الحسابات البنكية', 'حسابات بنكية', 'حساب بنكي', 'الحساب البنكي', 'ايبان', 'آيبان', 'الايبان', 'الآيبان', 'تبرع', 'اتبرع', 'أتبرع', 'التبرع', 'حواله', 'حوالة', 'iban', 'bank account', 'donate', 'donation', 'بینک', 'اکاؤنٹ', 'عطیہ'],
+  about: ['عن الجمعية', 'عنكم', 'تعرف علينا', 'تعرّف علينا', 'معلومات عن الجمعية', 'about', 'ہمارا تعارف'],
   ticket_status: ['حالة الشكوى', 'حالة الاقتراح', 'متابعة شكوى', 'متابعة الشكوى', 'رقم الشكوى', 'ticket status', 'complaint status', 'شکایت کی حالت']
 };
 

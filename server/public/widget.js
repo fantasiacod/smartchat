@@ -149,7 +149,7 @@
       '.ht{flex:1;min-width:0}.org{font-size:12px;opacity:.92;font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
       '.ttl{display:block;font-size:16px;font-weight:700;line-height:1.35}' +
       '.sub{font-size:12px;opacity:.92;display:flex;align-items:center;gap:6px;margin-top:2px}' +
-      '.dot{width:8px;height:8px;border-radius:50%;background:#86efac;display:inline-block;box-shadow:0 0 0 3px rgba(134,239,172,.25)}.dot.wait{background:#fde68a;animation:blink 1s infinite}' +
+      '.dot{width:8px;height:8px;border-radius:50%;background:#86efac;display:inline-block;box-shadow:0 0 0 3px rgba(134,239,172,.25)}.dot.wait{background:#fde68a;animation:blink 1s infinite}.dot.off{background:#cbd5e1;box-shadow:none}' +
       '.uni{display:inline-flex;align-items:center;gap:5px;margin-top:8px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.25);color:inherit;text-decoration:none;border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:700;direction:ltr;position:relative}' +
       '.hb{border:0;background:rgba(255,255,255,.18);color:inherit;width:34px;height:34px;border-radius:10px;cursor:pointer;display:grid;place-items:center;flex:none}' +
       '.langs{display:flex;gap:4px;position:relative;margin-top:8px;flex-wrap:wrap}.langs button{border:1px solid rgba(255,255,255,.35);background:transparent;color:inherit;border-radius:999px;padding:2px 10px;font-size:12px;cursor:pointer}.langs button.on{background:rgba(255,255,255,.95);color:' + c1 + ';font-weight:700}' +
@@ -177,6 +177,11 @@
       '.file{display:flex;align-items:center;gap:10px;border:1px solid rgba(127,127,127,.25);border-radius:10px;padding:8px 10px;text-decoration:none;color:inherit!important;background:rgba(127,127,127,.06)}.file b{display:block;font-size:13px}.file small{opacity:.7;font-size:11.5px}' +
       '.map{margin-top:8px;border-radius:12px;overflow:hidden;border:1px solid rgba(127,127,127,.2);background:#e5e7eb}.map iframe{display:block;width:100%;height:170px;border:0}' +
       '.mapbtns{display:flex;gap:6px;padding:8px;background:' + V.panel + '}.mapbtns a{flex:1;text-align:center;text-decoration:none;font-size:12.5px;font-weight:700;padding:8px;border-radius:9px;background:' + c1 + ';color:' + V.on1 + '}.mapbtns a.alt{background:transparent;color:' + c1 + ';border:1px solid ' + c1 + '}' +
+      '.card{display:flex;align-items:center;gap:8px;margin:-2px 0 8px;padding-bottom:8px;border-bottom:1px dashed rgba(127,127,127,.25)}.card .cic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--cc) 14%,transparent);overflow:hidden}.card .cic img{width:100%;height:100%;object-fit:contain;background:#fff}.card b{font-size:15px;color:var(--cc)}' +
+      '.oic{display:inline-grid;place-items:center;width:20px;height:20px;flex:none}.oic svg{width:18px;height:18px}.opt:hover .oic svg{stroke:currentColor}' +
+      '.banks{display:flex;flex-direction:column;gap:8px}.bank{border:1px solid rgba(127,127,127,.22);border-radius:12px;overflow:hidden;border-inline-start:5px solid var(--bc)}.bank .bh{padding:8px 10px;background:color-mix(in srgb,var(--bc) 9%,transparent)}.bank .bh b{display:block;font-size:13.5px;color:var(--bc)}.bank .bh small{font-size:11.5px;opacity:.8}' +
+      '.bank .bl{display:flex;align-items:center;gap:6px;padding:7px 10px;border-top:1px solid rgba(127,127,127,.12);font-size:12px}.bank .bl span{opacity:.7;flex:none}.bank code{flex:1;font-family:ui-monospace,Consolas,monospace;font-size:12px;font-weight:700;letter-spacing:.3px;overflow-wrap:anywhere;text-align:left}' +
+      '.bank button{border:0;background:var(--bc);color:#fff;border-radius:7px;padding:4px 9px;font-size:11.5px;cursor:pointer;flex:none}.bank button.ok{background:#16a34a}.bank .bn{padding:6px 10px;font-size:11.5px;opacity:.8;border-top:1px solid rgba(127,127,127,.12)}' +
       '.contacts{display:flex;flex-direction:column;gap:6px;margin-top:8px}.ct{display:flex;align-items:center;gap:8px;text-decoration:none;color:inherit!important;background:rgba(127,127,127,.07);border-radius:10px;padding:8px 10px}.ct span{flex:1;min-width:0}.ct small{display:block;opacity:.7;font-size:11px}.ct b{direction:ltr;unicode-bidi:isolate;font-size:13.5px}' +
       '.form{background:' + V.panel + ';color:' + V.panelTxt + ';border:1px solid rgba(127,127,127,.2);border-radius:14px;padding:12px;margin:0 0 4px;align-self:stretch;box-shadow:0 2px 10px rgba(0,0,0,.05)}' +
       '.form h4{margin:0 0 10px;font-size:15px;display:flex;align-items:center;gap:8px}.form h4:before{content:"";width:4px;height:18px;border-radius:2px;background:' + c1 + '}' +
@@ -229,10 +234,11 @@
     }
 
     function renderHead() {
-      var sub = state.status === 'waiting' ? T('waiting') : state.status === 'human' ? T('with_agent', { agent: state.agent || '' }) : state.status === 'closed' ? T('ended') : T('subtitle');
+      var off = cfg.work && cfg.work.enabled && !cfg.work.open;
+      var sub = state.status === 'waiting' ? T('waiting') : state.status === 'human' ? T('with_agent', { agent: state.agent || '' }) : state.status === 'closed' ? T('ended') : off ? T('off_hours_status') : T('subtitle');
       var avatar = logo ? '<div class="av logo"><img src="' + esc(logo) + '" alt=""></div>' : '<div class="av">' + (A.bot_avatar ? '<img src="' + esc(abs(A.bot_avatar)) + '" alt="">' : ICONS[A.launcher_icon_preset] || ICONS.chat) + '</div>';
       head.innerHTML = '<div class="hrow">' + avatar + '<div class="ht">' + (orgName ? '<span class="org">' + esc(orgName) + '</span>' : '') +
-        '<span class="ttl">' + esc(T('title')) + '</span><span class="sub"><i class="dot' + (state.status === 'waiting' ? ' wait' : '') + '"></i>' + esc(sub) + '</span></div>' +
+        '<span class="ttl">' + esc(T('title')) + '</span><span class="sub"><i class="dot' + (state.status === 'waiting' ? ' wait' : off ? ' off' : '') + '"></i>' + esc(sub) + '</span></div>' +
         '<button class="hb mbtn" title="menu">' + I.menu + '</button><button class="hb xbtn" title="close">' + I.close + '</button></div>' +
         (unified ? '<a class="uni" href="tel:' + esc(String(cfg.org.unified_number).replace(/\s/g, '')) + '">' + I.phone + esc(cfg.org.unified_number) + '</a>' : '') +
         (LG.show_switcher ? '<div class="langs">' + LG.enabled.map(function (l) { return '<button data-l="' + l + '" class="' + (l === lang ? 'on' : '') + '">' + esc((LG.meta[l] || {}).name || l) + '</button>'; }).join('') + '</div>' : '') +
@@ -325,14 +331,29 @@
         return '<a class="ct" href="' + esc(c.href || '#') + '" target="_blank" rel="noopener"><i>' + esc(c.icon || '') + '</i><span>' + (c.label ? '<small>' + esc(c.label) + '</small>' : '') + '<b>' + esc(c.value) + '</b></span></a>';
       }).join('') + '</div>';
     }
+    function cardHTML(c) {
+      var col = /^#[0-9a-f]{3,8}$/i.test(c.color || '') ? c.color : c1;
+      return '<div class="card" style="--cc:' + col + '"><span class="cic">' + (c.logo ? '<img src="' + esc(abs(c.logo)) + '" alt="">' : (c.svg || '')) + '</span><b>' + esc(c.title || '') + '</b></div>';
+    }
+    function banksHTML(b) {
+      var col = /^#[0-9a-f]{3,8}$/i.test(b.group.color || '') ? b.group.color : c1;
+      return '<div class="banks"><div class="card" style="--cc:' + col + '"><span class="cic">' + (b.group.svg || '') + '</span><b>' + esc(b.group.name) + '</b></div>' + b.accounts.map(function (a) {
+        var ac = /^#[0-9a-f]{3,8}$/i.test(a.color || '') ? a.color : '#475569';
+        return '<div class="bank" style="--bc:' + ac + '"><div class="bh"><b>' + esc(a.bank) + '</b>' + (a.holder ? '<small>' + esc(a.holder) + '</small>' : '') + '</div>' +
+          (a.iban ? '<div class="bl"><span>' + esc(T('iban')) + '</span><code dir="ltr">' + esc(a.iban.replace(/(.{4})/g, '$1 ').trim()) + '</code><button type="button" data-copy="' + esc(a.iban) + '">' + esc(T('copy') || 'Copy') + '</button></div>' : '') +
+          (a.number ? '<div class="bl"><span>' + esc(T('account_no')) + '</span><code dir="ltr">' + esc(a.number) + '</code><button type="button" data-copy="' + esc(a.number) + '">' + esc(T('copy') || 'Copy') + '</button></div>' : '') +
+          (a.note ? '<div class="bn">' + esc(a.note) + '</div>' : '') + '</div>';
+      }).join('') + '</div>';
+    }
     function formHTML(m) {
       var f = m.form;
       if (f.submitted) return '<div class="form done"><h4>' + esc(f.title) + '</h4><div class="okn">✓ ' + esc(f.submitted) + '</div></div>';
       return '<form class="form" data-mid="' + m.id + '"><h4>' + esc(f.title) + '</h4>' +
         '<input name="name" placeholder="' + esc(T('f_name')) + '" value="' + esc(f.name || '') + '" autocomplete="name"><div class="err" data-e="name"></div>' +
         '<input name="phone" placeholder="' + esc(T('f_phone')) + '" value="' + esc(f.phone || '') + '" inputmode="tel" autocomplete="tel" dir="ltr"><div class="err" data-e="phone"></div>' +
+        (f.type === 'callback' ? '<input type="hidden" name="email" value=""><input type="hidden" name="text" value="">' :
         '<input name="email" type="email" placeholder="' + esc(f.require_email ? T('f_email').replace(/\s*\(.*\)/, '') : T('f_email')) + '" value="' + esc(f.email || '') + '" autocomplete="email" dir="ltr"><div class="err" data-e="email"></div>' +
-        '<textarea name="text" placeholder="' + esc(T('f_message')) + '"></textarea><div class="err" data-e="text"></div>' +
+        '<textarea name="text" placeholder="' + esc(T('f_message')) + '"></textarea><div class="err" data-e="text"></div>') +
         '<button class="btn" type="submit">' + esc(T('f_send')) + '</button></form>';
     }
 
@@ -372,22 +393,31 @@
         var avImg = m.sender === 'agent' ? m.agent_avatar : (A.bot_avatar || A.company_logo);
         var av = avImg ? '<img src="' + esc(abs(avImg)) + '" alt=""' + (m.sender === 'bot' && !A.bot_avatar ? ' style="object-fit:contain;background:#fff;padding:2px"' : '') + '>' : m.sender === 'bot' ? (ICONS[A.launcher_icon_preset] || ICONS.chat).replace(/width="\d+" height="\d+"/, 'width="17" height="17"') : esc((who || '?').trim().charAt(0));
         var extra = (m.link ? '<br><a class="link" href="' + esc(m.link) + '" target="_blank" rel="noopener">' + esc(m.link_label || T('open_link')) + '</a>' : '') +
-          (m.media ? '<div class="att">' + mediaHTML(m.media) + '</div>' : '') + (m.location ? locationHTML(m.location) : '') + (m.contacts ? contactsHTML(m.contacts) : '');
-        if (m.body || extra) {
+          (m.media ? '<div class="att">' + mediaHTML(m.media) + '</div>' : '') + (m.location ? locationHTML(m.location) : '') + (m.contacts ? contactsHTML(m.contacts) : '') + (m.banks ? banksHTML(m.banks) : '');
+        var card = m.card ? cardHTML(m.card) : '';
+        if (m.body || extra || card) {
           html += '<div class="row ' + cls + '">' + (me ? '' : '<div class="mav">' + av + '</div>') + '<div style="min-width:0">' +
             (who ? '<div class="who">' + esc(who) + (m.agent_title ? ' <em>· ' + esc(m.agent_title) + '</em>' : '') + '</div>' : '') +
-            '<div class="bub" dir="auto">' + fmt(m.body || '') + extra + '<div class="tm">' + time(m.created_at) + '</div></div></div></div>';
+            '<div class="bub" dir="auto">' + card + fmt(m.body || '') + extra + '<div class="tm">' + time(m.created_at) + '</div></div></div></div>';
         }
         if (m.form) html += formHTML(m);
         if (m.options && m.options.length && i === lastOptIdx && state.status === 'bot') {
           var active = i >= state.messages.length - 1 || !state.messages.slice(i + 1).some(function (x) { return x.sender === 'visitor'; });
           html += '<div class="opts ' + optStyle + '">' + m.options.map(function (o, k) {
-            return '<button class="opt" data-mid="' + m.id + '" data-i="' + o.i + '"' + (active ? '' : ' disabled') + '>' + (m.numbered ? '<span class="num">' + (k + 1) + '</span>' : '') + '<span>' + esc(o.label) + '</span></button>';
+            return '<button class="opt" data-mid="' + m.id + '" data-i="' + o.i + '"' + (active ? '' : ' disabled') + '>' + (m.numbered ? '<span class="num">' + (k + 1) + '</span>' : '') + (o.icon ? '<span class="oic">' + o.icon + '</span>' : '') + '<span>' + esc(o.label) + '</span></button>';
           }).join('') + '</div>';
         }
       });
       html += '<div class="typing"><i></i><i></i><i></i></div>';
       body.innerHTML = html;
+      body.querySelectorAll('[data-copy]').forEach(function (b) {
+        b.onclick = function () {
+          var v = b.getAttribute('data-copy'), done = function () { var o = b.textContent; b.textContent = T('copied') || '✓'; b.classList.add('ok'); setTimeout(function () { b.textContent = o; b.classList.remove('ok'); }, 1600); };
+          if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(done, function () { fallback(); });
+          else fallback();
+          function fallback() { var t = document.createElement('textarea'); t.value = v; t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); } catch (e) { } t.remove(); done(); }
+        };
+      });
       body.querySelectorAll('.opt:not([disabled])').forEach(function (b) {
         b.onclick = function () {
           body.querySelectorAll('.opt').forEach(function (x) { x.disabled = true; }); state.pinned = true;

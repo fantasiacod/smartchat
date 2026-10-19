@@ -38,6 +38,9 @@ async function query(ds, sql, params = {}) {
   assertReadOnly(sql);
   const names = [];
   if (ds.type === 'demo') {
+    // the demo source runs on the app's own database: only the demo tables may be read
+    const tables = [...String(sql).matchAll(/\b(?:from|join)\s+["`]?(\w+)/gi)].map(m => m[1].toLowerCase());
+    if (!tables.length || tables.some(t => !t.startsWith('demo_'))) throw new Error('البيانات التجريبية: يُسمح فقط بجداول demo_orders و demo_customers');
     const text = sql.replace(PARAM_RE, (_, n) => { names.push(n); return '?'; });
     return db.prepare(text).all(...names.map(n => params[n] ?? null));
   }

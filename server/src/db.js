@@ -73,6 +73,11 @@ CREATE TABLE IF NOT EXISTS widget_pings (
   site_id INTEGER, origin TEXT, last_seen TEXT, hits INTEGER DEFAULT 0, PRIMARY KEY (site_id, origin)
 );
 CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, user_id INTEGER, action TEXT, details TEXT, created_at TEXT);
+CREATE TABLE IF NOT EXISTS kb_categories (
+  id INTEGER PRIMARY KEY, site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, icon TEXT DEFAULT 'question', color TEXT DEFAULT '', sort INTEGER DEFAULT 0, system TEXT, i18n TEXT DEFAULT '{}', created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS demo_orders (order_no TEXT PRIMARY KEY, phone TEXT, email TEXT, customer_name TEXT, status TEXT, notes TEXT);
 CREATE TABLE IF NOT EXISTS demo_customers (id INTEGER PRIMARY KEY, name TEXT, email TEXT, phone TEXT, city TEXT, tier TEXT);
 `);
@@ -90,6 +95,8 @@ addColumn('users', 'phone', "TEXT DEFAULT ''");
 addColumn('conversations', 'lang', "TEXT DEFAULT 'ar'");
 addColumn('conversations', 'first_response_at', 'TEXT');
 addColumn('conversations', 'tags', "TEXT DEFAULT ''");
+addColumn('kb', 'category_id', 'INTEGER');
+addColumn('users', 'pwd_changed_at', 'INTEGER DEFAULT 0');
 
 const now = () => new Date().toISOString();
 
@@ -114,12 +121,14 @@ function seed() {
 
 function createSite(name, key) {
   const k = key || crypto.randomBytes(9).toString('base64url');
-  const s = defaultSettings(); s.version = 2;
+  const s = defaultSettings(); s.version = 3;
   const info = db.prepare('INSERT INTO sites(name,key,settings,tree,created_at) VALUES(?,?,?,?,?)')
     .run(name, k, JSON.stringify(s), JSON.stringify(defaultTree()), now());
   const sid = info.lastInsertRowid;
   const kb = db.prepare('INSERT INTO kb(site_id,question,answer,keywords,source,lang,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)');
-  kb.run(sid, 'كم مدة التوصيل؟', 'مدة التوصيل من 2 إلى 5 أيام عمل.', 'توصيل,شحن,مدة', 'manual', 'all', now(), now());
+  const cat = db.prepare('INSERT INTO kb_categories(site_id,name,icon,color,sort,created_at) VALUES(?,?,?,?,?,?)').run(sid, 'التسجيل والخدمات', 'users', '#1a6739', 1, now()).lastInsertRowid;
+  const kid = kb.run(sid, 'كيف أسجّل في الجمعية؟', 'يمكنك التسجيل بزيارة مقر الجمعية مع الهوية الوطنية وصك الإعالة، أو عبر موقعنا الإلكتروني.', 'تسجيل,اسجل,التسجيل,انضمام', 'manual', 'all', now(), now()).lastInsertRowid;
+  db.prepare('UPDATE kb SET category_id=? WHERE id=?').run(cat, kid);
   return getSite(sid);
 }
 
@@ -129,15 +138,27 @@ const OLD_ROOT_TEXT = 'أنا المساعد الذكي، كيف أقدر أخد
 function upgradeSites() {
   for (const row of db.prepare('SELECT * FROM sites').all()) {
     let s; try { s = JSON.parse(row.settings || '{}'); } catch { s = {}; }
-    if ((s.version || 1) >= 2) continue;
+    if ((s.version || 1) >= 3) continue;
+    let tree0; try { tree0 = JSON.parse(row.tree || 'null'); } catch { tree0 = null; }
+    if ((s.version || 1) === 2) {
+      // v3: the human agent is no longer a main-menu option (the bot hands off automatically when it has no answer)
+      const menu = tree0?.nodes?.find(n => n.id === 'menu');
+      const untouched = menu && tree0.nodes.some(n => n.id === 'faq') && (menu.options || []).length === 6 && menu.options[5]?.action === 'handoff' && menu.options[0]?.action === 'location';
+      if (!tree0 || untouched) tree0 = defaultTree();
+      else if (menu) menu.options = (menu.options || []).filter(o => o.action !== 'handoff');
+      s.version = 3;
+      db.prepare('UPDATE sites SET settings=?, tree=? WHERE id=?').run(JSON.stringify(s), JSON.stringify(tree0), row.id);
+      console.log(`[upgrade] site ${row.id} upgraded to v3`);
+      continue;
+    }
     s.behavior = s.behavior || {};
     s.behavior.no_answer_action = 'handoff'; // human agent is the last resort when the bot has no answer
-    s.version = 2;
+    s.version = 3;
     let tree; try { tree = JSON.parse(row.tree || 'null'); } catch { tree = null; }
     const root = tree?.nodes?.find(n => n.id === tree.root);
     if (!tree || (root && String(root.message || '').includes(OLD_ROOT_TEXT))) tree = defaultTree();
     db.prepare('UPDATE sites SET settings=?, tree=? WHERE id=?').run(JSON.stringify(s), JSON.stringify(tree), row.id);
-    console.log(`[upgrade] site ${row.id} upgraded to settings v2`);
+    console.log(`[upgrade] site ${row.id} upgraded to settings v3`);
   }
 }
 
@@ -158,6 +179,10 @@ function hydrateConv(row) {
   try { state = JSON.parse(row.state || '{}'); } catch { /* ignore */ }
   return { ...row, meta, state };
 }
+const meta = {
+  get(key, def) { const r = db.prepare('SELECT value FROM app_meta WHERE key=?').get(key); if (!r) return def; try { return JSON.parse(r.value); } catch { return def; } },
+  set(key, v) { db.prepare('INSERT INTO app_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, JSON.stringify(v)); }
+};
 const getConv = (id) => hydrateConv(db.prepare('SELECT * FROM conversations WHERE id=?').get(id));
 
 function audit(userId, action, details) {
@@ -168,4 +193,4 @@ function audit(userId, action, details) {
 seed();
 upgradeSites();
 
-module.exports = { db, now, getSite, getSiteByKey, createSite, getConv, hydrateConv, audit, DATA_DIR };
+module.exports = { db, now, getSite, getSiteByKey, createSite, getConv, hydrateConv, audit, meta, DATA_DIR };

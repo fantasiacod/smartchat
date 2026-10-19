@@ -6,32 +6,38 @@
   var ACTIONS = {
     goto: { icon: '➡️', name: 'انتقال لعقدة', desc: 'يعرض عقدة أخرى (قائمة فرعية)' },
     answer: { icon: '💬', name: 'إجابة مباشرة', desc: 'نص + صورة/فيديو/PDF' },
+    about: { icon: '🏢', name: 'عن الجمعية', desc: 'قائمة بكل أقسام التعريف' },
     location: { icon: '📍', name: 'الموقع (خريطة)', desc: 'يرسل الخريطة داخل المحادثة' },
-    org: { icon: '🏢', name: 'معلومة عن الجهة', desc: 'نبذة، رؤية، تواصل، ساعات…' },
+    banks: { icon: '🏦', name: 'الحسابات البنكية', desc: 'الآيبان مع زر نسخ' },
+    kb_browse: { icon: '🧠', name: 'الأسئلة الشائعة', desc: 'تصفّح الخريطة الذهنية' },
+    org: { icon: '📄', name: 'معلومة محددة', desc: 'قسم من «عن الجمعية» أو التواصل…' },
     ticket: { icon: '📝', name: 'شكوى / اقتراح', desc: 'نموذج: اسم، جوال، نص' },
     ticket_status: { icon: '🔎', name: 'متابعة طلب', desc: 'بالرقم C-1001' },
-    handoff: { icon: '👨‍💼', name: 'تحويل لموظف', desc: 'يرن عند الموظفين' },
+    handoff: { icon: '👨‍💼', name: 'تحويل لموظف', desc: 'اختياري — البوت يحوّل تلقائياً عند الحاجة' },
     kb: { icon: '📚', name: 'سؤال من المعرفة', desc: 'إجابة محفوظة' },
     url: { icon: '🔗', name: 'رابط', desc: 'يفتح صفحة' },
     order_status: { icon: '📦', name: 'حالة طلب', desc: 'من قاعدة البيانات' },
     customer_info: { icon: '🪪', name: 'بيانات المستفيد', desc: 'من قاعدة البيانات' },
+    lookup: { icon: '🔎', name: 'استعلام مخصص', desc: 'من أي قاعدة بيانات مربوطة' },
     developer: { icon: '🛠️', name: 'مطوّر البرنامج', desc: 'رابط المطوّر' },
     end: { icon: '✋', name: 'إنهاء المحادثة', desc: 'ثم التقييم' }
   };
-  var ORG_FIELDS = [['history', '🏢 نبذة وتاريخ الجهة'], ['vision', '🎯 الرؤية والرسالة'], ['contact', '📞 أرقام التواصل'], ['hours', '🕘 ساعات العمل'], ['website', '🌐 الموقع الإلكتروني'], ['social', '📱 حسابات التواصل'], ['location', '📍 الموقع'], ['developer', '🛠️ مطوّر البرنامج']];
+  var ORG_BASE = [['contact', '📞 أرقام التواصل'], ['hours', '🕘 ساعات العمل'], ['website', '🌐 الموقع الإلكتروني'], ['social', '📱 حسابات التواصل'], ['location', '📍 الموقع'], ['developer', '🛠️ مطوّر البرنامج']];
+  var ORG_FIELDS = ORG_BASE;
+  function orgFields() { return ((S.site.settings.org.sections) || []).map(function (x) { return ['section:' + x.id, '📄 ' + (x.title || x.id)]; }).concat(ORG_BASE); }
   var TEMPLATES = {
     menu: { icon: '🔢', name: 'قائمة مرقّمة', desc: 'رسالة + خيارات بأرقام', node: { title: 'قائمة جديدة', message: 'اختر رقم الخدمة:', numbered: true, options: [{ label: '↩️ القائمة الرئيسية', action: 'goto', target: 'menu' }] } },
     msg: { icon: '💬', name: 'رسالة وأزرار', desc: 'رسالة بأزرار عادية', node: { title: 'رسالة', message: 'اكتب الرسالة هنا', options: [] } },
     info: { icon: '🖼️', name: 'معلومة بمرفق', desc: 'نص + صورة/فيديو/PDF', node: { title: 'طريقة التسجيل', message: 'هذه خطوات التسجيل 👇', media: [], options: [{ label: '🏠 القائمة الرئيسية', action: 'goto', target: 'menu' }, { label: '💬 التحدث مع موظف', action: 'handoff' }] } },
-    org: { icon: '🏢', name: 'عن الجهة', desc: 'نبذة، رؤية، موقع، تواصل', node: { title: 'تعرّف علينا', message: 'ماذا تريد أن تعرف عنا؟', numbered: true, options: [{ label: '🏢 نبذة عنا', action: 'org', field: 'history' }, { label: '🎯 رؤيتنا ورسالتنا', action: 'org', field: 'vision' }, { label: '📍 موقعنا', action: 'location' }, { label: '📞 أرقام التواصل', action: 'org', field: 'contact' }, { label: '↩️ القائمة الرئيسية', action: 'goto', target: 'menu' }] } },
+    org: { icon: '🏢', name: 'معلومات وخدمات', desc: 'عن الجمعية، الموقع، الحسابات', node: { title: 'معلومات عنا', message: 'ماذا تريد أن تعرف؟', numbered: true, options: [{ label: '🏢 عن الجمعية', action: 'about' }, { label: '📍 موقعنا', action: 'location' }, { label: '📞 أرقام التواصل', action: 'org', field: 'contact' }, { label: '🏦 الحسابات البنكية', action: 'banks' }, { label: '↩️ القائمة الرئيسية', action: 'goto', target: 'menu' }] } },
     tickets: { icon: '📝', name: 'شكاوى واقتراحات', desc: 'نماذج مرقّمة تلقائياً', node: { title: 'الشكاوى والاقتراحات', message: 'كيف نخدمك؟', numbered: true, options: [{ label: '📝 تقديم شكوى', action: 'ticket', field: 'complaint' }, { label: '💡 تقديم اقتراح', action: 'ticket', field: 'suggestion' }, { label: '🔎 متابعة طلب سابق', action: 'ticket_status' }, { label: '↩️ القائمة الرئيسية', action: 'goto', target: 'menu' }] } },
-    agent: { icon: '👨‍💼', name: 'تحويل لموظف', desc: 'رسالة ثم تحويل', node: { title: 'خدمة العملاء', message: 'هل تريد التحدث مع أحد موظفينا؟', options: [{ label: '💬 نعم، التحدث مع موظف', action: 'handoff' }, { label: '↩️ لا، القائمة الرئيسية', action: 'goto', target: 'menu' }] } }
+    faq: { icon: '🧠', name: 'أسئلة شائعة', desc: 'من الخريطة الذهنية', node: { title: 'الأسئلة الشائعة', message: 'اختر الموضوع:', numbered: true, options: [{ label: '❓ تصفّح الأسئلة', action: 'kb_browse' }, { label: '↩️ القائمة الرئيسية', action: 'goto', target: 'menu' }] } }
   };
   function uid() { return 'n' + Math.random().toString(36).slice(2, 8); }
   function actLabel(o, tree) {
     var a = ACTIONS[o.action] || { icon: '?', name: o.action };
     if (o.action === 'goto') { var n = tree.nodes.find(function (x) { return x.id === o.target; }); return '➡️ ' + (n ? n.title || n.id : 'غير مربوط ⚠️'); }
-    if (o.action === 'org') { var f = ORG_FIELDS.find(function (x) { return x[0] === o.field; }); return f ? f[1] : a.icon + ' ' + a.name; }
+    if (o.action === 'org') { var f = orgFields().find(function (x) { return x[0] === o.field; }); return f ? f[1] : a.icon + ' ' + a.name; }
     if (o.action === 'ticket') return o.field === 'suggestion' ? '💡 اقتراح' : o.field === 'inquiry' ? '❓ استفسار' : '📝 شكوى';
     return a.icon + ' ' + a.name;
   }
@@ -125,7 +131,7 @@
           if (!dragData || !dragData.act) return; e.preventDefault(); e.stopPropagation();
           var act = dragData.act; dragData = null; sel = id;
           var o = { label: ACTIONS[act].icon + ' ' + ACTIONS[act].name, action: act };
-          if (act === 'org') o.field = 'history'; if (act === 'ticket') o.field = 'complaint';
+          if (act === 'org') o.field = 'contact'; if (act === 'ticket') o.field = 'complaint';
           if (act === 'goto') o.target = 'menu';
           n.options.push(o); dirty(); draw(); inspect(n.options.length - 1);
         });
@@ -137,7 +143,7 @@
         A.$$('[data-a]', m.body).forEach(function (b) {
           b.onclick = function () {
             var act = b.getAttribute('data-a'), o = { label: ACTIONS[act].icon + ' ' + ACTIONS[act].name, action: act };
-            if (act === 'org') o.field = 'history'; if (act === 'ticket') o.field = 'complaint'; if (act === 'goto') o.target = '';
+            if (act === 'org') o.field = 'contact'; if (act === 'ticket') o.field = 'complaint'; if (act === 'goto') o.target = '';
             n.options.push(o); m.close(); dirty(); draw(); inspect(n.options.length - 1);
           };
         });
@@ -198,12 +204,16 @@
             var h = '';
             if (o.action === 'goto') h = '<label class="f">ينتقل إلى</label><select class="in" data-p="target">' + nodeOpts(o.target) + '<option value="__new">➕ عقدة جديدة…</option></select>';
             else if (o.action === 'answer') h = A.f.area('target', 'نص الإجابة', { rows: 4 }) + A.f.area('i18n.en.target', 'English answer', { rows: 2, ph: 'اختياري' }) + A.f.area('i18n.ur.target', 'اردو', { rows: 2, ph: 'اختياري' }) + '<label class="f">مرفقات (صورة، فيديو، PDF)</label><div data-om></div>';
-            else if (o.action === 'org') h = '<label class="f">المعلومة</label><select class="in" data-p="field">' + ORG_FIELDS.concat(((S.site.settings.org.custom) || []).map(function (c) { return ['custom:' + c.id, '📄 ' + c.title]; })).map(function (f) { return '<option value="' + f[0] + '"' + (o.field === f[0] ? ' selected' : '') + '>' + esc(f[1]) + '</option>'; }).join('') + '</select><div class="hint">تُعدّل هذه المعلومات من صفحة <a href="#/org">معلومات الجهة</a></div>';
+            else if (o.action === 'org') h = '<label class="f">المعلومة</label><select class="in" data-p="field">' + orgFields().map(function (f) { return '<option value="' + f[0] + '"' + (o.field === f[0] ? ' selected' : '') + '>' + esc(f[1]) + '</option>'; }).join('') + '</select><div class="hint">تُعدّل هذه المعلومات من صفحة <a href="#/org">معلومات الجهة</a></div>';
             else if (o.action === 'ticket') h = '<label class="f">النوع</label><select class="in" data-p="field"><option value="complaint">📝 شكوى</option><option value="suggestion">💡 اقتراح</option><option value="inquiry">❓ استفسار</option></select>';
             else if (o.action === 'url') h = A.f.text('target', 'الرابط', { ltr: true, ph: 'https://' });
             else if (o.action === 'kb') h = '<label class="f">السؤال</label><select class="in" data-p="target"><option value="">— اختر —</option>' + kbList.map(function (k) { return '<option value="' + k.id + '"' + (String(o.target) === String(k.id) ? ' selected' : '') + '>' + esc(k.question.slice(0, 70)) + '</option>'; }).join('') + '</select>';
-            else if (o.action === 'location') h = '<div class="hint">يرسل خريطة Google داخل المحادثة مع زر الاتجاهات — من إحداثيات <a href="#/org">معلومات الجهة</a></div>';
+            else if (o.action === 'location') h = '<div class="hint">يرسل خريطة Google داخل المحادثة مع زر الاتجاهات — من رابط الموقع في <a href="#/org">بيانات الجمعية</a></div>';
+            else if (o.action === 'about') h = '<div class="hint">يعرض قائمة مرقّمة بكل أقسام «عن الجمعية» بأيقوناتها — تُعدّل من <a href="#/org">بيانات الجمعية</a></div>';
+            else if (o.action === 'banks') h = '<label class="f">التصنيف</label><select class="in" data-p="target"><option value="">كل التصنيفات (يختار المستفيد)</option>' + ((S.site.settings.org.banks) || []).map(function (g) { return '<option value="' + esc(g.id) + '"' + (o.target === g.id ? ' selected' : '') + '>' + esc(g.name) + '</option>'; }).join('') + '</select>';
+            else if (o.action === 'kb_browse') h = '<div class="hint">يعرض تصنيفات <a href="#/mindmap">الخريطة الذهنية</a> ثم أسئلتها</div>';
             else if (o.action === 'handoff') h = '<div class="hint">يرن عند الموظفين المتصلين حتى يرد أحدهم، وما يكتبه المستفيد يُحفظ ليتعلّم منه البوت.</div>';
+            else if (o.action === 'lookup') h = '<label class="f">الاستعلام</label><select class="in" data-p="target"><option value="">— اختر —</option>' + ((S.site.settings.datasource.lookups) || []).map(function (l) { return '<option value="' + esc(l.id) + '"' + (o.target === l.id ? ' selected' : '') + '>' + esc(l.title || l.id) + '</option>'; }).join('') + '</select><div class="hint">تُنشأ الاستعلامات من الإعدادات ← قواعد البيانات</div>';
             else if (o.action === 'order_status' || o.action === 'customer_info') h = '<div class="hint">يستعلم من قاعدة البيانات المربوطة في صفحة <a href="#/datasource">قاعدة البيانات</a></div>';
             params.innerHTML = h;
             A.bind(params, o, function () { dirty(); refreshNode(n); });
@@ -222,7 +232,7 @@
           A.$$('[data-a]', card).forEach(function (b) {
             b.onclick = function () {
               o.action = b.getAttribute('data-a'); delete o.field; if (o.action !== 'answer' && o.action !== 'url' && o.action !== 'goto' && o.action !== 'kb') delete o.target;
-              if (o.action === 'org') o.field = 'history'; if (o.action === 'ticket') o.field = 'complaint';
+              if (o.action === 'org') o.field = 'contact'; if (o.action === 'ticket') o.field = 'complaint';
               A.$$('[data-a]', card).forEach(function (x) { x.classList.toggle('on', x === b); });
               drawParams(); refreshSummary(); dirty(); draw();
             };
@@ -241,7 +251,7 @@
         p.addEventListener('dragend', function () { dragData = null; cv.classList.remove('drop'); });
         p.addEventListener('click', function () { // click = add at centre (touch friendly)
           if (p.getAttribute('data-tpl')) { var r = cv.getBoundingClientRect(); addTemplate(p.getAttribute('data-tpl'), toWorld(r.left + r.width / 2 - 120, r.top + r.height / 3)); }
-          else if (sel) { var n = tree.nodes.find(function (x) { return x.id === sel; }), act = p.getAttribute('data-act'); var o = { label: ACTIONS[act].icon + ' ' + ACTIONS[act].name, action: act }; if (act === 'org') o.field = 'history'; if (act === 'ticket') o.field = 'complaint'; n.options.push(o); dirty(); draw(); inspect(n.options.length - 1); }
+          else if (sel) { var n = tree.nodes.find(function (x) { return x.id === sel; }), act = p.getAttribute('data-act'); var o = { label: ACTIONS[act].icon + ' ' + ACTIONS[act].name, action: act }; if (act === 'org') o.field = 'contact'; if (act === 'ticket') o.field = 'complaint'; n.options.push(o); dirty(); draw(); inspect(n.options.length - 1); }
           else A.toast('اختر عقدة أولاً ثم اضغط الزر، أو اسحبه إلى العقدة');
         });
       });
