@@ -23,7 +23,7 @@ server/
   public/icons.js     مكتبة الأيقونات والبنوك (مشتركة بين الخادم والواجهة)
   public/patterns.js  الزخارف
   public/admin/       لوحة التحكم (core.js + صفحات pages-*.js)
-  test/flow.test.js   74 فحصاً لكل التدفقات
+  test/flow.test.js   78 فحصاً لكل التدفقات
   test/load.js        اختبار التحمّل
 ```
 
@@ -77,6 +77,6 @@ server/
 
 ```bash
 cd server && npm install
-npm test                                              # 74 فحصاً
+npm test                                              # 78 فحصاً
 node test/load.js http://localhost:3000 SITE_KEY 600  # اختبار التحمّل
 ```

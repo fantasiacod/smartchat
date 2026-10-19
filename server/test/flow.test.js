@@ -168,7 +168,17 @@ let pass = 0; const ok = (c, m) => { assert.ok(c, m); pass++; console.log('  ✔
   // ---------------- mind map
   const cat = (await api('POST', '/api/kb-categories', { site_id: siteId, name: 'التبرعات', icon: 'money', color: '#bc9525' }, T)).j;
   await api('POST', '/api/kb', { site_id: siteId, question: 'هل التبرع يقبل بالبطاقة؟', answer: 'نعم عبر المتجر.', category_id: cat.id }, T);
+  const k1 = (await api('POST', '/api/kb', { site_id: siteId, question: 'ما هي شروط كفالة اليتيم؟', answer: 'أن يكون اليتيم دون 18 سنة ومقيماً في المدينة.' }, T)).j.id;
+  const k2 = (await api('POST', '/api/kb', { site_id: siteId, question: 'كم مبلغ كفالة اليتيم الشهري؟', answer: 'مبلغ الكفالة 300 ريال شهرياً.', related: [k1] }, T)).j.id;
+  await api('PUT', '/api/kb/' + k1, { related: [k2, 999999] }, T);
+  const vr = visitor(key, 'vr'); await vr.join(); await vr.emit('start', {}); await wait(120);
+  await vr.say('ما هي شروط كفالة اليتيم؟');
+  ok(/دون 18/.test(vr.last().body) && vr.last().related && vr.last().options[0].label === 'كم مبلغ كفالة اليتيم الشهري؟', 'answer shows its linked question as a button');
+  await vr.say('1');
+  ok(/300 ريال/.test(vr.last().body), 'pressing the linked question answers it (chain of related questions)');
+  ok((await api('PUT', '/api/mindmap/layout', { site: siteId, layout: { root: { x: 10, y: 20 }, 'q:1': { x: 5, y: 6 }, bad: { x: 1, y: 1 } } }, T)).s === 200, 'mind map layout saved');
   const mm = (await api('GET', `/api/mindmap?site=${siteId}`, null, T)).j;
+  ok(mm.layout.root.x === 10 && !mm.layout.bad && JSON.stringify(mm.kb.find(k => k.id === k1).related) === JSON.stringify([k2]), 'layout + related links returned (invalid ids dropped)');
   ok(mm.categories.some(c => c.id === cat.id) && mm.kb.some(k => k.category_id === cat.id) && mm.kb.some(k => k.source === 'learned'), 'mind map: categories, questions and learned answers');
 
   // ---------------- media, reports, install

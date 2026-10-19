@@ -472,6 +472,13 @@ app.delete('/api/conversations/:id', auth('supervisor'), (req, res) => {
 });
 
 /* ============================== knowledge base ============================== */
+function cleanRelated(siteId, list, selfId) {
+  if (!Array.isArray(list)) return undefined;
+  const ids = [...new Set(list.map(Number).filter(n => n && n !== selfId))].slice(0, 8);
+  if (!ids.length) return '[]';
+  const ok = db.prepare(`SELECT id FROM kb WHERE site_id=? AND id IN (${ids.map(() => '?').join(',')})`).all(siteId, ...ids).map(r => r.id);
+  return JSON.stringify(ids.filter(i => ok.includes(i)));
+}
 app.get('/api/kb', auth(), (req, res) => {
   const args = [Number(req.query.site)]; let w = 'site_id=?';
   if (req.query.source) { w += ' AND source=?'; args.push(req.query.source); }
@@ -485,6 +492,7 @@ app.post('/api/kb', auth(), (req, res) => {
   const r = db.prepare('INSERT INTO kb(site_id,question,answer,keywords,media,source,source_conversation,created_by,lang,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
     .run(Number(site_id), question.trim(), answer.trim(), keywords || '', JSON.stringify(media), req.body.conversation_id || unanswered_id ? 'learned' : 'manual', req.body.conversation_id || null, req.user.id, lang || 'all', now(), now());
   if (category_id) db.prepare('UPDATE kb SET category_id=? WHERE id=?').run(Number(category_id) || null, r.lastInsertRowid);
+  const rel = cleanRelated(Number(site_id), req.body.related, Number(r.lastInsertRowid)); if (rel) db.prepare('UPDATE kb SET related=? WHERE id=?').run(rel, r.lastInsertRowid);
   if (unanswered_id) db.prepare("UPDATE unanswered SET status='answered', kb_id=?, updated_at=? WHERE id=?").run(r.lastInsertRowid, now(), Number(unanswered_id));
   res.json({ id: r.lastInsertRowid });
 });
@@ -497,6 +505,7 @@ app.put('/api/kb/:id', auth(), (req, res) => {
   db.prepare('UPDATE kb SET question=?, answer=?, keywords=?, media=?, lang=?, active=?, updated_at=? WHERE id=?')
     .run(question ?? k.question, answer ?? k.answer, keywords ?? k.keywords, media, lang ?? k.lang ?? 'all', active === undefined ? k.active : (active ? 1 : 0), now(), k.id);
   if (req.body.category_id !== undefined) db.prepare('UPDATE kb SET category_id=? WHERE id=?').run(Number(req.body.category_id) || null, k.id);
+  const rel = cleanRelated(k.site_id, req.body.related, k.id); if (rel) db.prepare('UPDATE kb SET related=? WHERE id=?').run(rel, k.id);
   res.json({ ok: true });
 });
 app.delete('/api/kb/:id', auth('supervisor'), (req, res) => { db.prepare('DELETE FROM kb WHERE id=?').run(Number(req.params.id)); res.json({ ok: true }); });
@@ -571,9 +580,17 @@ app.get('/api/mindmap', auth(), (req, res) => {
   const site = Number(req.query.site);
   res.json({
     categories: db.prepare('SELECT * FROM kb_categories WHERE site_id=? ORDER BY sort, id').all(site).map(c => ({ ...c, i18n: (() => { try { return JSON.parse(c.i18n || '{}'); } catch { return {}; } })() })),
-    kb: db.prepare('SELECT id, question, answer, keywords, category_id, source, hits, active, lang, media FROM kb WHERE site_id=? ORDER BY id').all(site).map(k => ({ ...k, media: (() => { try { return JSON.parse(k.media || '[]'); } catch { return []; } })() })),
+    kb: db.prepare('SELECT id, question, answer, keywords, category_id, source, hits, active, lang, media, related FROM kb WHERE site_id=? ORDER BY id').all(site).map(k => ({ ...k, media: (() => { try { return JSON.parse(k.media || '[]'); } catch { return []; } })(), related: (() => { try { return JSON.parse(k.related || '[]'); } catch { return []; } })() })),
+    layout: require('./db').meta.get('mm_layout_' + site, {}),
     unanswered: db.prepare("SELECT id, question, count, lang, conversation_id, updated_at FROM unanswered WHERE site_id=? AND status='open' ORDER BY count DESC, id DESC LIMIT 100").all(site)
   });
+});
+app.put('/api/mindmap/layout', auth('supervisor'), (req, res) => {
+  const site = Number(req.body.site), L = req.body.layout && typeof req.body.layout === 'object' ? req.body.layout : {};
+  const clean = {};
+  for (const k of Object.keys(L).slice(0, 2000)) if (/^(root|c:-?\w+|q:\d+|u:\d+)$/.test(k) && isFinite(L[k]?.x) && isFinite(L[k]?.y)) clean[k] = { x: Math.round(L[k].x), y: Math.round(L[k].y) };
+  require('./db').meta.set('mm_layout_' + site, clean);
+  res.json({ ok: true });
 });
 app.post('/api/kb-categories', auth('supervisor'), (req, res) => {
   const c = cleanCat(req.body); if (!c.name) return res.status(400).json({ error: 'اسم التصنيف مطلوب' });

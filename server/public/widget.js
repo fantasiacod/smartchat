@@ -178,6 +178,7 @@
       '.map{margin-top:8px;border-radius:12px;overflow:hidden;border:1px solid rgba(127,127,127,.2);background:#e5e7eb}.map iframe{display:block;width:100%;height:170px;border:0}' +
       '.mapbtns{display:flex;gap:6px;padding:8px;background:' + V.panel + '}.mapbtns a{flex:1;text-align:center;text-decoration:none;font-size:12.5px;font-weight:700;padding:8px;border-radius:9px;background:' + c1 + ';color:' + V.on1 + '}.mapbtns a.alt{background:transparent;color:' + c1 + ';border:1px solid ' + c1 + '}' +
       '.card{display:flex;align-items:center;gap:8px;margin:-2px 0 8px;padding-bottom:8px;border-bottom:1px dashed rgba(127,127,127,.25)}.card .cic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--cc) 14%,transparent);overflow:hidden}.card .cic img{width:100%;height:100%;object-fit:contain;background:#fff}.card b{font-size:15px;color:var(--cc)}' +
+      '.relt{font-size:12px;font-weight:700;color:' + c1 + ';padding-inline-start:38px;margin-top:2px}' +
       '.oic{display:inline-grid;place-items:center;width:20px;height:20px;flex:none}.oic svg{width:18px;height:18px}.opt:hover .oic svg{stroke:currentColor}' +
       '.banks{display:flex;flex-direction:column;gap:8px}.bank{border:1px solid rgba(127,127,127,.22);border-radius:12px;overflow:hidden;border-inline-start:5px solid var(--bc)}.bank .bh{padding:8px 10px;background:color-mix(in srgb,var(--bc) 9%,transparent)}.bank .bh b{display:block;font-size:13.5px;color:var(--bc)}.bank .bh small{font-size:11.5px;opacity:.8}' +
       '.bank .bl{display:flex;align-items:center;gap:6px;padding:7px 10px;border-top:1px solid rgba(127,127,127,.12);font-size:12px}.bank .bl span{opacity:.7;flex:none}.bank code{flex:1;font-family:ui-monospace,Consolas,monospace;font-size:12px;font-weight:700;letter-spacing:.3px;overflow-wrap:anywhere;text-align:left}' +
@@ -403,6 +404,7 @@
         if (m.form) html += formHTML(m);
         if (m.options && m.options.length && i === lastOptIdx && state.status === 'bot') {
           var active = i >= state.messages.length - 1 || !state.messages.slice(i + 1).some(function (x) { return x.sender === 'visitor'; });
+          if (m.related) html += '<div class="relt">' + esc(T('related_title')) + '</div>';
           html += '<div class="opts ' + optStyle + '">' + m.options.map(function (o, k) {
             return '<button class="opt" data-mid="' + m.id + '" data-i="' + o.i + '"' + (active ? '' : ' disabled') + '>' + (m.numbered ? '<span class="num">' + (k + 1) + '</span>' : '') + (o.icon ? '<span class="oic">' + o.icon + '</span>' : '') + '<span>' + esc(o.label) + '</span></button>';
           }).join('') + '</div>';

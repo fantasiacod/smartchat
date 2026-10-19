@@ -53,7 +53,7 @@ function publicMsg(m) {
     id: m.id, sender: m.sender, body: m.body, created_at: m.created_at,
     agent_name: ag?.name, agent_title: ag?.title || undefined, agent_avatar: ag?.avatar || undefined,
     options: p.options?.length ? p.options.map((o, i) => ({ i, label: o.label, ...(o.icon && ICONS.has(o.icon) ? { icon: ICONS.svg(o.icon, o.color || null, 18) } : {}) })) : undefined,
-    card: p.card, banks: p.banks, ai: p.ai || undefined,
+    card: p.card, banks: p.banks, related: p.related || undefined,
     numbered: p.numbered || undefined,
     media: media.length ? media : undefined,
     link: p.link, link_label: p.link_label,
@@ -360,13 +360,25 @@ async function runAction(conv, site, opt, freeText) {
     case 'kb': {
       const k = db.prepare('SELECT * FROM kb WHERE id=? AND site_id=?').get(Number(opt.target), site.id);
       if (!k) return sendNode(conv, site, '__menu');
-      db.prepare('UPDATE kb SET hits=hits+1 WHERE id=?').run(k.id);
-      return botSay(conv, site, k.answer, navOptions(conv, site), mediaOf(k));
+      return answerKb(conv, site, k);
     }
     case 'end': return closeConversation(conv, 'visitor');
     case 'cancel': return sendNode(conv, site, '__menu');
     default: return sendNode(conv, site, '__menu');
   }
+}
+
+// After a knowledge-base answer: offer its linked (related) questions as buttons.
+function relatedOptions(conv, site, k) {
+  let ids = []; try { ids = JSON.parse(k.related || '[]'); } catch { /* ignore */ }
+  const rows = ids.length ? db.prepare(`SELECT id, question FROM kb WHERE site_id=? AND active=1 AND id IN (${ids.map(() => '?').join(',')})`).all(site.id, ...ids) : [];
+  const opts = ids.map(id => rows.find(r => r.id === id)).filter(Boolean).map(r => ({ label: r.question, action: 'kb', target: String(r.id) }));
+  return [...opts, ...navOptions(conv, site)];
+}
+function answerKb(conv, site, k) {
+  db.prepare('UPDATE kb SET hits=hits+1 WHERE id=?').run(k.id);
+  const opts = relatedOptions(conv, site, k);
+  return botSay(conv, site, k.answer, opts, { ...mediaOf(k), ...(opts.length > 1 ? { related: true, numbered: true } : {}) });
 }
 
 function mediaOf(k) {
@@ -630,10 +642,7 @@ async function handleVisitorText(conv, site, text) {
   // 5) knowledge base (prefers the visitor's language)
   const items = db.prepare("SELECT * FROM kb WHERE site_id=? AND active=1 AND (lang IS NULL OR lang='all' OR lang=?)").all(site.id, conv.lang || 'ar');
   const m = nlp.bestMatch(text, items, Number(b.kb_threshold) || 0.6);
-  if (m) {
-    db.prepare('UPDATE kb SET hits=hits+1 WHERE id=?').run(m.item.id);
-    return botSay(conv, site, m.item.answer, navOptions(conv, site), mediaOf(m.item));
-  }
+  if (m) return answerKb(conv, site, m.item);
 
   // 6) greetings, bare numbers and very short texts are not questions: show the menu again
   if (!isQuestion(text)) return sendNode(conv, site, '__menu');

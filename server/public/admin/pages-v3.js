@@ -151,7 +151,7 @@
 
   /* ============================== mind map ============================== */
   var origEditKB = A.editKB;
-  A.loadCats = function () { return A.GET('/api/mindmap?site=' + S.site.id).then(function (d) { S.kbCats = d.categories; return d; }); };
+  A.loadCats = function () { return A.GET('/api/mindmap?site=' + S.site.id).then(function (d) { S.kbCats = d.categories; S.kbAll = d.kb; return d; }); };
   A.editKB = function (k, onDone, extra) { A.loadCats().then(function () { origEditKB(k, onDone, extra); }, function () { origEditKB(k, onDone, extra); }); };
   function editCat(c, onDone) {
     c = Object.assign({ name: '', icon: 'question', color: PALETTE[Math.floor(Math.random() * 6)], i18n: {} }, c || {});
@@ -173,76 +173,190 @@
 
   A.page('mindmap', {
     title: 'الخريطة الذهنية للبوت', icon: '🧠', hint: 'كل ما يعرفه البوت: أسئلة وأجوبة مصنّفة. ما يجيب عنه الموظفون يُضاف هنا تلقائياً',
+    full: false,
     render: function (root) {
-      var view = 'map', q = '', zoom = 1, data = null, open = {};
-      root.innerHTML = '<div class="mm-tools"><div class="seg" id="mv"><button data-v="map" class="on">🧠 الخريطة</button><button data-v="list">📋 قائمة</button></div><input class="in" id="mq" placeholder="🔎 ابحث في الأسئلة والأجوبة" style="max-width:300px"><span class="grow"></span>' +
-        '<button class="btn ghost sm" id="mt">🧪 اختبار البوت</button>' + (A.can('supervisor') ? '<button class="btn soft sm" id="mc">+ تصنيف</button>' : '') + '<button class="btn sm" id="mn">+ سؤال وجواب</button>' +
-        '<button class="btn ghost icon" id="zi">＋</button><button class="btn ghost icon" id="zo">－</button></div><div id="mbody"></div>';
-      var body = A.$('#mbody');
-      function load() { return A.loadCats().then(function (d) { data = d; draw(); }).catch(A.fail); }
+      var view = 'map', q = '', data = null, open = {}, L = {}, V = { x: 0, y: 0, k: 1 }, linkSrc = null, fitted = false, canEdit = A.can('supervisor');
+      var RW = 220, CW = 250, QW = 330, QH = 44, GAP_CAT = 90, GAP_Q = 70;
+      root.innerHTML = '<div class="mm-tools"><div class="seg" id="mv"><button data-v="map" class="on">🧠 الخريطة</button><button data-v="list">📋 قائمة</button></div><input class="in" id="mq" placeholder="🔎 ابحث في الأسئلة والأجوبة" style="max-width:280px"><span class="grow"></span>' +
+        '<button class="btn ghost sm" id="mt">🧪 اختبار البوت</button>' + (canEdit ? '<button class="btn soft sm" id="mc">+ تصنيف</button>' : '') + '<button class="btn sm" id="mn">+ سؤال وجواب</button></div>' +
+        '<div id="mbody"></div>';
+      var body = A.$('#mbody'), cv, world, svg, nodes = {}, anim = 0;
+
+      function load() { return A.loadCats().then(function (d) { data = d; L = d.layout || {}; draw(); }).catch(A.fail); }
+
+      /* ---------- model: branches & automatic (adaptive) layout ---------- */
+      function branches() {
+        var a = S.site.settings.appearance, match = function (k) { return !q || (k.question + ' ' + k.answer + ' ' + (k.keywords || '')).toLowerCase().indexOf(q) >= 0; };
+        var list = data.categories.map(function (c) { return { key: 'c:' + c.id, id: c.id, cat: c, name: c.name, icon: c.icon, color: c.color || a.primary_color, items: data.kb.filter(function (k) { return k.category_id === c.id && match(k); }) }; });
+        var loose = data.kb.filter(function (k) { return (!k.category_id || !data.categories.some(function (c) { return c.id === k.category_id; })) && match(k); });
+        if (loose.length || !list.length) list.push({ key: 'c:0', id: 0, name: 'أسئلة بدون تصنيف', icon: 'list', color: '#64748b', items: loose, sub: 'اسحب أي سؤال إلى تصنيف' });
+        var un = data.unanswered.filter(function (u) { return !q || u.question.toLowerCase().indexOf(q) >= 0; });
+        if (un.length) list.push({ key: 'c:un', id: 'un', name: 'بحاجة لإجابة', icon: 'question', color: '#ea580c', items: un, unanswered: true, sub: 'لم يعرفها البوت' });
+        return list;
+      }
+      function layout(bs) {
+        var pos = {}, y = 0, catX = -(RW + GAP_CAT + CW), qX = catX - GAP_Q - QW;
+        bs.forEach(function (b) {
+          var shown = open[b.id] === false ? [] : (open[b.id] === 'all' ? b.items : b.items.slice(0, 8));
+          var extra = b.items.length > shown.length && open[b.id] !== false ? 1 : 0;
+          var h = Math.max(70, (shown.length + extra) * QH);
+          pos[b.key] = { x: catX, y: y + h / 2 - 35 };
+          shown.forEach(function (k, i) { pos[(b.unanswered ? 'u:' : 'q:') + k.id] = { x: qX, y: y + i * QH }; });
+          if (extra) pos['m:' + b.id] = { x: qX, y: y + shown.length * QH };
+          b.shown = shown; y += h + 28;
+        });
+        pos.root = { x: -RW, y: Math.max(0, y / 2 - 90) };
+        Object.keys(pos).forEach(function (k) { if (L[k]) pos[k] = { x: L[k].x, y: L[k].y }; });
+        return pos;
+      }
+
+      /* ---------- render (keyed: nodes glide to their new place) ---------- */
+      function shell() {
+        body.innerHTML = '<div class="mmc" id="mmc"><div class="mmw" id="mmw"><svg class="mml" id="mml"></svg></div>' +
+          '<div class="mmz"><button class="btn ghost icon" data-z="in" title="تكبير">＋</button><button class="btn ghost icon" data-z="out" title="تصغير">－</button><button class="btn ghost sm" data-z="fit">🎯 ملاءمة</button>' + (canEdit ? '<button class="btn ghost sm" data-z="auto" title="إلغاء التحريك اليدوي">🧹 ترتيب تلقائي</button>' : '') + '</div>' +
+          '<div class="mmhelp">🖱️ اسحب الخلفية للتحريك · العجلة للتكبير · اسحب أي عنصر لتغيير مكانه · أفلت السؤال على تصنيف لنقله · 🔗 لربط سؤال بسؤال</div><div class="mmlink hidden" id="mml2"></div></div>';
+        cv = A.$('#mmc'); world = A.$('#mmw'); svg = A.$('#mml'); nodes = {};
+        A.$$('[data-z]', body).forEach(function (b) { b.onclick = function () { var z = b.getAttribute('data-z'); if (z === 'in') zoomAt(1.15); else if (z === 'out') zoomAt(1 / 1.15); else if (z === 'fit') fit(); else if (z === 'auto') { L = {}; saveLayout(); draw(); setTimeout(fit, 420); } }; });
+        bindCanvas();
+      }
+      function nodeHTML(key, b, k) {
+        if (key === 'root') { var a = S.site.settings.appearance, o = S.site.settings.org; return '<div class="lg">' + (a.company_logo ? '<img src="' + esc(a.company_logo) + '">' : '🤖') + '</div><b>' + esc(o.name || a.company_name || 'البوت') + '</b><small>' + data.kb.length + ' سؤال · ' + data.categories.length + ' تصنيف</small>'; }
+        if (key.indexOf('c:') === 0) return '<span class="ci">' + IC.svg(b.icon, b.color, 22) + '</span><div style="min-width:0;flex:1"><b>' + esc(b.name) + '</b><small>' + b.items.length + (b.unanswered ? ' سؤال ينتظر' : ' سؤال') + (open[b.id] === false ? ' · مطوي ▸' : '') + (b.sub ? ' · ' + b.sub : '') + '</small></div>' +
+          '<span class="acts">' + (!b.unanswered ? '<button data-act="addq" title="إضافة سؤال">＋</button>' : '') + (b.cat && canEdit ? '<button data-act="editc" title="تعديل">✏️</button><button data-act="delc" title="حذف">🗑</button>' : '') + '</span>';
+        if (key.indexOf('u:') === 0) return '<span>❓ ' + esc(k.question) + '</span><span class="hits">' + k.count + '×</span>';
+        if (key.indexOf('m:') === 0) return '<span>عرض الكل (' + b.items.length + ') ▾</span>';
+        var rel = (k.related || []).length;
+        return '<span title="' + esc(k.answer) + '">' + (k.source === 'learned' ? '🧠 ' : '') + esc(k.question) + '</span>' + (rel ? '<span class="rel" title="أسئلة مرتبطة">🔗' + rel + '</span>' : '') + '<span class="hits" title="مرات الاستخدام">' + (k.hits || 0) + '</span>' + (canEdit || true ? '<button class="lk" data-act="link" title="ربط بسؤال آخر">🔗</button>' : '');
+      }
       function draw() {
         if (view === 'list') { body.innerHTML = ''; A.pages.kb.render.call({}, body, []); return; }
-        var o = S.site.settings.org, a = S.site.settings.appearance;
-        var match = function (k) { return !q || (k.question + ' ' + k.answer + ' ' + (k.keywords || '')).toLowerCase().indexOf(q) >= 0; };
-        var branches = data.categories.map(function (c) { return { id: c.id, cat: c, name: c.name, icon: c.icon, color: c.color || a.primary_color, items: data.kb.filter(function (k) { return k.category_id === c.id && match(k); }) }; });
-        var loose = data.kb.filter(function (k) { return (!k.category_id || !data.categories.some(function (c) { return c.id === k.category_id; })) && match(k); });
-        if (loose.length || !branches.length) branches.push({ id: 0, name: 'أسئلة بدون تصنيف', icon: 'list', color: '#64748b', items: loose, sub: 'منها ما تعلّمه البوت من الموظفين 🧠' });
-        var un = data.unanswered.filter(function (u) { return !q || u.question.toLowerCase().indexOf(q) >= 0; });
-        if (un.length) branches.push({ id: 'un', name: 'بحاجة لإجابة', icon: 'question', color: '#ea580c', items: un, unanswered: true, sub: 'سُئل عنها البوت ولم يعرفها' });
-        body.innerHTML = '<div class="mm-wrap"><div class="mm" id="mm" style="transform:scale(' + zoom + ');transform-origin:top right"><svg class="mml" id="mml"></svg>' +
-          '<div class="mm-root" id="mmr"><div class="lg">' + (a.company_logo ? '<img src="' + esc(a.company_logo) + '">' : '🤖') + '</div><b>' + esc(o.name || a.company_name || 'البوت') + '</b><small>' + data.kb.length + ' سؤال · ' + data.categories.length + ' تصنيف</small></div>' +
-          '<div class="mm-cats">' + branches.map(function (b) {
-            var shown = open[b.id] === 'all' ? b.items : b.items.slice(0, 8), collapsed = open[b.id] === false;
-            return '<div class="mm-branch" data-b="' + b.id + '"><div class="mm-cat" style="--cc:' + b.color + '" data-cat="' + b.id + '"><span class="ci">' + IC.svg(b.icon, b.color, 22) + '</span><div style="min-width:0"><b>' + esc(b.name) + '</b><small>' + b.items.length + (b.unanswered ? ' سؤال ينتظر' : ' سؤال') + (b.sub ? ' · ' + b.sub : '') + '</small></div>' +
-              '<span class="acts">' + (!b.unanswered ? '<button data-addq="' + b.id + '" title="إضافة سؤال">＋</button>' : '') + (b.cat && A.can('supervisor') ? '<button data-ec="' + b.id + '" title="تعديل">✏️</button><button data-dc="' + b.id + '" title="حذف">🗑</button>' : '') + '</span></div>' +
-              '<div class="mm-qs">' + (collapsed ? '' : shown.map(function (k) {
-                if (b.unanswered) return '<div class="mm-q new" style="--cc:' + b.color + '" data-un="' + k.id + '"><span title="' + esc(k.question) + '">❓ ' + esc(k.question) + '</span><span class="hits">' + k.count + '×</span></div>';
-                return '<div class="mm-q' + (k.active ? '' : ' off') + '" draggable="true" style="--cc:' + b.color + '" data-q="' + k.id + '"><span title="' + esc(k.answer) + '">' + (k.source === 'learned' ? '🧠 ' : '') + esc(k.question) + '</span><span class="hits" title="مرات الاستخدام">' + (k.hits || 0) + '</span></div>';
-              }).join('') + (b.items.length > 8 && open[b.id] !== 'all' ? '<button class="mm-add" data-more="' + b.id + '">عرض الكل (' + b.items.length + ')</button>' : '') +
-                (!b.unanswered ? '<button class="mm-add" data-addq="' + b.id + '">＋ سؤال في «' + esc(b.name) + '»</button>' : '')) + '</div></div>';
-          }).join('') + '</div></div></div>';
-        A.$$('[data-addq]', body).forEach(function (x) { x.onclick = function (e) { e.stopPropagation(); A.editKB({ category_id: Number(x.getAttribute('data-addq')) || '' }, load); }; });
-        A.$$('[data-ec]', body).forEach(function (x) { x.onclick = function (e) { e.stopPropagation(); editCat(data.categories.find(function (c) { return c.id === Number(x.getAttribute('data-ec')); }), load); }; });
-        A.$$('[data-dc]', body).forEach(function (x) { x.onclick = function (e) { e.stopPropagation(); A.confirm('حذف التصنيف؟ أسئلته ستنتقل إلى «بدون تصنيف» ولن تُحذف.', true).then(function (ok) { if (ok) A.api('DELETE', '/api/kb-categories/' + x.getAttribute('data-dc')).then(load, A.fail); }); }; });
-        A.$$('[data-more]', body).forEach(function (x) { x.onclick = function () { open[x.getAttribute('data-more')] = 'all'; draw(); }; });
-        A.$$('.mm-cat', body).forEach(function (x) { x.onclick = function () { var id = x.getAttribute('data-cat'); open[id] = open[id] === false ? true : false; draw(); }; });
-        A.$$('[data-q]', body).forEach(function (x) {
-          x.onclick = function () { A.editKB(data.kb.find(function (k) { return k.id === Number(x.getAttribute('data-q')); }), load); };
-          x.ondragstart = function (e) { e.dataTransfer.setData('text/plain', x.getAttribute('data-q')); };
+        if (!cv || !document.body.contains(cv)) shell();
+        var bs = branches(), pos = layout(bs), seen = {};
+        var put = function (key, cls, html, style) {
+          seen[key] = 1; var el = nodes[key];
+          var fresh = !el;
+          if (!el) { el = document.createElement('div'); el.setAttribute('data-key', key); nodes[key] = el; world.appendChild(el); }
+          el.className = 'mmn ' + cls + (linkSrc && key === 'q:' + linkSrc ? ' linksrc' : '') + (fresh ? ' appear' : ''); el.setAttribute('style', style + ';left:' + pos[key].x + 'px;top:' + pos[key].y + 'px');
+          if (el._html !== html) { el.innerHTML = html; el._html = html; }
+        };
+        put('root', 'mm-root', nodeHTML('root'), '');
+        bs.forEach(function (b) {
+          put(b.key, 'mm-cat', nodeHTML(b.key, b), '--cc:' + b.color);
+          b.shown.forEach(function (k) { var key = (b.unanswered ? 'u:' : 'q:') + k.id; put(key, 'mm-q' + (b.unanswered ? ' new' : '') + (k.active === 0 ? ' off' : ''), nodeHTML(key, b, k), '--cc:' + b.color); nodes[key]._b = b; nodes[key]._k = k; });
+          if (pos['m:' + b.id]) put('m:' + b.id, 'mm-q more', nodeHTML('m:' + b.id, b), '--cc:' + b.color);
+          nodes[b.key]._b = b;
         });
-        A.$$('[data-un]', body).forEach(function (x) { x.onclick = function () { var u = data.unanswered.find(function (z) { return z.id === Number(x.getAttribute('data-un')); }); A.editKB({ question: u.question, lang: u.lang === 'ar' ? 'all' : u.lang }, function () { load(); A.refreshCounts(); }, { unanswered_id: u.id }); }; });
-        A.$$('.mm-cat', body).forEach(function (c) {
-          var id = c.getAttribute('data-cat'); if (id === 'un') return;
-          c.ondragover = function (e) { e.preventDefault(); c.classList.add('drop'); };
-          c.ondragleave = function () { c.classList.remove('drop'); };
-          c.ondrop = function (e) { e.preventDefault(); c.classList.remove('drop'); var kid = e.dataTransfer.getData('text/plain'); if (kid) A.api('PUT', '/api/kb/' + kid, { category_id: Number(id) || null }).then(load, A.fail); };
-        });
-        links();
+        Object.keys(nodes).forEach(function (k) { if (!seen[k]) { nodes[k].remove(); delete nodes[k]; } });
+        animateLines();
+        if (!fitted) { fitted = true; requestAnimationFrame(fit); }
       }
-      function links() {
-        var mm = A.$('#mm', body), svg = A.$('#mml', body); if (!mm) return;
-        var R = mm.getBoundingClientRect(), z = zoom, pt = function (el, side) { var r = el.getBoundingClientRect(); return { x: ((side === 'r' ? r.right : r.left) - R.left) / z, y: (r.top + r.height / 2 - R.top) / z }; };
-        svg.setAttribute('width', mm.scrollWidth); svg.setAttribute('height', mm.scrollHeight);
-        var root = A.$('#mmr', body), out = '', a = pt(root, 'l');
-        A.$$('.mm-branch', body).forEach(function (br) {
-          var cat = br.querySelector('.mm-cat'), col = getComputedStyle(cat).getPropertyValue('--cc'), b = pt(cat, 'r'), dx = Math.max(30, (a.x - b.x) / 2);
-          out += '<path d="M' + a.x + ' ' + a.y + ' C' + (a.x - dx) + ' ' + a.y + ' ' + (b.x + dx) + ' ' + b.y + ' ' + b.x + ' ' + b.y + '" stroke="' + col + '"/>';
-          var c0 = pt(cat, 'l');
-          A.$$('.mm-q', br).forEach(function (qq) { var e = pt(qq, 'r'), d2 = Math.max(16, (c0.x - e.x) / 2); out += '<path d="M' + c0.x + ' ' + c0.y + ' C' + (c0.x - d2) + ' ' + c0.y + ' ' + (e.x + d2) + ' ' + e.y + ' ' + e.x + ' ' + e.y + '" stroke="' + col + '" stroke-width="1.6"/>'; });
+
+      /* ---------- connectors (follow nodes while they move) ---------- */
+      function box(key) { var el = nodes[key]; if (!el) return null; return { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight }; }
+      function lines() {
+        if (!svg) return; var out = '', r = box('root');
+        Object.keys(nodes).forEach(function (key) {
+          var el = nodes[key];
+          if (key.indexOf('c:') === 0 && r) { var c = box(key); out += curve(r.x, r.y + r.h / 2, c.x + c.w, c.y + c.h / 2, el._b.color, 2.6, ''); }
+          if (/^(q|u|m):/.test(key) && el._b) { var p = box(el._b.key), qb = box(key); if (p) out += curve(p.x, p.y + p.h / 2, qb.x + qb.w, qb.y + qb.h / 2, el._b.color, 1.7, ''); }
         });
-        svg.innerHTML = out;
+        (data.kb || []).forEach(function (k) {
+          (k.related || []).forEach(function (rid) {
+            var a = box('q:' + k.id), b = box('q:' + rid); if (!a || !b) return;
+            var x1 = a.x, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2, bend = Math.min(90, 30 + Math.abs(y2 - y1) / 4);
+            out += '<path d="M' + x1 + ' ' + y1 + ' C' + (x1 - bend) + ' ' + y1 + ' ' + (x2 - bend) + ' ' + y2 + ' ' + x2 + ' ' + y2 + '" stroke="#7c3aed" stroke-width="1.8" stroke-dasharray="5 5" marker-end="url(#ar)" opacity=".8"/>';
+          });
+        });
+        svg.innerHTML = '<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#7c3aed"/></marker></defs>' + out;
       }
-      A.$$('#mv button').forEach(function (b) { b.onclick = function () { view = b.getAttribute('data-v'); A.$$('#mv button').forEach(function (x) { x.classList.toggle('on', x === b); }); draw(); }; });
-      A.$('#mq').oninput = A.debounce(function () { q = this.value.trim().toLowerCase(); if (view === 'map') draw(); }, 250);
+      function curve(x1, y1, x2, y2, col, w) { var dx = Math.max(30, Math.abs(x1 - x2) / 2); return '<path d="M' + x1 + ' ' + y1 + ' C' + (x1 - dx) + ' ' + y1 + ' ' + (x2 + dx) + ' ' + y2 + ' ' + x2 + ' ' + y2 + '" stroke="' + col + '" stroke-width="' + w + '"/>'; }
+      function animateLines() { var t0 = performance.now(); cancelAnimationFrame(anim); (function step(t) { lines(); if (t - t0 < 480) anim = requestAnimationFrame(step); })(t0); }
+
+      /* ---------- view: pan / zoom / fit ---------- */
+      function applyView() { world.style.transform = 'translate(' + V.x + 'px,' + V.y + 'px) scale(' + V.k + ')'; }
+      function zoomAt(f, cx, cy) { var r = cv.getBoundingClientRect(); cx = cx == null ? r.width / 2 : cx; cy = cy == null ? r.height / 2 : cy; var k = Math.min(2, Math.max(0.25, V.k * f)); V.x = cx - (cx - V.x) * k / V.k; V.y = cy - (cy - V.y) * k / V.k; V.k = k; applyView(); }
+      function fit() {
+        if (!cv) return; var minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+        Object.keys(nodes).forEach(function (k) { var b = box(k); minX = Math.min(minX, b.x); minY = Math.min(minY, b.y); maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h); });
+        if (minX > maxX) return; if ((data.kb || []).some(function (k) { return (k.related || []).length; })) minX -= 95; var r = cv.getBoundingClientRect(), pad = 40;
+        V.k = Math.min(1.1, Math.max(0.3, Math.min((r.width - pad * 2) / (maxX - minX), (r.height - pad * 2 - 30) / (maxY - minY))));
+        V.x = (r.width - (maxX - minX) * V.k) / 2 - minX * V.k; V.y = pad + 10 - minY * V.k; applyView();
+      }
+      var saveLayout = A.debounce(function () { if (canEdit) A.api('PUT', '/api/mindmap/layout', { site: S.site.id, layout: L }).catch(function () { }); }, 600);
+
+      function bindCanvas() {
+        cv.addEventListener('wheel', function (e) { e.preventDefault(); var r = cv.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.1 : 1 / 1.1, e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+        cv.addEventListener('pointerdown', function (e) {
+          if (e.button !== 0 || e.target.closest('.mmz') || e.target.closest('button')) return;
+          var nodeEl = e.target.closest('.mmn'), sx = e.clientX, sy = e.clientY, moved = false;
+          cv.setPointerCapture(e.pointerId);
+          if (!nodeEl) { // pan
+            var ox = V.x, oy = V.y; cv.classList.add('panning');
+            var mv = function (ev) { V.x = ox + ev.clientX - sx; V.y = oy + ev.clientY - sy; applyView(); };
+            var up = function () { cv.classList.remove('panning'); cv.removeEventListener('pointermove', mv); cv.removeEventListener('pointerup', up); };
+            cv.addEventListener('pointermove', mv); cv.addEventListener('pointerup', up); return;
+          }
+          var key = nodeEl.getAttribute('data-key'), group = [key];
+          if (key.indexOf('c:') === 0) Object.keys(nodes).forEach(function (k) { if (nodes[k]._b && nodes[k]._b.key === key && k !== key) group.push(k); }); // a category drags its questions along
+          var start = group.map(function (k) { return { k: k, x: nodes[k].offsetLeft, y: nodes[k].offsetTop }; });
+          var drop = null;
+          var mv = function (ev) {
+            var dx = (ev.clientX - sx) / V.k, dy = (ev.clientY - sy) / V.k;
+            if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+            if (!moved) { moved = true; group.forEach(function (k) { nodes[k].classList.add('dragging'); }); }
+            start.forEach(function (s0) { nodes[s0.k].style.left = (s0.x + dx) + 'px'; nodes[s0.k].style.top = (s0.y + dy) + 'px'; });
+            lines();
+            if (key.indexOf('q:') === 0) {
+              nodeEl.style.pointerEvents = 'none'; var under = document.elementFromPoint(ev.clientX, ev.clientY); nodeEl.style.pointerEvents = '';
+              var c = under && under.closest('.mm-cat'); if (drop && drop !== c) drop.classList.remove('drop');
+              drop = c && c.getAttribute('data-key') !== nodeEl._b.key && c.getAttribute('data-key') !== 'c:un' ? c : null; if (drop) drop.classList.add('drop');
+            }
+          };
+          var up = function () {
+            cv.removeEventListener('pointermove', mv); cv.removeEventListener('pointerup', up);
+            group.forEach(function (k) { nodes[k] && nodes[k].classList.remove('dragging'); });
+            if (!moved) return click(nodeEl, key);
+            if (drop) { drop.classList.remove('drop'); var cid = drop.getAttribute('data-key').slice(2); delete L[key]; saveLayout(); A.api('PUT', '/api/kb/' + key.slice(2), { category_id: Number(cid) || null }).then(load, A.fail); return; }
+            if (!canEdit) return draw();
+            group.forEach(function (k) { L[k] = { x: nodes[k].offsetLeft, y: nodes[k].offsetTop }; }); saveLayout();
+          };
+          cv.addEventListener('pointermove', mv); cv.addEventListener('pointerup', up);
+        });
+        cv.addEventListener('click', function (e) {
+          var b = e.target.closest('button[data-act]'); if (!b) return;
+          e.stopPropagation(); var el = b.closest('.mmn'), key = el.getAttribute('data-key'), act = b.getAttribute('data-act'), br = el._b;
+          if (act === 'addq') A.editKB({ category_id: Number(br.id) || '' }, load);
+          if (act === 'editc') editCat(br.cat, load);
+          if (act === 'delc') A.confirm('حذف التصنيف؟ أسئلته ستنتقل إلى «بدون تصنيف» ولن تُحذف.', true).then(function (ok) { if (ok) A.api('DELETE', '/api/kb-categories/' + br.id).then(load, A.fail); });
+          if (act === 'link') startLink(Number(key.slice(2)));
+        });
+      }
+      function click(el, key) {
+        if (linkSrc && key.indexOf('q:') === 0) return finishLink(Number(key.slice(2)));
+        if (key.indexOf('c:') === 0) { var id = el._b.id; open[id] = open[id] === false ? true : false; return draw(); }
+        if (key.indexOf('m:') === 0) { open[key.slice(2)] = 'all'; return draw(); }
+        if (key.indexOf('u:') === 0) { var u = el._k; return A.editKB({ question: u.question, lang: u.lang === 'ar' ? 'all' : u.lang }, function () { load(); A.refreshCounts(); }, { unanswered_id: u.id }); }
+        if (key.indexOf('q:') === 0) return A.editKB(el._k, load);
+      }
+      function linkBar(txt) { var b = A.$('#mml2'); if (!b) return; b.classList.toggle('hidden', !txt); b.innerHTML = txt ? txt + ' <button class="btn sm ghost" id="mmlx">إلغاء</button>' : ''; if (txt) A.$('#mmlx').onclick = function () { linkSrc = null; linkBar(''); draw(); }; }
+      function startLink(id) { linkSrc = id; var k = data.kb.find(function (x) { return x.id === id; }); linkBar('🔗 اختر السؤال الذي تريد ربطه بـ «' + esc(k.question) + '» — اضغط عليه'); draw(); }
+      function finishLink(target) {
+        var src = data.kb.find(function (x) { return x.id === linkSrc; }); linkSrc = null; linkBar('');
+        if (!src || target === src.id) return draw();
+        var rel = (src.related || []).slice(), i = rel.indexOf(target);
+        if (i >= 0) rel.splice(i, 1); else { if (rel.length >= 8) return A.toast('8 أسئلة مرتبطة كحد أقصى', 'err'); rel.push(target); }
+        A.api('PUT', '/api/kb/' + src.id, { related: rel }).then(function () { A.toast(i >= 0 ? 'تم إلغاء الربط' : '🔗 تم الربط — سيظهر كزر بعد الإجابة', 'ok'); load(); }, A.fail);
+      }
+
+      A.$$('#mv button').forEach(function (b) { b.onclick = function () { view = b.getAttribute('data-v'); A.$$('#mv button').forEach(function (x) { x.classList.toggle('on', x === b); }); cv = null; fitted = false; draw(); }; });
+      A.$('#mq').oninput = A.debounce(function () { q = this.value.trim().toLowerCase(); if (view === 'map') { draw(); setTimeout(fit, 450); } }, 250);
       A.$('#mt').onclick = testBot;
       if (A.$('#mc')) A.$('#mc').onclick = function () { editCat(null, load); };
       A.$('#mn').onclick = function () { A.editKB(null, load); };
-      A.$('#zi').onclick = function () { zoom = Math.min(1.4, zoom + 0.1); draw(); };
-      A.$('#zo').onclick = function () { zoom = Math.max(0.5, zoom - 0.1); draw(); };
-      var onL = function () { load(); };
-      A.on('learned', onL); window.addEventListener('resize', links);
+      var onL = function () { load(); }, onKey = function (e) { if (e.key === 'Escape' && linkSrc) { linkSrc = null; linkBar(''); draw(); } }, onResize = A.debounce(function () { if (view === 'map') fit(); }, 200);
+      A.on('learned', onL); window.addEventListener('resize', onResize); document.addEventListener('keydown', onKey);
       load();
-      return function () { A.off('learned', onL); window.removeEventListener('resize', links); };
+      return function () { A.off('learned', onL); window.removeEventListener('resize', onResize); document.removeEventListener('keydown', onKey); };
     }
   });
 

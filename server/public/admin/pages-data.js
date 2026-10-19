@@ -295,14 +295,28 @@
         '<div class="grid g3">' + A.f.select('category_id', 'التصنيف في الخريطة الذهنية', [['', '— بدون تصنيف —']].concat((A.state.kbCats || []).map(function (c) { return [String(c.id), c.name]; }))) +
         A.f.text('keywords', 'كلمات مفتاحية', { opt: true, hint: 'مفصولة بفواصل — تساعد البوت على فهم الصيغ المختلفة', ph: 'تسجيل, اشتراك, انضمام' }) +
         A.f.select('lang', 'اللغة', [['all', 'كل اللغات'], ['ar', 'العربية'], ['en', 'English'], ['ur', 'اردو']]) + '</div>' +
-        '<div class="field"><label class="f">مرفقات تُرسل مع الإجابة <small>(صورة، فيديو، PDF، يوتيوب)</small></label><div id="kbm"></div></div>' + (k.id ? A.f.swi('active', 'مفعّل') : ''),
+        '<div class="field"><label class="f">مرفقات تُرسل مع الإجابة <small>(صورة، فيديو، PDF، يوتيوب)</small></label><div id="kbm"></div></div>' +
+        '<div class="field"><label class="f">🔗 أسئلة مرتبطة <small>(تظهر للمستفيد كأزرار بعد هذه الإجابة ليكمل منها)</small></label><div class="chips" id="kbrel" style="margin-bottom:6px"></div><input class="in" id="kbrq" placeholder="ابحث عن سؤال لربطه…"><div id="kbrs" class="col" style="gap:4px;margin-top:6px;max-height:170px;overflow:auto"></div></div>' + (k.id ? A.f.swi('active', 'مفعّل') : ''),
       buttons: [{ label: 'إلغاء', ghost: true }, { label: 'حفظ', onClick: function () {
-        var body = { question: k.question, answer: k.answer, keywords: k.keywords, lang: k.lang, media: media, active: k.active, category_id: k.category_id ? Number(k.category_id) : null };
+        var body = { question: k.question, answer: k.answer, keywords: k.keywords, lang: k.lang, media: media, active: k.active, category_id: k.category_id ? Number(k.category_id) : null, related: rel };
         return (k.id ? A.api('PUT', '/api/kb/' + k.id, body) : A.api('POST', '/api/kb', Object.assign({ site_id: S.site.id }, body, extra || {}))).then(function () { A.toast('تم الحفظ', 'ok'); onDone && onDone(); });
       } }]
     });
     A.bind(m.body, k);
     A.mediaEditor(m.body.querySelector('#kbm'), media);
+    var rel = (function () { var r = k.related; if (typeof r === 'string') { try { r = JSON.parse(r); } catch (e) { r = []; } } return Array.isArray(r) ? r.map(Number) : []; })(), all = (A.state.kbAll || []).filter(function (x) { return x.id !== k.id; });
+    var drawRel = function () {
+      m.body.querySelector('#kbrel').innerHTML = rel.map(function (id) { var x = all.find(function (z) { return z.id === id; }); return x ? '<span class="chip">🔗 ' + A.esc(x.question) + '<button type="button" data-r="' + id + '">✕</button></span>' : ''; }).join('') || '<span class="tiny muted">لا يوجد</span>';
+      A.$$('[data-r]', m.body).forEach(function (b) { b.onclick = function () { rel = rel.filter(function (x) { return x !== Number(b.getAttribute('data-r')); }); drawRel(); search(); }; });
+    };
+    var search = function () {
+      var q = (m.body.querySelector('#kbrq').value || '').trim().toLowerCase();
+      var list = all.filter(function (x) { return rel.indexOf(x.id) < 0 && (!q || x.question.toLowerCase().indexOf(q) >= 0); }).slice(0, q ? 12 : 5);
+      m.body.querySelector('#kbrs').innerHTML = list.map(function (x) { return '<button type="button" class="btn sm ghost" style="justify-content:flex-start" data-a="' + x.id + '">＋ ' + A.esc(x.question) + '</button>'; }).join('');
+      A.$$('[data-a]', m.body).forEach(function (b) { b.onclick = function () { if (rel.length >= 8) return A.toast('8 أسئلة كحد أقصى', 'err'); rel.push(Number(b.getAttribute('data-a'))); drawRel(); search(); }; });
+    };
+    m.body.querySelector('#kbrq').oninput = search;
+    drawRel(); search();
   };
 
   A.page('kb', {

@@ -96,6 +96,7 @@ addColumn('conversations', 'lang', "TEXT DEFAULT 'ar'");
 addColumn('conversations', 'first_response_at', 'TEXT');
 addColumn('conversations', 'tags', "TEXT DEFAULT ''");
 addColumn('kb', 'category_id', 'INTEGER');
+addColumn('kb', 'related', "TEXT DEFAULT '[]'");
 addColumn('users', 'pwd_changed_at', 'INTEGER DEFAULT 0');
 
 const now = () => new Date().toISOString();
