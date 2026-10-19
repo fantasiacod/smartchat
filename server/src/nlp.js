@@ -1,6 +1,7 @@
 // Lightweight Arabic/English text matching for the knowledge base.
 const STOP = new Set(('في من على عن الى إلى ما ماذا هل هو هي انا أنا انت أنت كيف كم متى لماذا وش ايش شو اللي الذي التي هذا هذه ذلك او أو ثم لو يا لا مع عند كان يكون ممكن ابي ابغى ابغا اريد أريد ودي '
-  + 'the a an is are was do does how what when where why can i you to of in on for my me please').split(/\s+/).map(normalize));
+  + 'the a an is are was do does how what when where why can i you to of in on for my me please ' +
+  'کیا ہے ہیں کی کا کے میں سے کو اور آپ مجھے').split(/\s+/).map(normalize));
 
 function toLatinDigits(s) {
   return String(s || '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
@@ -45,20 +46,37 @@ function containsPhrase(text, phrase) {
   return p && t.includes(' ' + p + ' ') || (p.length > 3 && t.includes(p));
 }
 
+function scoreItem(text, it) {
+  let score = similarity(text, it.question);
+  if (normalize(text) === normalize(it.question)) score = 1;
+  const kws = String(it.keywords || '').split(/[,،]/).map(s => s.trim()).filter(Boolean);
+  if (kws.length) {
+    const hit = kws.filter(k => containsPhrase(text, k)).length;
+    if (hit) score = Math.max(score, Math.min(0.95, 0.55 + 0.2 * hit));
+  }
+  return score;
+}
+
+// Top n candidates above a minimum score (used for "did you mean" suggestions).
+function topMatches(text, items, n = 3, min = 0.35) {
+  return items.map(it => ({ item: it, score: scoreItem(text, it) })).filter(x => x.score >= min)
+    .sort((a, b) => b.score - a.score).slice(0, n);
+}
+
+// "1", "١", "1️⃣", "رقم 2", "#3" -> 1-based index, or null.
+function parseChoice(text) {
+  const t = toLatinDigits(String(text || '')).replace(/\uFE0F|\u20E3/g, '').replace(/^(رقم|خيار|option|no\.?|#)\s*/i, '').trim();
+  return /^\d{1,2}$/.test(t) ? Number(t) : null;
+}
+
 // Returns {item, score} of the best KB entry or null.
 function bestMatch(text, items, threshold = 0.6) {
   let best = null;
   for (const it of items) {
-    let score = similarity(text, it.question);
-    if (normalize(text) === normalize(it.question)) score = 1;
-    const kws = String(it.keywords || '').split(/[,،]/).map(s => s.trim()).filter(Boolean);
-    if (kws.length) {
-      const hit = kws.filter(k => containsPhrase(text, k)).length;
-      if (hit) score = Math.max(score, Math.min(0.95, 0.55 + 0.2 * hit));
-    }
+    const score = scoreItem(text, it);
     if (!best || score > best.score) best = { item: it, score };
   }
   return best && best.score >= threshold ? best : null;
 }
 
-module.exports = { normalize, tokens, similarity, bestMatch, containsPhrase, toLatinDigits };
+module.exports = { normalize, tokens, similarity, bestMatch, topMatches, parseChoice, containsPhrase, toLatinDigits };

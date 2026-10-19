@@ -9,23 +9,25 @@ header{background:#fff;border-bottom:1px solid #e2e8f0;padding:16px 24px;display
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:24px}
 .cards div{background:#fff;border:1px solid #e2e8f0;border-radius:12px;height:110px}
 a.btn{display:inline-block;background:#0f172a;color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none;margin-top:12px}
+body.embed header,body.embed .hero{display:none}body.embed{background:#e9ece6}
 </style></head>
 <body>
-<header><b>🛍️ متجر تجريبي</b><span style="color:#64748b">هذه صفحة لتجربة المساعد</span></header>
-<div class="hero"><h1>مرحباً بك في المتجر</h1>
-<p>هذه صفحة تجريبية تحاكي موقعك. اضغط على زر المحادثة بالأسفل لتجربة المساعد الذكي: الأسئلة الشائعة، الاستعلام عن حالة الطلب، والتحويل لموظف.</p>
+<header><b>🌐 صفحة تجريبية</b><span style="color:#64748b">هذه صفحة لتجربة المساعد</span></header>
+<div class="hero"><h1>مرحباً بك</h1>
+<p>هذه صفحة تجريبية تحاكي موقعك. اضغط على زر المحادثة بالأسفل لتجربة المساعد الذكي: القائمة المرقّمة، الموقع على الخريطة، نبذة الجهة، تقديم شكوى أو اقتراح، والتحويل لموظف.</p>
 <p style="font-size:14px">بيانات تجريبية: رقم الطلب <b>1001</b> مع الجوال <b>0500000001</b></p>
 <a href="#" class="btn" onclick="SmartChat.open();return false">تواصل معنا</a>
 <div class="cards"><div></div><div></div><div></div></div></div>
 <script>
   var p = new URLSearchParams(location.search), s = document.createElement('script');
+  if (window.top !== window.self) document.body.classList.add('embed');
   s.src = '/widget.js'; s.async = true; s.setAttribute('data-site', p.get('site') || '');
   if (window.top !== window.self) s.setAttribute('data-preview', '');
   document.body.appendChild(s);
-  // live preview from the dashboard (same origin only)
+  // live preview from the dashboard (same origin only) — receives a full widget config
   window.addEventListener('message', function (e) {
-    if (e.origin !== location.origin || !e.data || e.data.type !== 'sc-preview') return;
-    if (window.__smartChatReinit) window.__smartChatReinit({ appearance: e.data.appearance, prechat: e.data.prechat });
+    if (e.origin !== location.origin || !e.data || e.data.type !== 'sc-preview' || !e.data.config) return;
+    if (window.__smartChatReinit) window.__smartChatReinit(e.data.config);
   });
 </script>
 </body></html>

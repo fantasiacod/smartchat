@@ -3,15 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>لوحة تحكم المحادثات</title>
+<title>لوحة تحكم المساعد الذكي</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Aref+Ruqaa:wght@400;700&family=Cairo:wght@400;500;600;700&family=El+Messiri:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Reem+Kufi:wght@400;500;600;700&family=Tajawal:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link id="dash-font" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="app"></div>
 <div class="toast-box" id="toasts"></div>
+<script src="/patterns.js"></script>
 <script src="/socket.io/socket.io.min.js"></script>
-<script src="app.js"></script>
+<script src="core.js"></script>
+<script src="pages-live.js"></script>
+<script src="pages-data.js"></script>
+<script src="pages-tree.js"></script>
+<script src="pages-settings.js"></script>
+<script src="pages-account.js"></script>
+<script>App.boot();</script>
 </body>
 </html>

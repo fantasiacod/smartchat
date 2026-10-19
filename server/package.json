@@ -3,17 +3,28 @@
   "version": "1.0.0",
   "description": "Embeddable chat agent: decision tree, learning knowledge base, DB lookups, human handoff, ratings, admin dashboard",
   "main": "src/server.js",
-  "scripts": { "start": "node src/start.js", "test": "node test/flow.test.js" },
-  "engines": { "node": "22.x" },
+  "scripts": {
+    "start": "node src/start.js",
+    "test": "node test/flow.test.js"
+  },
+  "engines": {
+    "node": "22.x"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.7.0",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
+    "jszip": "^3.10.2",
     "mysql2": "^3.11.5",
+    "nodemailer": "^6.10.1",
     "pg": "^8.13.1",
     "socket.io": "^4.8.1"
   },
-  "devDependencies": { "socket.io-client": "^4.8.1" }
+  "devDependencies": {
+    "smtp-server": "^3.20.2",
+    "socket.io-client": "^4.8.1"
+  }
 }

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Smart Chat Agent
  * Description: يضيف المساعد الذكي وخدمة العملاء المباشرة إلى موقعك، مع توثيق هوية العملاء المسجلين تلقائياً.
- * Version: 1.0.0
+ * Version: 2.0.0
  * Author: Smart Chat
  * Text Domain: smart-chat-agent
  * Requires at least: 5.6
@@ -10,6 +10,11 @@
  */
 
 if (!defined('ABSPATH')) exit;
+
+// Filled automatically when the plugin is downloaded from the dashboard ("Install" page).
+define('SMART_CHAT_DEFAULT_SERVER', '__SC_SERVER__');
+define('SMART_CHAT_DEFAULT_KEY', '__SC_KEY__');
+define('SMART_CHAT_DEFAULT_SECRET', '__SC_SECRET__');
 
 class Smart_Chat_Agent {
     const OPT = 'smart_chat_agent';
@@ -26,9 +31,14 @@ class Smart_Chat_Agent {
     }
 
     private function opts() {
-        return wp_parse_args(get_option(self::OPT, []), [
+        $def = function ($v) { return strpos($v, '__SC_') === 0 ? '' : $v; };
+        $o = wp_parse_args(get_option(self::OPT, []), [
             'server' => '', 'site_key' => '', 'secret' => '', 'enabled' => 1, 'identify' => 1, 'exclude' => '',
         ]);
+        if (!$o['server']) $o['server'] = $def(SMART_CHAT_DEFAULT_SERVER);
+        if (!$o['site_key']) $o['site_key'] = $def(SMART_CHAT_DEFAULT_KEY);
+        if (!$o['secret']) $o['secret'] = $def(SMART_CHAT_DEFAULT_SECRET);
+        return $o;
     }
 
     public function menu() {
@@ -52,7 +62,7 @@ class Smart_Chat_Agent {
         $o = $this->opts(); ?>
         <div class="wrap" dir="rtl">
             <h1>💬 Smart Chat Agent</h1>
-            <p>أدخل بيانات الربط من لوحة تحكم المساعد (صفحة <b>التركيب على المواقع</b>).</p>
+            <p><?php echo ($o['server'] && $o['site_key']) ? '✅ الإضافة مربوطة وجاهزة. لا تحتاج تعديل أي شيء هنا.' : 'أدخل بيانات الربط من لوحة تحكم المساعد (صفحة التركيب).'; ?></p>
             <form method="post" action="options.php">
                 <?php settings_fields('smart_chat_agent'); ?>
                 <table class="form-table">
