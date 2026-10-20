@@ -24,6 +24,8 @@ function defaultSettings() {
       bot_avatar: '', teaser_delay: 4,
       // decoration
       pattern: 'girih12', pattern_color: '', pattern_opacity: 0.07, pattern_scale: 1, pattern_header: true, pattern_chat: true,
+      pattern_logo: '', pattern_images: [], pattern_img_tint: false, // image patterns: small copies of the logo / admin's pictures
+      occasions: { auto: false, ramadan: true, eid: true, national: true, founding: true }, // switch the decoration automatically on occasions
       // legacy text fields (Arabic defaults, kept for compatibility — the per-language texts take priority)
       title: '', subtitle: '', bot_name: '', placeholder: '', teaser: '', start_label: '', end_label: '', new_chat_label: '',
       rating_max: 5, rating_title: '', rating_comment_placeholder: '', rating_thanks: ''
@@ -90,7 +92,7 @@ function defaultSettings() {
       lookups: []       // [{ id, title, keywords, connection: 'main'|<id>, query, template, not_found }]
     },
     // eligibility calculator programs: [{ id, title, keywords, intro, enabled, questions, calcs, rules, amount, messages, after }]
-    eligibility: { programs: [] },
+    eligibility: { hub: { label: '🧮 حساب آلية الاستحقاق', message: '', keywords: '', skip_single: false }, programs: [] },
     security: { allowed_domains: '', identity_secret: crypto.randomBytes(24).toString('hex') }
   };
 }

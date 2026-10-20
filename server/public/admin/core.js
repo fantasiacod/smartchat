@@ -422,7 +422,7 @@
   function shell() {
     var me = S.me, site = S.site, a = site ? site.settings.appearance : {}, org = site ? site.settings.org : {};
     App.$('#app').innerHTML =
-      '<div class="shell"><aside class="side"><div class="brand"><div class="logo">' + (a.company_logo ? '<img src="' + esc(a.company_logo) + '">' : '💬') + '</div><div style="min-width:0"><b>' + esc(org.name || a.company_name || 'المساعد الذكي') + '</b><small>لوحة تحكم المحادثات</small></div></div>' +
+      '<div class="shell"><aside class="side"><div class="brand"><div class="logo' + (/\.(png|webp|gif|svg)(\?|$)/i.test(a.company_logo || '') ? ' clear' : '') + '">' + (a.company_logo ? '<img src="' + esc(a.company_logo) + '">' : '💬') + '</div><div style="min-width:0"><b>' + esc(org.name || a.company_name || 'المساعد الذكي') + '</b><small>لوحة تحكم المحادثات</small></div></div>' +
       '<nav class="nav"></nav><div class="me" id="me-link">' + App.avatar(me, 'sm') + '<div class="grow" style="min-width:0"><b style="display:block;font-size:13.5px">' + esc(me.name) + '</b><small style="color:var(--side-muted)">' + esc(me.job_title || App.ROLE[me.role]) + '</small></div><span>⚙️</span></div></aside>' +
       '<main class="main"><div class="top"><button class="btn ghost icon burger" id="burger">☰</button><h1 id="ptitle"></h1><div class="grow"></div>' +
       (S.sites.length > 1 ? '<select class="in" id="site-sel" style="width:auto">' + S.sites.map(function (s) { return '<option value="' + s.id + '"' + (s.id === site.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select>' : '') +

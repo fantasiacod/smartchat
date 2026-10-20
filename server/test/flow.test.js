@@ -384,6 +384,28 @@ let pass = 0; const ok = (c, m) => { assert.ok(c, m); pass++; console.log('  ✔
   await vEl4.say('هل أنا مؤهل'); await vEl4.say('3000'); await vEl4.say('5'); await vEl4.say('2'); await vEl4.say('نعم', 300);
   ok(vEl4.last().body === 'عذراً، لا تنطبق عليك الشروط حالياً. السبب: تستلم مساعدة من جهة أخرى' && !vEl4.last().link, 'not eligible → the admin\'s own message, no link');
 
+  // ---------------- eligibility hub (one main-menu button → list of programs) + show / hide
+  const prog2 = { ...eProg, id: 'p2', title: 'المساعدات الموسمية', keywords: 'الموسمية' }; eProg.keywords = 'هل أنا مؤهل, الاستحقاق';
+  await api('PUT', '/api/sites/' + siteId, { settings: { eligibility: { hub: { label: '🧮 حساب آلية الاستحقاق', message: 'اختر نوع المساعدة:' }, programs: [{ ...eProg, visible: true }, prog2, { ...eProg, id: 'p3', title: 'مخفي', visible: false }] } } }, T);
+  const vHub = visitor(key, 'vHub'); await vHub.join(); await vHub.emit('start', {}); await wait(120);
+  await vHub.say('آلية الاستحقاق');
+  ok(vHub.last().body === 'اختر نوع المساعدة:' && vHub.last().options[0].label === 'المساعدة الشهرية' && vHub.last().options[1].label === 'المساعدات الموسمية' && !vHub.last().options.some(o => o.label === 'مخفي'), 'hub lists visible programs only');
+  await vHub.say('2', 200); ok(/كم دخل الأسرة/.test(vHub.last().body), 'choosing a program from the hub starts its questions');
+  const vHub2 = visitor(key, 'vHub2'); await vHub2.join(); await vHub2.emit('start', {}); await wait(120);
+  await vHub2.say('ابغى الاستحقاق للمساعدات الموسمية'); ok(/كم دخل الأسرة/.test(vHub2.last().body), 'naming a program opens it directly');
+  // decorations: occasions + picture patterns
+  const PT = require('../public/patterns');
+  ok(PT.occasionOf(new Date('2026-03-01T12:00:00Z')) === 'ramadan' && PT.occasionOf(new Date('2026-09-23T12:00:00Z')) === 'national' && PT.occasionOf(new Date('2026-10-21T12:00:00Z')) === null, 'occasion detection (Ramadan, National Day)');
+  const pngB = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  const pmedia = (await api('POST', '/api/media?type=image/png&name=l.png', null, T, pngB)).j;
+  await api('PUT', '/api/sites/' + siteId, { settings: { appearance: { pattern: 'images', pattern_images: [pmedia.url, pmedia.url] } } }, T);
+  const wcfg = (await api('GET', '/api/widget/config?site=' + key)).j;
+  const pu = /url\("[^"]*(\/pattern-img\/[^"]+)"\)/.exec(wcfg.appearance.pattern_css);
+  const svgR = pu && await fetch(URL + pu[1]); const svgT = svgR && await svgR.text();
+  ok(pu && svgR.status === 200 && /<image href="data:image\/png;base64,/.test(svgT) && !wcfg.appearance.pattern_images, 'own pictures as a decoration (served as one light tile)');
+  await api('PUT', '/api/sites/' + siteId, { settings: { appearance: { pattern: 'girih12', occasions: { auto: true } } } }, T);
+  ok(['girih12', 'ramadan', 'eid', 'national'].includes((await api('GET', '/api/widget/config?site=' + key)).j.appearance.pattern), 'automatic occasion decoration switch');
+
   // ---------------- webhooks (extensibility)
   const got = [];
   const hookSrv = http.createServer((req, res) => { let b = ''; req.on('data', c => b += c); req.on('end', () => { got.push({ ev: req.headers['x-smartchat-event'], sig: req.headers['x-smartchat-signature'], body: b }); res.end('ok'); }); });

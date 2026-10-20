@@ -116,6 +116,9 @@
     var lRad = shape === 'rounded' ? Math.round(size * 0.3) + 'px' : shape === 'square' ? '8px' : '999px';
     var launcherIcon = A.launcher_icon ? '<img src="' + esc(abs(A.launcher_icon)) + '" alt="">' : (ICONS[A.launcher_icon_preset] || ICONS.chat);
     var logo = A.company_logo ? abs(A.company_logo) : '';
+    // PNG / WEBP / GIF / SVG logos keep their transparency (no white box behind them); JPG gets a white card
+    var clearImg = function (u) { return /\.(png|webp|gif|svg)(\?|#|$)/i.test(u || '') || /^data:image\/(png|webp|gif|svg)/i.test(u || ''); };
+    var logoClear = clearImg(logo);
     var orgName = (cfg.org && cfg.org.name) || A.company_name || '';
     var unified = A.show_unified_number !== false && cfg.org && cfg.org.unified_number;
     var pattern = A.pattern_chat !== false ? (A.pattern_css || 'none') : 'none';
@@ -145,7 +148,7 @@
       '.head:before{content:"";position:absolute;inset:0;background-image:' + headPattern + ';pointer-events:none}' +
       '.hrow{display:flex;align-items:center;gap:11px;position:relative}' +
       '.av{width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.2);display:grid;place-items:center;overflow:hidden;flex:none;border:2px solid rgba(255,255,255,.35)}.av img{width:100%;height:100%;object-fit:cover}' +
-      '.av.logo{border-radius:12px;background:#fff;border:0}.av.logo img{object-fit:contain;padding:4px}' +
+      '.av.logo{border-radius:12px;background:#fff;border:0}.av.logo img{object-fit:contain;padding:4px}.av.logo.clear{background:none}.av.logo.clear img{padding:0;filter:drop-shadow(0 1px 2px rgba(0,0,0,.25))}' +
       '.ht{flex:1;min-width:0}.org{font-size:12px;opacity:.92;font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
       '.ttl{display:block;font-size:16px;font-weight:700;line-height:1.35}' +
       '.sub{font-size:12px;opacity:.92;display:flex;align-items:center;gap:6px;margin-top:2px}' +
@@ -158,7 +161,7 @@
       '.view{flex:1;display:flex;flex-direction:column;min-height:0}' +
       '.body{flex:1;overflow-y:auto;padding:16px 12px;background-color:' + V.chat + ';background-image:' + pattern + ';display:flex;flex-direction:column;gap:8px}' +
       '.row{display:flex;gap:8px;align-items:flex-end;max-width:90%}.row.me{align-self:flex-end;flex-direction:row-reverse}' +
-      '.mav{width:30px;height:30px;border-radius:50%;background:' + V.av + ';color:' + contrast(V.av) + ';display:grid;place-items:center;font-size:12px;font-weight:700;flex:none;overflow:hidden}.mav img{width:100%;height:100%;object-fit:cover}' +
+      '.mav{width:30px;height:30px;border-radius:50%;background:' + V.av + ';color:' + contrast(V.av) + ';display:grid;place-items:center;font-size:12px;font-weight:700;flex:none;overflow:hidden}.mav img{width:100%;height:100%;object-fit:cover}.mav.clear{background:none;border-radius:0}' +
       '.bub{padding:10px 13px;border-radius:' + V.bubR + ';font-size:' + V.fs + ';line-height:1.65;overflow-wrap:anywhere;box-shadow:0 1px 2px rgba(0,0,0,.07)}' +
       '.row.bot .bub{background:' + V.bot + ';color:' + V.botTxt + ';border-end-start-radius:4px}.row.agent .bub{background:' + V.agent + ';color:' + V.agentTxt + ';border-end-start-radius:4px}' +
       '.row.me .bub{background:' + V.me + ';color:' + V.meTxt + ';border-end-end-radius:4px}.bub a{color:inherit}' +
@@ -237,7 +240,7 @@
     function renderHead() {
       var off = cfg.work && cfg.work.enabled && !cfg.work.open;
       var sub = state.status === 'waiting' ? T('waiting') : state.status === 'human' ? T('with_agent', { agent: state.agent || '' }) : state.status === 'closed' ? T('ended') : off ? T('off_hours_status') : T('subtitle');
-      var avatar = logo ? '<div class="av logo"><img src="' + esc(logo) + '" alt=""></div>' : '<div class="av">' + (A.bot_avatar ? '<img src="' + esc(abs(A.bot_avatar)) + '" alt="">' : ICONS[A.launcher_icon_preset] || ICONS.chat) + '</div>';
+      var avatar = logo ? '<div class="av logo' + (logoClear ? ' clear' : '') + '"><img src="' + esc(logo) + '" alt=""></div>' : '<div class="av">' + (A.bot_avatar ? '<img src="' + esc(abs(A.bot_avatar)) + '" alt="">' : ICONS[A.launcher_icon_preset] || ICONS.chat) + '</div>';
       head.innerHTML = '<div class="hrow">' + avatar + '<div class="ht">' + (orgName ? '<span class="org">' + esc(orgName) + '</span>' : '') +
         '<span class="ttl">' + esc(T('title')) + '</span><span class="sub"><i class="dot' + (state.status === 'waiting' ? ' wait' : off ? ' off' : '') + '"></i>' + esc(sub) + '</span></div>' +
         '<button class="hb mbtn" title="menu">' + I.menu + '</button><button class="hb xbtn" title="close">' + I.close + '</button></div>' +
@@ -392,12 +395,12 @@
         var cls = me ? 'me' : m.sender === 'agent' ? 'agent' : 'bot';
         var who = m.sender === 'agent' ? (m.agent_name || '') : m.sender === 'bot' ? T('bot_name') : '';
         var avImg = m.sender === 'agent' ? m.agent_avatar : (A.bot_avatar || A.company_logo);
-        var av = avImg ? '<img src="' + esc(abs(avImg)) + '" alt=""' + (m.sender === 'bot' && !A.bot_avatar ? ' style="object-fit:contain;background:#fff;padding:2px"' : '') + '>' : m.sender === 'bot' ? (ICONS[A.launcher_icon_preset] || ICONS.chat).replace(/width="\d+" height="\d+"/, 'width="17" height="17"') : esc((who || '?').trim().charAt(0));
+        var av = avImg ? '<img src="' + esc(abs(avImg)) + '" alt=""' + (m.sender === 'bot' && !A.bot_avatar ? ' style="object-fit:contain;padding:2px;background:' + (logoClear ? 'transparent' : '#fff') + '"' : '') + '>' : m.sender === 'bot' ? (ICONS[A.launcher_icon_preset] || ICONS.chat).replace(/width="\d+" height="\d+"/, 'width="17" height="17"') : esc((who || '?').trim().charAt(0));
         var extra = (m.link ? '<br><a class="link" href="' + esc(m.link) + '" target="_blank" rel="noopener">' + esc(m.link_label || T('open_link')) + '</a>' : '') +
           (m.media ? '<div class="att">' + mediaHTML(m.media) + '</div>' : '') + (m.location ? locationHTML(m.location) : '') + (m.contacts ? contactsHTML(m.contacts) : '') + (m.banks ? banksHTML(m.banks) : '');
         var card = m.card ? cardHTML(m.card) : '';
         if (m.body || extra || card) {
-          html += '<div class="row ' + cls + '">' + (me ? '' : '<div class="mav">' + av + '</div>') + '<div style="min-width:0">' +
+          html += '<div class="row ' + cls + '">' + (me ? '' : '<div class="mav' + (m.sender === 'bot' && !A.bot_avatar && A.company_logo && logoClear ? ' clear' : '') + '">' + av + '</div>') + '<div style="min-width:0">' +
             (who ? '<div class="who">' + esc(who) + (m.agent_title ? ' <em>· ' + esc(m.agent_title) + '</em>' : '') + '</div>' : '') +
             '<div class="bub" dir="auto">' + card + fmt(m.body || '') + extra + '<div class="tm">' + time(m.created_at) + '</div></div></div></div>';
         }

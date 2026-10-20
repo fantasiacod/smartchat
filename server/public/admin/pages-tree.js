@@ -20,6 +20,7 @@
     order_status: { icon: '📦', name: 'حالة طلب', desc: 'من قاعدة البيانات' },
     customer_info: { icon: '🪪', name: 'بيانات المستفيد', desc: 'من قاعدة البيانات' },
     lookup: { icon: '🔎', name: 'استعلام مخصص', desc: 'من أي قاعدة بيانات مربوطة' },
+    eligibility_menu: { icon: '📋', name: 'قائمة حساب الاستحقاق', desc: 'كل برامج الاستحقاق الظاهرة' },
     eligibility: { icon: '🧮', name: 'حاسبة الاستحقاق', desc: 'أسئلة ثم: مؤهل / غير مؤهل + القيمة' },
     developer: { icon: '🛠️', name: 'مطوّر البرنامج', desc: 'رابط المطوّر' },
     end: { icon: '✋', name: 'إنهاء المحادثة', desc: 'ثم التقييم' }
@@ -216,6 +217,7 @@
             else if (o.action === 'banks') h = '<label class="f">التصنيف</label><select class="in" data-p="target"><option value="">كل التصنيفات (يختار المستفيد)</option>' + ((S.site.settings.org.banks) || []).map(function (g) { return '<option value="' + esc(g.id) + '"' + (o.target === g.id ? ' selected' : '') + '>' + esc(g.name) + '</option>'; }).join('') + '</select>';
             else if (o.action === 'kb_browse') h = '<div class="hint">يعرض تصنيفات <a href="#/mindmap">الخريطة الذهنية</a> ثم أسئلتها</div>';
             else if (o.action === 'handoff') h = '<div class="hint">يرن عند الموظفين المتصلين حتى يرد أحدهم، وما يكتبه المستفيد يُحفظ ليتعلّم منه البوت.</div>';
+            else if (o.action === 'eligibility_menu') h = '<div class="hint">يعرض البرامج الظاهرة من صفحة <a href="#/eligibility">حاسبة الاستحقاق</a></div>';
             else if (o.action === 'eligibility') h = '<label class="f">البرنامج</label><select class="in" data-p="target"><option value="">— اختر —</option>' + (((S.site.settings.eligibility || {}).programs) || []).map(function (p) { return '<option value="' + esc(p.id) + '"' + (o.target === p.id ? ' selected' : '') + '>' + esc(p.title || p.id) + '</option>'; }).join('') + '</select><div class="hint">تُنشأ البرامج من صفحة <a href="#/eligibility">حاسبة الاستحقاق</a></div>';
             else if (o.action === 'lookup') h = '<label class="f">الاستعلام</label><select class="in" data-p="target"><option value="">— اختر —</option>' + ((S.site.settings.datasource.lookups) || []).map(function (l) { return '<option value="' + esc(l.id) + '"' + (o.target === l.id ? ' selected' : '') + '>' + esc(l.title || l.id) + '</option>'; }).join('') + '</select><div class="hint">تُنشأ الاستعلامات من الإعدادات ← قواعد البيانات</div>';
             else if (o.action === 'order_status' || o.action === 'customer_info') h = '<div class="hint">يستعلم من قاعدة البيانات المربوطة في صفحة <a href="#/datasource">قاعدة البيانات</a></div>';

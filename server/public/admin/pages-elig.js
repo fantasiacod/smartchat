@@ -12,7 +12,7 @@
   }
   function sample() {
     var p = blank();
-    p.title = 'المساعدات الشهرية'; p.keywords = 'هل أنا مؤهل, حساب الاستحقاق, الاستحقاق, احسب استحقاقي, شروط المساعدة';
+    p.title = 'المساعدات الشهرية'; p.keywords = 'المساعدات الشهرية, المساعدة الشهرية, الإعانة الشهرية';
     p.intro = 'سأطرح عليك بعض الأسئلة القصيرة لمعرفة أهليتك للمساعدة الشهرية وقيمتها التقريبية 🧮';
     p.questions = [
       { id: uid('q'), key: 'resident', text: 'هل تسكن داخل نطاق خدمة الجمعية؟', type: 'yesno' },
@@ -34,18 +34,42 @@
     title: 'حاسبة الاستحقاق', icon: '🧮', role: 'supervisor',
     hint: 'أسئلة يطرحها البوت، ثم يحسب النتيجة: مؤهل أو غير مؤهل، وقيمة الاستحقاق المتوقعة',
     render: function (root) {
-      var cur = 0;
+      var cur = 0, hubSync = null;
       A.settingsPage(root, ['eligibility'], function (el, d, ch) {
         var P = d.eligibility.programs = d.eligibility.programs || [];
+        var H = d.eligibility.hub = d.eligibility.hub || {}; if (!H.label) H.label = '🧮 حساب آلية الاستحقاق';
+        function menuNode(tree) { return tree.nodes.find(function (n) { return n.id === 'menu'; }) || tree.nodes.find(function (n) { return n.id === tree.root; }); }
+        function hubShown() { var m = menuNode(S.site.tree); return !!(m && m.options.some(function (o) { return o.action === 'eligibility_menu'; })); }
+        // show / hide the single main-menu button; direct program buttons in the main menu are folded into it
+        function setHub(on) {
+          var tree = A.clone(S.site.tree), m = menuNode(tree); if (!m) return Promise.reject(new Error('لم أجد القائمة الرئيسية'));
+          var idx = m.options.findIndex(function (o) { return o.action === 'eligibility_menu'; });
+          if (on && idx < 0) {
+            var direct = m.options.findIndex(function (o) { return o.action === 'eligibility'; }), btn = { label: H.label, action: 'eligibility_menu' };
+            if (direct >= 0) { m.options[direct] = btn; m.options = m.options.filter(function (o, i) { return i === direct || o.action !== 'eligibility'; }); }
+            else { var last = m.options.length && /رئيسية|إنهاء|end/.test(m.options[m.options.length - 1].label || '') ? m.options.length - 1 : m.options.length; m.options.splice(last, 0, btn); }
+          } else if (!on && idx >= 0) m.options.splice(idx, 1);
+          else if (on) m.options[idx].label = H.label;
+          return (A.dirty ? A.saveSite({ settings: d }) : Promise.resolve()).then(function () { return A.saveSite({ tree: tree }); }).then(function () { A.setDirty(false); });
+        }
+        function hubCard() {
+          var vis = P.filter(function (x) { return x.enabled !== false && x.visible !== false; }).length;
+          return card('📋 زر «حساب آلية الاستحقاق» في القائمة الرئيسية', '<div class="row wrap" style="gap:12px;align-items:center;margin-bottom:10px"><label class="switch"><input type="checkbox" id="hubon"' + (hubShown() ? ' checked' : '') + '><span class="tr"></span><span class="lbl"><b>إظهار الزر في القائمة الرئيسية</b></span></label><span class="tiny muted">' + (hubShown() ? '✅ ظاهر' : '⏸️ مخفي') + ' — بداخله ' + vis + ' ' + (vis === 1 ? 'برنامج' : 'برامج') + '</span></div>' +
+            '<div class="grid g3">' + f.text('hub.label', 'نص الزر', { ph: '🧮 حساب آلية الاستحقاق' }) + f.text('hub.message', 'الرسالة داخل الزر', { ph: 'اختر نوع المساعدة لمعرفة أهليتك وقيمة استحقاقك 🧮' }) + f.text('hub.keywords', 'كلمات إضافية تفتحه', { ph: 'الاستحقاق, هل أنا مستحق' }) + '</div>' +
+            (P.length ? '<label class="f">البرامج داخل الزر <small>— أخفِ أي برنامج دون حذفه</small></label><div class="checks">' + P.map(function (x, i) { return '<label><input type="checkbox" data-vis="' + i + '"' + (x.visible !== false ? ' checked' : '') + '> ' + (x.visible !== false ? '👁️ ' : '🙈 ') + esc(x.title || 'بدون اسم') + (x.enabled === false ? ' <span class="tiny muted">(موقوف)</span>' : '') + '</label>'; }).join('') + '</div>' : ''), 'عند الضغط عليه يعرض البوت قائمة البرامج (المساعدات الشهرية، الموسمية، …) فيختار المستفيد منها ثم تبدأ الأسئلة.', 'c-hub');
+        }
         function draw() {
           if (cur >= P.length) cur = Math.max(0, P.length - 1);
           var p = P[cur];
-          el.innerHTML = '<div class="row wrap" style="margin-bottom:16px;gap:8px">' + P.map(function (x, i) { return '<button class="btn sm ' + (i === cur ? '' : 'soft') + '" data-pi="' + i + '">' + (x.enabled === false ? '⏸️ ' : '🧮 ') + esc(x.title || 'بدون اسم') + '</button>'; }).join('') +
+          el.innerHTML = hubCard() + '<div class="row wrap" style="margin-bottom:16px;gap:8px">' + P.map(function (x, i) { return '<button class="btn sm ' + (i === cur ? '' : 'soft') + '" data-pi="' + i + '">' + (x.enabled === false ? '⏸️ ' : '🧮 ') + esc(x.title || 'بدون اسم') + '</button>'; }).join('') +
             '<button class="btn sm ghost" id="pnew">+ برنامج جديد</button><button class="btn sm gold" id="psample">📋 مثال جاهز</button></div>' +
             (p ? editor(p) : '<div class="card" style="text-align:center;padding:40px"><div style="font-size:48px">🧮</div><h3>لا توجد برامج بعد</h3><p class="muted">أنشئ برنامجاً وأضف أسئلته وشروطه، أو ابدأ بمثال جاهز وعدّله.</p><div class="row" style="justify-content:center;gap:8px"><button class="btn" id="pnew2">+ برنامج جديد</button><button class="btn gold" id="psample2">📋 مثال جاهز: المساعدة الشهرية</button></div></div>');
           A.$$('[data-pi]', el).forEach(function (b) { b.onclick = function () { cur = Number(b.getAttribute('data-pi')); draw(); }; });
           var add = function (x) { P.push(x); cur = P.length - 1; ch(); draw(); };
           [['#pnew', blank], ['#pnew2', blank], ['#psample', sample], ['#psample2', sample]].forEach(function (z) { var b = A.$(z[0], el); if (b) b.onclick = function () { add(z[1]()); }; });
+          A.bind(A.$('#c-hub', el), d.eligibility, ch);
+          A.$('#hubon', el).onchange = function () { var on = this.checked; setHub(on).then(function () { A.toast(on ? 'ظهر الزر في القائمة الرئيسية ✅' : 'أُخفي الزر من القائمة الرئيسية', 'ok'); draw(); }, function (e) { A.fail(e); draw(); }); };
+          A.$$('[data-vis]', el).forEach(function (c) { c.onchange = function () { P[Number(c.getAttribute('data-vis'))].visible = c.checked; ch(); draw(); }; });
           if (p) wire(p);
         }
 
@@ -64,7 +88,8 @@
             sec('basic', card('⚙️ البرنامج', '<div class="grid g2">' + f.text('title', 'اسم البرنامج', { ph: 'المساعدات الشهرية' }) + f.text('keywords', 'كلمات يُفهم بها الطلب', { ph: 'هل أنا مؤهل, احسب استحقاقي' }) + '</div>' +
               f.area('intro', 'رسالة البداية (اختياري)', { rows: 2, ph: 'سأطرح عليك بعض الأسئلة لمعرفة أهليتك…' }) +
               '<div class="row wrap" style="gap:8px">' + f.swi('enabled', 'مفعّل') + '<span style="flex:1"></span><button class="btn sm danger ghost" id="pdel">🗑️ حذف البرنامج</button></div>', '', 'c-basic') +
-              card('🔗 مكان الحاسبة في البوت', '<div id="plink"></div><button class="btn soft sm" id="pmenu">🔗 ربط بزر في القائمة الرئيسية</button>', 'اربط الحاسبة بزر موجود (مثل «المساعدات الشهرية») أو أضف زراً جديداً. ويبدأ البوت الحاسبة أيضاً إذا كتب المستفيد إحدى الكلمات أعلاه.')) +
+              card('🔗 مكان البرنامج في البوت', f.sw('visible', '👁️ يظهر داخل زر «' + esc(H.label) + '»', 'إذا أخفيته لا يظهر في القائمة، لكن يبقى يعمل إذا كتب المستفيد إحدى كلماته') +
+                '<details style="margin-top:8px"><summary class="tiny muted" style="cursor:pointer">متقدم: ربطه بزر مستقل</summary><div id="plink" style="margin-top:8px"></div><button class="btn ghost sm" id="pmenu">🔗 ربط بزر في القائمة الرئيسية</button></details>', '', 'c-place')) +
             sec('qs', card('❓ الأسئلة', '<div id="qs"></div><button class="btn soft sm" id="qadd">+ سؤال</button>', 'يسألها البوت بالترتيب. «الاسم في المعادلات» يُستخدم في الحسابات والشروط (مثل <code>income</code> أو <code>الدخل</code>).')) +
             sec('rules', card('⛔ شروط عدم الأهلية', '<div id="rs"></div><button class="btn soft sm" id="radd">+ شرط</button>', 'يكون المستفيد <b>غير مؤهل</b> إذا تحقق أي شرط. تُفحص بعد كل إجابة، فإذا تحقق شرط يتوقف البوت فوراً (مثال: الدخل أكبر من 8000 → غير مؤهل).') +
               card('🧮 الحسابات <small class="muted">(اختياري)</small>', '<div id="cs"></div><button class="btn soft sm" id="cadd">+ حساب</button><div class="hint" style="margin-top:8px">مثال: «دخل الفرد» = <code class="ltr">income / family_size</code>. المسموح: + − × ÷ والأقواس، و <code class="ltr">min() max() round()</code>.</div><div id="vchips" class="chips" style="margin-top:8px"></div>') +
@@ -84,6 +109,8 @@
         function wire(p) {
           p.questions = p.questions || []; p.calcs = p.calcs || []; p.rules = p.rules || []; p.amount = p.amount || {}; p.messages = p.messages || {}; p.after = p.after || {};
           if (p.messages.disclaimer === undefined) p.messages.disclaimer = true;
+          if (p.visible === undefined) p.visible = true;
+          A.bind(el.querySelector('#c-place'), p, function () { ch(); draw(); });
           A.bind(el.querySelector('#c-basic'), p, function (k) { ch(); if (k === 'title' || k === 'enabled') A.$$('[data-pi]', el)[cur].innerHTML = (p.enabled === false ? '⏸️ ' : '🧮 ') + esc(p.title || 'بدون اسم'); });
           [A.$('#c-amount', el), A.$('#c-msg', el)].forEach(function (c) { A.bind(c, p, function (k) { ch(); if (k === 'after.action') after(); }); });
           A.$$('#etabs button', el).forEach(function (b) { b.onclick = function () { tab = b.getAttribute('data-t'); A.$$('#etabs button', el).forEach(function (x) { x.classList.toggle('on', x === b); }); A.$$('[data-sec]', el).forEach(function (x) { x.classList.toggle('hidden', x.getAttribute('data-sec') !== tab); }); if (tab === 'res') results(p); if (tab === 'sim') sim(p); }; });
@@ -91,7 +118,7 @@
           function linked() {
             var out = [];
             (S.site.tree.nodes || []).forEach(function (n) { (n.options || []).forEach(function (o) { if (o.action === 'eligibility' && o.target === p.id) out.push((n.title || n.id) + ' ← ' + o.label); }); });
-            A.$('#plink', el).innerHTML = out.length ? '<div class="alert ok" style="margin-bottom:10px">✅ مربوطة بـ: ' + out.map(esc).join('، ') + '</div>' : '<div class="alert warn" style="margin-bottom:10px">⚠️ غير مربوطة بأي زر بعد</div>';
+            A.$('#plink', el).innerHTML = out.length ? '<div class="alert ok" style="margin-bottom:10px">✅ مربوطة بـ: ' + out.map(esc).join('، ') + '</div>' : '<div class="tiny muted" style="margin-bottom:8px">غير مربوط بزر مستقل (يظهر داخل زر حساب الاستحقاق فقط)</div>';
           }
           linked();
           A.$('#pmenu', el).onclick = function () {
@@ -214,7 +241,9 @@
           }
         }
         draw();
-      });
+        // keep the main-menu button text in step with «نص الزر»
+        hubSync = function () { var m = menuNode(S.site.tree), o = m && m.options.find(function (x) { return x.action === 'eligibility_menu'; }); if (o && o.label !== H.label) setHub(true); };
+      }, { onSaved: function () { hubSync && hubSync(); } });
     }
   });
 })();

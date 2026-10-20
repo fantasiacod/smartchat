@@ -67,6 +67,15 @@ app.get(['/widget.js', '/patterns.js', '/icons.js'], cors, (req, res) => {
 });
 
 const patternCache = new Map();
+app.get('/pattern-img/:key.svg', cors, (req, res) => {
+  const site = getSiteByKey(String(req.params.key || ''));
+  if (!site) return res.status(404).end();
+  const a = site.settings.appearance, kind = req.query.k === 'logo' ? 'logo' : 'images', hdr = req.query.h === '1';
+  const svg = imagePatternSvg(a, kind, hdr ? '#ffffff' : (a.pattern_color || a.primary_color), hdr ? Math.min(0.25, (Number(a.pattern_opacity) || 0.07) * 2.2) : a.pattern_opacity);
+  if (!svg) return res.status(404).end();
+  res.set({ 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=604800, immutable' }).send(svg);
+});
+
 app.get('/pattern/:id.svg', cors, (req, res) => {
   const id = String(req.params.id).replace(/[^a-z0-9]/gi, '');
   let asset = patternCache.get(id);
@@ -81,12 +90,45 @@ app.get('/pattern/:id.svg', cors, (req, res) => {
   res.send(`<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(asset.w * s * (asset.k || 0.6))}" height="${Math.round(asset.h * s * (asset.k || 0.6))}" viewBox="${asset.ox} ${asset.oy} ${asset.w} ${asset.h}"><path fill="${patterns.rgba(c, o)}" fill-rule="evenodd" d="${asset.d}"/></svg>`);
 });
 
-function widgetConfig(site, base = '') {
+/* ---------- decorations: occasions (automatic) and picture patterns (logo / own images) ---------- */
+function mediaDataUrl(u) {
+  if (/^data:image\/(png|jpeg|gif|webp);base64,/.test(String(u))) return String(u).length < 600000 ? u : null;
+  const m = /\/media\/([a-f0-9-]+)\.(jpg|png|gif|webp)$/i.exec(String(u || ''));
+  if (!m) return null;
+  const r = db.prepare('SELECT mime, data FROM media_assets WHERE id=?').get(m[1]);
+  return r && r.data.length < 450000 ? `data:${r.mime};base64,${r.data.toString('base64')}` : null;
+}
+const imgPatternCache = new Map();
+function imagePatternSvg(a, kind, color, opacity) {
+  const urls = kind === 'logo' ? [a.pattern_logo || a.company_logo] : (a.pattern_images || []).slice(0, 8);
+  const ck = JSON.stringify([urls, color, opacity, a.pattern_scale, !!a.pattern_img_tint]);
+  if (imgPatternCache.has(ck)) return imgPatternCache.get(ck);
+  const svg = patterns.imagesSvg(urls.map(mediaDataUrl).filter(Boolean), color, opacity, a.pattern_scale, !!a.pattern_img_tint);
+  if (imgPatternCache.size > 40) imgPatternCache.clear();
+  imgPatternCache.set(ck, svg);
+  return svg;
+}
+function effectivePattern(a) { return (a.occasions?.auto && patterns.occasionOf(new Date(), a.occasions)) || a.pattern; }
+function patternCss(site, base, inline) {
+  const a = site.settings.appearance, pat = effectivePattern(a), color = a.pattern_color || a.primary_color;
+  const hdrOp = Math.min(0.25, (Number(a.pattern_opacity) || 0.07) * 2.2);
+  if (pat === 'logo' || pat === 'images') {
+    const one = (c, o, hdr) => {
+      if (inline) { const svg = imagePatternSvg(a, pat, c, o); return svg ? `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}")` : 'none'; }
+      const v = crypto.createHash('sha1').update(JSON.stringify([a.pattern_logo, a.company_logo, a.pattern_images, a.pattern_scale, a.pattern_img_tint, c, o])).digest('hex').slice(0, 10);
+      return `url("${base}/pattern-img/${site.key}.svg?k=${pat}&h=${hdr ? 1 : 0}&v=${v}")`;
+    };
+    return { pattern: pat, pattern_css: one(color, a.pattern_opacity, false), pattern_header_css: one('#ffffff', hdrOp, true) };
+  }
+  return { pattern: pat, pattern_css: patterns.css(pat, color, a.pattern_opacity, a.pattern_scale, base), pattern_header_css: patterns.css(pat, '#ffffff', hdrOp, a.pattern_scale, base) };
+}
+
+function widgetConfig(site, base = '', inline = false) {
   const a = site.settings.appearance, o = site.settings.org, L = site.settings.languages;
   const enabled = (L.enabled || ['ar']).filter(l => LANGS[l]);
   return {
     name: site.name,
-    appearance: { ...a, pattern_css: patterns.css(a.pattern, a.pattern_color || a.primary_color, a.pattern_opacity, a.pattern_scale, base), pattern_header_css: patterns.css(a.pattern, '#ffffff', Math.min(0.25, (Number(a.pattern_opacity) || 0.07) * 2.2), a.pattern_scale, base) },
+    appearance: { ...a, pattern_images: undefined, pattern_logo: undefined, ...patternCss(site, base, inline) },
     prechat: site.settings.prechat,
     org: { name: o.name || a.company_name || '', unified_number: o.unified_number || '' },
     languages: { enabled, default: enabled.includes(L.default) ? L.default : enabled[0], show_switcher: L.show_switcher !== false && enabled.length > 1, meta: Object.fromEntries(enabled.map(l => [l, LANGS[l]])) },
@@ -351,7 +393,7 @@ app.post('/api/sites/:id/widget-config/preview', auth(), (req, res) => {
     s[sec] = deepMerge(s[sec] || {}, draft[sec]);
     for (const k of Object.keys(draft[sec])) if (Array.isArray(draft[sec][k])) s[sec][k] = draft[sec][k];
   }
-  res.json(widgetConfig({ ...site, settings: s }));
+  res.json(widgetConfig({ ...site, settings: s }, '', true));
 });
 app.get('/api/patterns', (req, res) => res.json(patterns.list));
 app.get('/api/i18n', auth(), (req, res) => res.json({ langs: LANGS, defaults: require('./i18n').T, sms_providers: notify.SMS_PROVIDERS }));

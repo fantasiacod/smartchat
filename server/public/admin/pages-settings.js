@@ -98,7 +98,9 @@
             f.sw('appearance.show_unified_number', '📞 إظهار الرقم الموحّد تحت الاسم', 'يُضبط الرقم من صفحة معلومات الجهة') + f.sw('appearance.show_footer', 'إظهار التذييل أسفل النافذة')) +
           card('🔤 الخط', '<div class="grid g2">' + f.select('appearance.font', 'نوع الخط', FONTS) + f.range('appearance.font_size', 'حجم خط الرسائل', 12, 18, 0.5, 'px') + '</div><div id="fontprev" style="padding:12px;border-radius:12px;background:var(--soft);font-size:18px"></div>') +
           card('🕌 الزخرفة', '<div class="patterns" id="pats"></div><div class="grid g3" style="margin-top:14px">' + f.color('appearance.pattern_color', 'لون الزخرفة', { ph: 'نفس اللون الرئيسي' }) + f.range('appearance.pattern_opacity', 'الشفافية', 0.02, 0.3, 0.01) + f.range('appearance.pattern_scale', 'الحجم', 0.5, 2.5, 0.1, '×') + '</div>' +
-            '<div class="row wrap" style="gap:20px">' + f.swi('appearance.pattern_chat', 'في خلفية المحادثة') + f.swi('appearance.pattern_header', 'في رأس النافذة') + '</div>', 'زخارف إسلامية وعربية وسعودية — تُطبّق على نافذة المحادثة. ولتطبيقها على لوحة التحكم: حسابي ← مظهر اللوحة.') +
+            '<div class="row wrap" style="gap:20px">' + f.swi('appearance.pattern_chat', 'في خلفية المحادثة') + f.swi('appearance.pattern_header', 'في رأس النافذة') + '</div><div id="patimg"></div>', 'زخارف إسلامية وعربية وسعودية، ومناسبات، أو شعار الجهة وصورك الخاصة — تُطبّق على نافذة المحادثة. ولتطبيقها على لوحة التحكم: حسابي ← مظهر اللوحة.') +
+          card('🎉 زخرفة المناسبات التلقائية', f.sw('appearance.occasions.auto', 'تبديل الزخرفة تلقائياً في المناسبات', 'يرجع للزخرفة المختارة أعلاه بعد انتهاء المناسبة. التواريخ الهجرية حسب تقويم أم القرى') +
+            '<div class="checks" style="margin-top:8px"><label><input type="checkbox" data-k="appearance.occasions.ramadan"> 🌙 شهر رمضان كاملاً</label><label><input type="checkbox" data-k="appearance.occasions.eid"> 🎉 عيد الفطر (1–4 شوال) وعيد الأضحى (9–13 ذو الحجة)</label><label><input type="checkbox" data-k="appearance.occasions.national"> 🇸🇦 اليوم الوطني (20–26 سبتمبر)</label><label><input type="checkbox" data-k="appearance.occasions.founding"> 🏰 يوم التأسيس (20–23 فبراير)</label></div><div id="occnow" class="hint"></div>') +
           card('🔘 زر المحادثة', '<label class="f">الشكل</label><div class="choices" id="shapes">' + [['circle', 'دائري', '50%'], ['rounded', 'مربع منحني', '30%'], ['square', 'مربع', '8px'], ['pill', 'كبسولة بنص', '999px']].map(function (s) { return '<button class="choice" data-s="' + s[0] + '"><span class="shp" style="border-radius:' + s[2] + ';' + (s[0] === 'pill' ? 'width:64px' : '') + '">💬</span>' + s[1] + '</button>'; }).join('') + '</div>' +
             '<label class="f" style="margin-top:12px">الأيقونة</label><div class="choices" id="icons"></div><div style="margin-top:10px"><label class="f">أو صورة مخصصة</label><div id="licon"></div></div>' +
             '<div class="grid g3" style="margin-top:12px">' + f.text('appearance.launcher_label', 'نص بجانب الزر', { opt: true, ph: 'تحتاج مساعدة؟' }) + f.select('appearance.position', 'المكان', [['right', 'يمين الشاشة'], ['left', 'يسار الشاشة']]) + f.range('appearance.launcher_size', 'الحجم', 48, 84, 2, 'px') + '</div>' +
@@ -121,14 +123,58 @@
         A.$$('#shapes .choice', el).forEach(function (b) { b.onclick = function () { a.launcher_shape = b.getAttribute('data-s'); refresh(); }; });
         A.$$('#ostyle .choice', el).forEach(function (b) { b.onclick = function () { a.option_style = b.getAttribute('data-o'); refresh(); }; });
         var P = window.SCPatterns;
+        function syncRange() { var r = el.querySelector('[data-k="appearance.pattern_opacity"]'); if (r) { r.value = a.pattern_opacity; r.dispatchEvent(new Event('input')); } }
+        // pictures used as decoration are shrunk first, so the pattern stays light
+        function shrinkUpload(src, max) {
+          return (typeof src === 'string' ? fetch(src).then(function (r) { return r.blob(); }) : Promise.resolve(src)).then(function (blob) { return createImageBitmap(blob); }).then(function (bmp) {
+            var k = Math.min(1, max / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
+            c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
+            c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+            return new Promise(function (res) { c.toBlob(res, 'image/png'); });
+          }).then(function (b) { return A.upload(new File([b], 'pattern.png', { type: 'image/png' })); }).then(function (r) { return r.url; });
+        }
+        function patImg() {
+          var box = A.$('#patimg', el), id = a.pattern;
+          if (id !== 'logo' && id !== 'images') { box.innerHTML = ''; return; }
+          var imgs = a.pattern_images = a.pattern_images || [];
+          box.innerHTML = '<div class="card flat" style="margin-top:12px">' + (id === 'logo'
+            ? '<div class="row" style="gap:12px"><img src="' + esc(a.pattern_logo || a.company_logo || '') + '" style="width:56px;height:56px;object-fit:contain;background:#fff;border-radius:10px;border:1px solid var(--border)"><div class="small">🏷️ يُكرَّر شعار الجهة في الخلفية. لتغييره غيّر الشعار من بطاقة «الشعار والاسم» ثم اختر هذه الزخرفة مرة أخرى.</div></div>'
+            : '<label class="f">🖼️ صورك (حتى 8 صور — تتكرر بالتناوب)</label><div class="row wrap" style="gap:8px">' + imgs.map(function (u, i) { return '<div style="position:relative"><img src="' + esc(u) + '" style="width:64px;height:64px;object-fit:contain;background:#fff;border-radius:10px;border:1px solid var(--border)"><button class="btn sm danger icon" data-ri="' + i + '" style="position:absolute;top:-6px;left:-6px;padding:0 6px;min-height:22px">✕</button></div>'; }).join('') +
+              (imgs.length < 8 ? '<button class="btn soft" id="addimg" style="width:64px;height:64px">＋</button>' : '') + '</div><div class="hint">PNG بخلفية شفافة يعطي أجمل نتيجة: هلال، فانوس، نخلة، شعار مبادرة…</div>') +
+            '<div style="margin-top:10px">' + f.swi('appearance.pattern_img_tint', 'تلوين الصور بلون الزخرفة (شكل موحّد)') + '</div></div>';
+          A.bind(box, d, refresh);
+          A.$$('[data-ri]', box).forEach(function (b) { b.onclick = function () { imgs.splice(Number(b.getAttribute('data-ri')), 1); refresh(); }; });
+          var add = A.$('#addimg', box);
+          if (add) add.onclick = function () {
+            A.pickFile('image/png,image/jpeg,image/webp,image/gif', true).then(function (fs) {
+              fs = fs.slice(0, 8 - imgs.length); if (!fs.length) return;
+              A.toast('⏳ جارٍ رفع ' + fs.length + ' صورة…');
+              return Promise.all(fs.map(function (fl) { return shrinkUpload(fl, 220); })).then(function (us) { us.forEach(function (u) { imgs.push(u); }); refresh(); });
+            }).catch(A.fail);
+          };
+        }
         function paintChoices() {
           A.$$('#shapes .choice', el).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-s') === (a.launcher_shape || 'circle')); b.querySelector('.shp').style.background = a.primary_color; });
           A.$$('#ostyle .choice', el).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-o') === (a.option_style || 'pill')); });
           A.$$('#pal .swatch', el).forEach(function (b) { var p = PALETTES[Number(b.getAttribute('data-p'))]; b.classList.toggle('on', p[1].toLowerCase() === String(a.primary_color).toLowerCase() && p[2].toLowerCase() === String(a.secondary_color).toLowerCase()); });
           A.$('#icons', el).innerHTML = ICON_PRESETS.map(function (k) { return '<button class="choice' + ((a.launcher_icon_preset || 'chat') === k && !a.launcher_icon ? ' on' : '') + '" data-i="' + k + '"><span class="shp" style="border-radius:50%;background:' + a.primary_color + '">' + iconSvg(k) + '</span></button>'; }).join('');
           A.$$('#icons .choice', el).forEach(function (b) { b.onclick = function () { a.launcher_icon_preset = b.getAttribute('data-i'); a.launcher_icon = ''; A.imageField(A.$('#licon', el), function () { return a.launcher_icon; }, function (v) { a.launcher_icon = v; refresh(); }); refresh(); }; });
-          A.$('#pats', el).innerHTML = P.list.map(function (p) { return '<button class="pat' + ((a.pattern || 'none') === p.id ? ' on' : '') + '" data-p="' + p.id + '"><div class="pv" style="background-color:' + (a.chat_bg || '#f6f7f4') + ';background-image:' + P.css(p.id, a.pattern_color || a.primary_color, Math.max(0.12, a.pattern_opacity * 2), 1).replace(/"/g, "'") + '"></div><span>' + esc(p.name) + '</span></button>'; }).join('');
-          A.$$('#pats .pat', el).forEach(function (b) { b.onclick = function () { a.pattern = b.getAttribute('data-p'); refresh(); }; });
+          A.$('#pats', el).innerHTML = P.list.map(function (p) {
+            var bg = p.img ? (function () { var u = p.img === 'logo' ? (a.pattern_logo || a.company_logo) : (a.pattern_images || [])[0]; return u ? 'url(\'' + esc(u) + '\');background-size:40%;background-repeat:space' : 'none'; })() : P.css(p.id, a.pattern_color || a.primary_color, Math.max(0.12, a.pattern_opacity * 2), 1).replace(/"/g, "'");
+            return '<button class="pat' + ((a.pattern || 'none') === p.id ? ' on' : '') + '" data-p="' + p.id + '"><div class="pv" style="background-color:' + (a.chat_bg || '#f6f7f4') + ';background-image:' + bg + '">' + (p.img && bg === 'none' ? '<span style="font-size:22px;line-height:56px">' + (p.img === 'logo' ? '🏷️' : '🖼️') + '</span>' : '') + '</div><span>' + esc(p.name) + '</span></button>';
+          }).join('');
+          A.$$('#pats .pat', el).forEach(function (b) { b.onclick = function () {
+            var id = b.getAttribute('data-p');
+            if (id === 'logo') {
+              if (!a.company_logo) return A.toast('ارفع شعار الجهة أولاً (في بطاقة «الشعار والاسم»)', 'err');
+              A.toast('⏳ تجهيز الشعار كزخرفة…');
+              return shrinkUpload(a.company_logo, 220).then(function (u) { a.pattern_logo = u; a.pattern_logo_src = a.company_logo; a.pattern = 'logo'; if (a.pattern_opacity < 0.1) a.pattern_opacity = 0.12; syncRange(); refresh(); }, A.fail);
+            }
+            a.pattern = id; if (id === 'images' && a.pattern_opacity < 0.1) { a.pattern_opacity = 0.12; syncRange(); } refresh();
+          }; });
+          patImg();
+          var occ = P.occasionOf(new Date(), a.occasions), NM = { ramadan: '🌙 رمضان', eid: '🎉 العيد', national: '🇸🇦 اليوم الوطني / يوم التأسيس' };
+          A.$('#occnow', el).innerHTML = a.occasions && a.occasions.auto ? (occ ? '✅ الآن: زخرفة ' + NM[occ] + ' مفعّلة تلقائياً' : 'لا توجد مناسبة اليوم — تظهر الزخرفة المختارة أعلاه') : '';
           A.$('#fontprev', el).style.fontFamily = '"' + a.font + '"'; A.$('#fontprev', el).textContent = 'مرحباً بك 👋 كيف يمكننا خدمتك اليوم؟ ١٢٣ — Hello';
           loadFont(a.font);
         }

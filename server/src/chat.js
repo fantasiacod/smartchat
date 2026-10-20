@@ -409,7 +409,8 @@ async function runAction(conv, site, opt, freeText) {
       if (!k) return sendNode(conv, site, '__menu');
       return answerKb(conv, site, k);
     }
-    case 'eligibility': return startElig(conv, site, opt.target);
+    case 'eligibility': return opt.target ? startElig(conv, site, opt.target) : sendEligHub(conv, site);
+    case 'eligibility_menu': return sendEligHub(conv, site);
     case 'elig': {
       const a = conv.state.await;
       if (a?.kind === 'elig' && a.pid === opt.target) return answerElig(conv, site, String(Number(opt.field) + 1));
@@ -567,6 +568,16 @@ async function executeLookup(conv, site) {
 /* ============================== eligibility calculator ============================== */
 
 const programOf = (site, id) => (site.settings.eligibility?.programs || []).find(p => p.id === id && p.enabled !== false);
+
+// the hub: one main-menu button that lists every visible program (monthly aid, seasonal aid…)
+function sendEligHub(conv, site) {
+  const t = tr(conv, site), E = site.settings.eligibility || {}, H = E.hub || {};
+  const list = (E.programs || []).filter(p => p.enabled !== false && p.visible !== false && (p.questions || []).length);
+  if (!list.length) return botSay(conv, site, t.unlinked, navOptions(conv, site));
+  if (list.length === 1) return startElig(conv, site, list[0].id); // one program: no need for a list
+  const opts = list.map(p => ({ label: (p.icon ? p.icon + ' ' : '') + p.title, action: 'eligibility', target: p.id }));
+  return botSay(conv, site, H.message || t.elig_hub, [...opts, ...navOptions(conv, site)], { numbered: true });
+}
 
 function startElig(conv, site, pid) {
   const p = programOf(site, pid), t = tr(conv, site);
@@ -801,8 +812,15 @@ async function handleVisitorText(conv, site, text) {
   if (intentHit(text, I.complaint)) return sendTicketForm(conv, site, 'complaint');
   if (intentHit(text, I.suggestion)) return sendTicketForm(conv, site, 'suggestion');
   if (intentHit(text, [...I.order, ...(b.order_keywords || [])]) && site.settings.datasource.type !== 'none') return startLookup(conv, site, 'order', text);
-  for (const p of site.settings.eligibility?.programs || [])
-    if (p.enabled !== false && (p.questions || []).length && intentHit(text, String(p.keywords || '').split(/[,،\n]/).map(x => x.trim()).filter(Boolean))) return startElig(conv, site, p.id);
+  // general eligibility words open the list of programs (when there is more than one); a program's own words open it directly
+  const EL = site.settings.eligibility || {}, visibleProgs = (EL.programs || []).filter(p => p.enabled !== false && p.visible !== false && (p.questions || []).length);
+  const hubHit = intentHit(text, [...String(EL.hub?.keywords || '').split(/[,،\n]/).map(x => x.trim()).filter(Boolean), ...INTENTS.eligibility]);
+  const generic = new Set(INTENTS.eligibility.map(nlp.normalize));
+  const progHit = (p) => intentHit(text, String(p.keywords || '').split(/[,،\n]/).map(x => x.trim()).filter(k => k && !(hubHit && generic.has(nlp.normalize(k))))) || (p.title && (nlp.containsPhrase(text, p.title) || nlp.containsPhrase(text, 'ل' + p.title)));
+  if (hubHit && visibleProgs.length > 1 && !visibleProgs.some(progHit)) return sendEligHub(conv, site);
+  for (const p of EL.programs || [])
+    if (p.enabled !== false && (p.questions || []).length && progHit(p)) return startElig(conv, site, p.id);
+  if (hubHit) return sendEligHub(conv, site);
   for (const l of site.settings.datasource.lookups || [])
     if (l.query && intentHit(text, String(l.keywords || '').split(/[,،\n]/).map(x => x.trim()).filter(Boolean))) return startLookup(conv, site, 'lookup:' + l.id, text);
 

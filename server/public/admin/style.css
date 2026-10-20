@@ -422,3 +422,5 @@ pre.code{background:#0f1a14;color:#d1fae5;padding:14px;border-radius:12px;overfl
 .mmlink{position:absolute;top:36px;left:50%;transform:translateX(-50%);background:#7c3aed;color:#fff;padding:8px 14px;border-radius:12px;z-index:30;font-size:13px;display:flex;gap:10px;align-items:center;box-shadow:var(--shadow)}
 .mmlink .btn{background:#fff;color:#7c3aed}
 @media(max-width:700px){.mmc{height:70vh}.mmhelp{display:none}}
+
+.brand .logo.clear{background:none!important;box-shadow:none!important}.brand .logo.clear img{object-fit:contain;padding:0;background:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}
