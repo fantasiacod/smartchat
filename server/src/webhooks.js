@@ -1,7 +1,7 @@
 // Outgoing webhooks: lets other systems (CRM, ERP, Zapier/Make/n8n…) react to events. Signed with HMAC-SHA256.
 //   header X-SmartChat-Event: <event>, X-SmartChat-Signature: sha256=<hmac(body, secret)>
 const crypto = require('crypto');
-const EVENTS = ['conversation.started', 'conversation.handoff', 'conversation.closed', 'conversation.rated', 'ticket.created', 'ticket.updated', 'kb.learned'];
+const EVENTS = ['conversation.started', 'conversation.handoff', 'conversation.closed', 'conversation.rated', 'ticket.created', 'ticket.updated', 'kb.learned', 'eligibility.checked'];
 
 function emit(site, event, data) {
   const hooks = (site?.settings?.integrations?.webhooks || []).filter(h => h.enabled !== false && h.url && (!h.events?.length || h.events.includes(event)));

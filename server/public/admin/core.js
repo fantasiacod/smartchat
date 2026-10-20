@@ -403,7 +403,7 @@
   App.page = function (id, def) { def.id = id; App.pages[id] = def; App.order.push(id); };
   App.NAV = [
     ['العمل اليومي', ['live', 'history', 'tickets']],
-    ['عقل البوت', ['mindmap', 'tree', 'org']],
+    ['عقل البوت', ['mindmap', 'tree', 'eligibility', 'org']],
     ['المتابعة', ['stats', 'reports']],
     ['الإعدادات', ['appearance', 'languages', 'install', 'settings', 'users', 'backup']]
   ];

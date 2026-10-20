@@ -1,4 +1,5 @@
 // Entry point: restores the database from cloud storage (if configured), then starts the server.
+process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e && e.message || e));
 require('dotenv').config();
 const path = require('path');
 const persist = require('./persist');

@@ -156,7 +156,7 @@
           ['ردود البوت', ['anything_else', 'fallback', 'did_you_mean', 'unlinked', 'org_missing', 'nav_home', 'nav_agent', 'nav_cancel', 'nav_retry', 'nav_ticket']],
           ['الشكاوى والاقتراحات', ['ticket_intro', 'ticket_form_complaint', 'ticket_form_suggestion', 'ticket_created', 'ticket_ask_number', 'ticket_not_found', 'ticket_status_msg', 'f_name', 'f_phone', 'f_email', 'f_message', 'f_send', 'f_required', 'f_phone_invalid']],
           ['التقييم والإنهاء', ['rating_title', 'rating_comment', 'rating_send', 'rating_thanks', 'ended', 'closed']],
-          ['الاستعلام من قاعدة البيانات', ['ask_order_no', 'ask_phone', 'ask_email', 'ask_id_number', 'not_found', 'customer_not_found', 'db_error']],
+          ['الاستعلام من قاعدة البيانات (أسئلة المربعات الخاصة تُعدّل من: الإعدادات ← قواعد البيانات)', ['ask_param', 'invalid_value', 'invalid_giveup', 'rule_number', 'rule_phone', 'rule_id', 'rule_email', 'rule_date', 'not_found', 'customer_not_found', 'db_error']],
           ['أخرى', ['prechat_title', 'open_maps', 'directions', 'open_file', 'open_link', 'visit_site', 'call']]
         ];
         el.innerHTML = card('🌐 لغات البوت', '<div class="grid g3">' + Object.keys(S.i18n.langs).map(function (l) { return '<label class="card flat row" style="padding:12px;cursor:pointer"><input type="checkbox" data-l="' + l + '"' + (L.enabled.indexOf(l) >= 0 ? ' checked' : '') + '><b>' + S.i18n.langs[l].name + '</b><span class="tiny muted">' + (S.i18n.langs[l].dir === 'rtl' ? 'من اليمين' : 'من اليسار') + '</span></label>'; }).join('') + '</div>' +

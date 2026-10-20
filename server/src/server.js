@@ -283,7 +283,7 @@ function maskSite(s, user) {
   }
   return out;
 }
-const SECTION_ROLE = { appearance: 'supervisor', texts: 'supervisor', prechat: 'supervisor', behavior: 'supervisor', org: 'supervisor', developer: 'supervisor', tickets: 'supervisor', languages: 'supervisor', datasource: 'admin', security: 'admin', notify: 'admin', integrations: 'admin' };
+const SECTION_ROLE = { eligibility: 'supervisor', appearance: 'supervisor', texts: 'supervisor', prechat: 'supervisor', behavior: 'supervisor', org: 'supervisor', developer: 'supervisor', tickets: 'supervisor', languages: 'supervisor', datasource: 'admin', security: 'admin', notify: 'admin', integrations: 'admin' };
 
 app.get('/api/sites', auth(), (req, res) => res.json(db.prepare('SELECT id FROM sites ORDER BY id').all().map(r => maskSite(getSite(r.id), req.user))));
 app.post('/api/sites', auth('admin'), (req, res) => {
@@ -378,6 +378,11 @@ app.get('/api/sites/:id/wordpress-plugin.zip', auth('admin'), async (req, res) =
   res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="smart-chat-agent.zip"' }).send(buf);
 });
 
+app.post('/api/datasource/file', auth('admin'), express.raw({ type: 'application/octet-stream', limit: '20mb' }), async (req, res) => {
+  try { const r = await ds.importFile(String(req.query.name || 'data.csv'), req.body); audit(req.user.id, 'datasource.file', { name: r.name, rows: r.rows }); res.json(r); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.get('/api/datasource/file-info', auth('admin'), (req, res) => res.json(ds.fileInfo(String(req.query.conn || '')) || {}));
 app.post('/api/sites/:id/datasource/test', auth('admin'), async (req, res) => {
   const site = getSite(Number(req.params.id));
   const cfg = keepMasked({ ...site.settings.datasource, ...(req.body.datasource || {}) }, site.settings.datasource);
@@ -394,6 +399,16 @@ app.post('/api/sites/:id/datasource/test', auth('admin'), async (req, res) => {
   ds.resetPools();
   try { const rows = await ds.query(conn, which, req.body.params || {}); res.json({ ok: true, params: ds.paramNames(which), rows: rows.slice(0, 5) }); }
   catch (e) { res.status(400).json({ error: e.message, params: ds.paramNames(which) }); }
+});
+
+app.post('/api/sites/:id/datasource/schema', auth('admin'), async (req, res) => {
+  const site = getSite(Number(req.params.id));
+  const cfg = keepMasked({ ...site.settings.datasource, ...(req.body.datasource || {}) }, site.settings.datasource);
+  const id = req.body.connection || 'main';
+  const conn = id === 'main' ? cfg : (cfg.connections || []).find(c => c.id === id);
+  if (!conn) return res.status(400).json({ error: 'قاعدة البيانات غير موجودة' });
+  try { res.json({ type: conn.type, tables: await ds.schema(conn) }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 app.post('/api/sites/:id/notify/test', auth('admin'), async (req, res) => {
@@ -576,6 +591,26 @@ app.delete('/api/tickets/:id', auth('supervisor'), (req, res) => {
 
 /* ============================== mind map (knowledge categories) ============================== */
 const cleanCat = (b) => ({ name: String(b.name || '').trim().slice(0, 80), icon: ICONS.has(b.icon) ? b.icon : 'question', color: /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '', i18n: JSON.stringify(b.i18n || {}) });
+/* ---------- eligibility calculator ---------- */
+const eligMod = require('./eligibility');
+app.post('/api/eligibility/test', auth('supervisor'), (req, res) => {
+  const p = req.body.program || {}, answers = req.body.answers || {};
+  const problems = [];
+  const dummy = {}; for (const q of p.questions || []) { dummy[q.key] = q.type === 'number' ? 1 : (eligMod.optionsOf(q)[0] || {}).label; dummy[q.key + '_points'] = 1; }
+  for (const c of p.calcs || []) { try { dummy[c.key] = eligMod.evalExpr(c.formula, dummy); } catch (e) { problems.push(`الحساب «${c.label || c.key}»: ${e instanceof eligMod.Missing ? 'متغير غير معروف ' + e.message : e.message}`); } }
+  if (p.amount?.formula) { try { eligMod.evalExpr(p.amount.formula, dummy); } catch (e) { problems.push('معادلة قيمة الاستحقاق: ' + (e instanceof eligMod.Missing ? 'متغير غير معروف ' + e.message : e.message)); } }
+  try { res.json({ ...eligMod.evaluate(p, answers), problems }); } catch (e) { res.status(400).json({ error: e.message, problems }); }
+});
+app.get('/api/eligibility/results', auth('supervisor'), (req, res) => {
+  const site = Number(req.query.site), pid = req.query.program ? String(req.query.program) : null;
+  const w = 'site_id=?' + (pid ? ' AND program_id=?' : ''), a = pid ? [site, pid] : [site];
+  res.json({
+    summary: db.prepare(`SELECT program_id, COUNT(*) total, SUM(eligible) eligible, ROUND(AVG(CASE WHEN eligible=1 THEN amount END),2) avg_amount FROM elig_results WHERE ${w} GROUP BY program_id`).all(...a),
+    reasons: db.prepare(`SELECT reason, COUNT(*) n FROM elig_results WHERE ${w} AND eligible=0 AND reason != '' GROUP BY reason ORDER BY n DESC LIMIT 10`).all(...a),
+    rows: db.prepare(`SELECT * FROM elig_results WHERE ${w} ORDER BY id DESC LIMIT 100`).all(...a).map(r => ({ ...r, answers: JSON.parse(r.answers || '{}') }))
+  });
+});
+
 app.get('/api/mindmap', auth(), (req, res) => {
   const site = Number(req.query.site);
   res.json({

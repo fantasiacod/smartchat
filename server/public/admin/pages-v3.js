@@ -57,8 +57,9 @@
             'يعرضها البوت كقائمة مرقّمة بأيقوناتها عندما يختار المستفيد «تعرّف علينا»، ويجيب عن أي قسم إذا سُئل عنه مباشرة. اختر لكل قسم أيقونة ولوناً أو شعار الجمعية.') + '</div>' +
           '<div data-pane="contact" class="hidden"><div class="grid g2">' + card('📇 بيانات التواصل', f.text('org.name', 'اسم الجمعية') + '<div class="grid g2">' + f.text('org.unified_number', 'الرقم الموحّد', { ltr: true, ph: '9200xxxxx' }) + f.text('org.email', 'البريد', { ltr: true }) + '</div>' +
               f.text('org.website', 'الموقع الإلكتروني', { ltr: true, ph: 'https://' }) + f.area('org.hours', 'ساعات العمل', { rows: 2, ph: 'الأحد – الخميس: 8 صباحاً – 4 عصراً' })) +
-            card('📍 الموقع', f.text('org.map_url', 'رابط الموقع في خرائط Google', { ltr: true, ph: 'https://maps.app.goo.gl/…', hint: 'افتح موقعكم في خرائط Google ← مشاركة ← نسخ الرابط، والصقه هنا. يكفي هذا الرابط.' }) +
+            card('📍 الموقع الرئيسي', f.text('org.map_url', 'رابط الموقع في خرائط Google', { ltr: true, ph: 'https://maps.app.goo.gl/…', hint: 'افتح موقعكم في خرائط Google ← مشاركة ← نسخ الرابط، والصقه هنا. يكفي هذا الرابط.' }) +
               f.text('org.address', 'العنوان (اختياري)', { ph: 'المدينة المنورة – حي …' }) + '<div id="mapprev"></div><label class="f" style="margin-top:12px">صور الموقع <small>(اختياري — مثل صورة المبنى أو المدخل)</small></label><div id="m-loc"></div>') + '</div>' +
+            card('🏢 الفروع والمواقع الأخرى', '<div id="brs"></div><button class="btn soft sm" id="addbr">+ إضافة فرع</button>', 'إذا كان لديكم أكثر من فرع أو موقع: عند السؤال عن الموقع يعرض البوت قائمة مرقّمة بالفروع (مع المقر الرئيسي أعلاه إن وُجد)، ثم يرسل خريطة الفرع المختار وأرقامه وأوقاته. ويفهم أيضاً «فرع جدة» أو اسم الفرع مباشرة.') +
             card('☎️ الأقسام وأرقامها', '<div id="deps"></div><button class="btn soft sm" id="adddep">+ إضافة قسم</button>', 'إذا كتب المستفيد اسم القسم يرسل له البوت أرقامه.') +
             card('📱 حسابات التواصل الاجتماعي', '<div class="grid g4">' + [['x', 'X (تويتر)'], ['instagram', 'إنستغرام'], ['snapchat', 'سناب شات'], ['tiktok', 'تيك توك'], ['youtube', 'يوتيوب'], ['facebook', 'فيسبوك'], ['linkedin', 'لينكدإن'], ['whatsapp', 'واتساب']].map(function (x) { return f.text('org.social.' + x[0], x[1], { ltr: true }); }).join('') + '</div>') + '</div>' +
           '<div data-pane="banks" class="hidden">' + card('🏦 الحسابات البنكية', '<div class="quick" id="bquick"></div><div id="bgroups" style="margin-top:14px"></div><button class="btn soft" id="addgrp">+ تصنيف جديد</button>',
@@ -103,6 +104,24 @@
           A.$('#mapprev', el).innerHTML = (o.map_url || o.address) && q ? '<iframe style="width:100%;height:180px;border:0;border-radius:12px;margin-top:6px" loading="lazy" src="https://maps.google.com/maps?q=' + encodeURIComponent(q) + '&z=16&output=embed"></iframe>' : '';
         }
         mapPrev();
+        /* branches */
+        o.branches = o.branches || [];
+        function brs() {
+          var box = A.$('#brs', el);
+          box.innerHTML = o.branches.map(function (b, i) {
+            return '<div class="repeat" data-i="' + i + '"><div class="row" style="margin-bottom:8px"><span style="font-size:20px">📍</span><input class="in" data-k="name" placeholder="اسم الفرع (مثال: فرع العوالي)" style="font-weight:700"><input class="in" data-k="city" placeholder="المدينة / الحي" style="max-width:200px"><button class="btn sm ghost icon" data-up title="أعلى">↑</button><button class="btn sm danger ghost icon" data-rm>✕</button></div>' +
+              f.text('map_url', '', { ltr: true, ph: 'رابط موقع الفرع في خرائط Google' }) + '<div class="grid g3">' + f.text('address', '', { ph: 'العنوان (اختياري)' }) + f.text('phones', '', { ph: 'أرقام الفرع مفصولة بفواصل', ltr: true }) + f.text('hours', '', { ph: 'أوقات العمل (اختياري)' }) + '</div>' +
+              '<details><summary class="small muted" style="cursor:pointer">🖼️ صور الفرع</summary><div data-m style="margin-top:6px"></div></details></div>';
+          }).join('') || '<p class="small muted">لا توجد فروع — يُستخدم الموقع الرئيسي فقط</p>';
+          A.$$('.repeat', box).forEach(function (r) {
+            var i = Number(r.getAttribute('data-i')), b = o.branches[i]; b.media = b.media || [];
+            A.bind(r, b, ch); A.mediaEditor(r.querySelector('[data-m]'), b.media, ch);
+            r.querySelector('[data-rm]').onclick = function () { A.confirm('حذف «' + (b.name || 'الفرع') + '»؟', true).then(function (ok) { if (ok) { o.branches.splice(i, 1); ch(); brs(); } }); };
+            r.querySelector('[data-up]').onclick = function () { if (i > 0) { o.branches.splice(i - 1, 0, o.branches.splice(i, 1)[0]); ch(); brs(); } };
+          });
+        }
+        A.$('#addbr', el).onclick = function () { o.branches.push({ id: uid('br'), name: '', city: '', address: '', map_url: '', phones: '', hours: '', media: [] }); ch(); brs(); };
+        brs();
         /* departments */
         function deps() {
           A.$('#deps', el).innerHTML = o.departments.map(function (x, i) { return '<div class="row" style="margin-bottom:8px" data-i="' + i + '"><input class="in" data-k="name" placeholder="اسم القسم (مثال: خدمة المستفيدين)"><input class="in" data-k="phones" placeholder="الأرقام مفصولة بفواصل" dir="ltr"><button class="btn sm danger ghost icon" data-rm>✕</button></div>'; }).join('') || '<p class="small muted">لا توجد أقسام</p>';
@@ -438,33 +457,70 @@
     render: function (root) {
       A.settingsPage(root, ['datasource'], function (el, d, ch) {
         var D = d.datasource; D.connections = D.connections || []; D.lookups = D.lookups || [];
-        var TYPES = [['mysql', 'MySQL / MariaDB'], ['postgres', 'PostgreSQL'], ['api', 'REST API']];
-        el.innerHTML = '<div class="alert info" style="margin-bottom:16px">🔗 اربط البوت بقاعدة بيانات واحدة أو أكثر ليجيب المستفيد من بياناته: حالة الطلب، ملف المستفيد، موعد الصرف… اكتب في الاستعلام متغيرات مثل <code>:phone</code> و <code>:id_number</code> وسيطلبها البوت من المستفيد تلقائياً. 🔒 يُسمح فقط باستعلامات القراءة SELECT، ويُنصح بمستخدم قراءة فقط.</div>' +
-          card('🗄️ قاعدة البيانات الرئيسية', '<div class="grid g2">' + f.select('datasource.type', 'النوع', [['demo', 'بيانات تجريبية'], ['none', 'بدون'], ['mysql', 'MySQL / MariaDB'], ['postgres', 'PostgreSQL'], ['api', 'REST API']]) +
-            f.text('datasource.connection', 'رابط الاتصال', { ltr: true, mono: true, ph: 'mysql://user:pass@host:3306/db' }) + '</div><div class="grid g2">' + f.text('datasource.api_url', 'رابط API (لنوع REST)', { ltr: true }) + f.text('datasource.api_headers', 'API Headers (JSON)', { ltr: true, mono: true }) + '</div>') +
-          card('➕ قواعد بيانات إضافية', '<div id="conns"></div><button class="btn soft sm" id="addc">+ إضافة قاعدة بيانات</button>', 'مثال: قاعدة نظام المستفيدين، ونظام المواعيد، وواجهة API لنظام آخر — كل واحدة باسم.') +
+        var TYPES = [
+          ['mysql', '🐬 MySQL / MariaDB', 'mysql://user:pass@host:3306/db', 'يشمل: استضافات cPanel، PlanetScale، AWS RDS، Azure MySQL. أضف ?ssl=true للخوادم السحابية التي تتطلب SSL', "SELECT status FROM orders WHERE order_no = :order_no AND phone = :phone"],
+          ['postgres', '🐘 PostgreSQL', 'postgres://user:pass@host:5432/db', 'يشمل: Supabase، Neon، AWS RDS، Google Cloud SQL، Azure. في Supabase استخدم رابط Session pooler', "SELECT status FROM orders WHERE order_no = :order_no AND phone = :phone"],
+          ['mssql', '🟦 SQL Server / Azure SQL', 'Server=host,1433;Database=db;User Id=user;Password=pass;Encrypt=true;TrustServerCertificate=true', 'أو mssql://user:pass@host:1433/db — يشمل SQL Server داخل الجهة و Azure SQL', "SELECT TOP 3 status FROM orders WHERE order_no = :order_no AND phone = :phone"],
+          ['oracle', '🟥 Oracle / Oracle Cloud', 'oracle://user:pass@host:1521/service_name', 'يعمل بدون تثبيت Oracle Client', "SELECT status FROM orders WHERE order_no = :order_no AND phone = :phone"],
+          ['mongodb', '🍃 MongoDB / Atlas', 'mongodb+srv://user:pass@cluster.mongodb.net/db', 'الاستعلام يُكتب JSON: المجموعة والفلتر', '{"collection":"orders","filter":{"order_no":":order_no","phone":":phone"},"limit":3}'],
+          ['sheet', '📗 Google Sheets / رابط CSV', 'https://docs.google.com/spreadsheets/d/…/edit#gid=0', 'شارك الجدول «لأي شخص لديه الرابط» أو انشره كـ CSV. أسماء الأعمدة = الصف الأول، والجدول اسمه data', "SELECT status FROM data WHERE order_no = :order_no AND phone = :phone"],
+          ['file', '📄 ملف Excel / CSV', '', 'ارفع ملف .xlsx أو .csv — أسماء الأعمدة = الصف الأول، والجدول اسمه data. يُحدَّث برفع ملف جديد', "SELECT status FROM data WHERE order_no = :order_no AND phone = :phone"],
+          ['sqlite', '🪶 SQLite (ملف على الخادم)', '/path/to/file.db', 'ملف قاعدة بيانات SQLite موجود على نفس الخادم', "SELECT status FROM orders WHERE order_no = :order_no AND phone = :phone"],
+          ['api', '🌐 REST API', '', 'أي نظام له API: Firebase، Airtable، نظام ERP أو CRM. الاستعلام = المسار، والمتغيرات بين { }', '/orders/{order_no}?phone={phone}']
+        ];
+        var TT = {}; TYPES.forEach(function (t) { TT[t[0]] = t; });
+        function connFields(c, extra) {
+          var t = TT[c.type];
+          if (!t) return '';
+          if (c.type === 'api') return '<div class="grid g2">' + f.text(extra + 'api_url', 'رابط API الأساسي', { ltr: true, ph: 'https://api.example.com' }) + f.text(extra + 'api_headers', 'Headers (JSON)', { ltr: true, mono: true, ph: '{"Authorization":"Bearer …"}' }) + '</div><div class="hint">' + t[3] + '</div>';
+          if (c.type === 'file') return '<div class="row wrap"><button type="button" class="btn soft" data-upl>📤 رفع ملف Excel / CSV</button><span class="small" data-finfo>' + (c.connection ? '⏳' : '<span class="muted">لم يُرفع ملف بعد</span>') + '</span></div><div class="hint">' + t[3] + '</div>';
+          return f.text(extra + 'connection', 'رابط الاتصال', { ltr: true, mono: true, ph: t[2], hint: t[3] });
+        }
+        function wireConn(box, c, onChange) {
+          var up = box.querySelector('[data-upl]'), info = box.querySelector('[data-finfo]');
+          if (info && c.connection) A.GET('/api/datasource/file-info?conn=' + encodeURIComponent(c.connection)).then(function (x) { info.innerHTML = x.name ? '✅ <b>' + esc(x.name) + '</b> — ' + x.rows + ' صف · الأعمدة: <span class="ltr tiny">' + esc(x.columns.join(', ')) + '</span>' : '<span class="muted">الملف غير موجود — ارفعه مرة أخرى</span>'; });
+          if (up) up.onclick = function () {
+            A.pickFile('.xlsx,.csv,.txt').then(function (fs) {
+              if (!fs[0]) return; info.textContent = 'جارٍ الرفع…';
+              fetch('/api/datasource/file?name=' + encodeURIComponent(fs[0].name), { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Authorization: 'Bearer ' + S.token }, body: fs[0] })
+                .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error); return j; }); })
+                .then(function (x) { c.connection = x.connection; onChange(); info.innerHTML = '✅ <b>' + esc(x.name) + '</b> — ' + x.rows + ' صف · الأعمدة: <span class="ltr tiny">' + esc(x.columns.join(', ')) + '</span> <span class="muted">(احفظ التغييرات)</span>'; }, function (e) { info.textContent = '❌ ' + e.message; });
+            });
+          };
+        }
+        el.innerHTML = '<div class="alert info" style="margin-bottom:16px">🔗 اربط البوت بأي مصدر بيانات — تقليدي داخل الجهة أو سحابي — ليجيب المستفيد من بياناته: حالة الطلب، ملف المستفيد، موعد الصرف… اكتب في الاستعلام متغيرات مثل <code>:phone</code> و <code>:id_number</code> وسيطلبها البوت من المستفيد تلقائياً. 🔒 القراءة فقط: لا يمكن للبوت التعديل أو الحذف، ويُنصح بمستخدم قراءة فقط.</div>' +
+          card('🗄️ قاعدة البيانات الرئيسية', '<div class="grid g2"><div>' + f.select('datasource.type', 'النوع', [['demo', '🧪 بيانات تجريبية'], ['none', '— بدون —']].concat(TYPES.map(function (t) { return [t[0], t[1]]; }))) + '</div><div id="mainconn"></div></div>') +
+          card('➕ قواعد بيانات إضافية', '<div id="conns"></div><button class="btn soft sm" id="addc">+ إضافة مصدر بيانات</button>', 'يمكن ربط أكثر من مصدر معاً: مثلاً SQL Server لنظام المستفيدين + Google Sheets لمواعيد الصرف + API لنظام آخر.') +
+          card('🧾 المربعات التي يسألها البوت', '<div id="fmiss"></div><div id="flds"></div><button class="btn soft sm" id="addf">+ مربع جديد</button>', 'كل مربع = معلومة يطلبها البوت من المستفيد قبل البحث (رقم الملف، الاسم، تاريخ الميلاد…). اكتب اسمه المختصر في الاستعلام بعد نقطتين مثل <code>:file_no</code>، والبوت يسأل عنه بالسؤال الذي تكتبه ويتحقق من صحة الإجابة. يعمل مع كل أنواع قواعد البيانات.') +
           card('🔎 استعلامات البوت', '<details open><summary class="b" style="cursor:pointer;margin-bottom:10px">📦 حالة الطلب (مدمج)</summary>' + f.area('datasource.order_query', 'الاستعلام', { mono: true, rows: 2 }) + '<div class="grid g2">' + f.area('datasource.order_template', 'قالب الرد', { rows: 2 }) + f.area('datasource.notes_template', 'قالب الملاحظات', { rows: 2 }) + '</div></details>' +
             '<details><summary class="b" style="cursor:pointer;margin-bottom:10px">🪪 بيانات المستفيد (مدمج)</summary>' + f.area('datasource.customer_query', 'الاستعلام', { mono: true, rows: 2 }) + f.area('datasource.customer_template', 'قالب الرد', { rows: 3 }) + '</details>' +
-            '<div class="section-title" style="margin-top:16px"><h2>استعلامات مخصصة</h2></div><div id="lks"></div><button class="btn soft sm" id="addl">+ استعلام جديد</button>', 'كل استعلام مخصص له كلمات يفهم بها البوت الطلب، ويمكن ربطه بزر في «القوائم والأزرار» (إجراء: استعلام من قاعدة بيانات).');
-        A.bind(el, d, ch);
+            '<div class="section-title" style="margin-top:16px"><h2>استعلامات مخصصة</h2></div><div id="lks"></div><button class="btn soft sm" id="addl">+ استعلام جديد</button>', 'كل استعلام مخصص له كلمات يفهم بها البوت الطلب، ويمكن ربطه بزر في «القوائم والأزرار» (إجراء: استعلام مخصص).');
+        A.bind(el, d, function (k) { ch(); if (k === 'datasource.type') mainConn(); if (/_query$/.test(k)) fields(); });
+        function mainConn() {
+          var box = A.$('#mainconn', el), t = TT[D.type];
+          box.innerHTML = t ? connFields(D, 'datasource.') + '<div class="hint">مثال استعلام: <code class="ltr">' + esc(t[4]) + '</code></div>' : (D.type === 'demo' ? '<div class="hint" style="margin-top:28px">جداول تجريبية: demo_orders و demo_customers (طلب 1001 بجوال 0500000001)</div>' : '');
+          A.bind(box, d, ch); wireConn(box, D, ch);
+        }
+        mainConn();
         function conns() {
           A.$('#conns', el).innerHTML = D.connections.map(function (c, i) {
             return '<div class="repeat" data-i="' + i + '"><div class="row" style="margin-bottom:8px"><input class="in" data-k="name" placeholder="الاسم (مثال: نظام المستفيدين)" style="font-weight:700"><select class="in" data-k="type" style="width:auto">' + TYPES.map(function (t) { return '<option value="' + t[0] + '">' + t[1] + '</option>'; }).join('') + '</select><button class="btn sm danger ghost icon" data-rm>✕</button></div>' +
-              (c.type === 'api' ? '<div class="grid g2">' + f.text('api_url', 'رابط API', { ltr: true }) + f.text('api_headers', 'Headers (JSON)', { ltr: true, mono: true }) + '</div>' : f.text('connection', 'رابط الاتصال', { ltr: true, mono: true, ph: c.type === 'postgres' ? 'postgres://user:pass@host:5432/db' : 'mysql://user:pass@host:3306/db' })) + '</div>';
-          }).join('') || '<p class="small muted">لا توجد قواعد إضافية</p>';
-          A.$$('.repeat', A.$('#conns', el)).forEach(function (r) { var i = Number(r.getAttribute('data-i')), c = D.connections[i]; A.bind(r, c, function (k) { ch(); if (k === 'type') conns(); }); r.querySelector('[data-rm]').onclick = function () { D.connections.splice(i, 1); ch(); conns(); lks(); }; });
+              '<div data-cf>' + connFields(c, '') + '</div><div class="hint">مثال استعلام: <code class="ltr">' + esc((TT[c.type] || TYPES[0])[4]) + '</code></div></div>';
+          }).join('') || '<p class="small muted">لا توجد مصادر إضافية</p>';
+          A.$$('.repeat', A.$('#conns', el)).forEach(function (r) { var i = Number(r.getAttribute('data-i')), c = D.connections[i]; A.bind(r, c, function (k) { ch(); if (k === 'type') { c.connection = ''; conns(); lks(); } }); wireConn(r, c, ch); r.querySelector('[data-rm]').onclick = function () { D.connections.splice(i, 1); ch(); conns(); lks(); }; });
         }
         function lks() {
-          var opts = [['main', 'الرئيسية']].concat(D.connections.map(function (c) { return [c.id, c.name || c.id]; }));
+          var opts = [['main', 'الرئيسية']].concat(D.connections.map(function (c) { return [c.id, (c.name || c.id) + ' (' + ((TT[c.type] || [0, c.type])[1]) + ')']; }));
           A.$('#lks', el).innerHTML = D.lookups.map(function (l, i) {
             return '<div class="repeat" data-i="' + i + '"><div class="row" style="margin-bottom:8px"><input class="in" data-k="title" placeholder="اسم الاستعلام (مثال: موعد صرف المساعدة)" style="font-weight:700"><select class="in" data-k="connection" style="width:auto">' + opts.map(function (o) { return '<option value="' + esc(o[0]) + '">🗄️ ' + esc(o[1]) + '</option>'; }).join('') + '</select><button class="btn sm danger ghost icon" data-rm>✕</button></div>' +
               f.text('keywords', 'كلمات يُفهم بها الطلب', { ph: 'موعد الصرف, متى الصرف, صرف المساعدة' }) + f.area('query', 'الاستعلام (أو مسار API)', { mono: true, rows: 2, ph: 'SELECT next_date, amount FROM aid WHERE id_number = :id_number' }) +
               '<div class="grid g2">' + f.area('template', 'قالب الرد', { rows: 2, ph: 'موعد الصرف القادم: {next_date}\nالمبلغ: {amount} ريال' }) + f.text('not_found', 'عند عدم وجود نتيجة', { ph: 'لم أجد بيانات بهذه المعلومات.' }) + '</div>' +
-              '<div class="row"><input class="in" data-tp placeholder=\'{"id_number":"1234567890"}\' dir="ltr" style="font-family:ui-monospace,monospace"><button class="btn sm soft" data-t>🧪 اختبار</button></div><pre class="code hidden" data-r style="margin-top:8px;max-height:200px;overflow:auto"></pre></div>';
+              '<div class="row"><button class="btn sm gold" data-bld>🪄 بناء الاستعلام بدون كتابة</button><input class="in" data-tp placeholder=\'{"id_number":"1234567890"}\' dir="ltr" style="font-family:ui-monospace,monospace"><button class="btn sm soft" data-t>🧪 اختبار</button></div><pre class="code hidden" data-r style="margin-top:8px;max-height:200px;overflow:auto"></pre></div>';
           }).join('') || '<p class="small muted">لا توجد استعلامات مخصصة</p>';
           A.$$('.repeat', A.$('#lks', el)).forEach(function (r) {
             var i = Number(r.getAttribute('data-i')), l = D.lookups[i];
-            A.bind(r, l, ch);
+            A.bind(r, l, function (k) { ch(); if (k === 'query') fields(); });
+            r.querySelector('[data-bld]').onclick = function () { builder(l); };
             r.querySelector('[data-rm]').onclick = function () { D.lookups.splice(i, 1); ch(); lks(); };
             r.querySelector('[data-t]').onclick = function () {
               var params = {}, out = r.querySelector('[data-r]'); try { params = JSON.parse(r.querySelector('[data-tp]').value || '{}'); } catch (e) { return A.toast('صيغة JSON غير صحيحة', 'err'); }
@@ -473,9 +529,116 @@
             };
           });
         }
+        /* ---------- boxes (fields) ---------- */
+        var FTYPES = [['text', '🔤 نص'], ['number', '🔢 أرقام فقط'], ['code', '#️⃣ رقم ملف / طلب (أحرف وأرقام)'], ['phone', '📱 رقم جوال'], ['id', '🪪 رقم هوية / إقامة'], ['email', '✉️ بريد إلكتروني'], ['date', '📅 تاريخ']];
+        var BUILTIN = { order_no: ['رقم الطلب', 'code'], phone: ['رقم الجوال', 'phone'], email: ['البريد الإلكتروني', 'email'], id_number: ['رقم الهوية', 'id'] };
+        D.fields = D.fields || [];
+        // the 4 common boxes are added once; after that every box can be deleted
+        if (!D.fields_ready) { Object.keys(BUILTIN).forEach(function (k) { if (!D.fields.some(function (x) { return x.key === k; })) D.fields.push({ key: k, label: BUILTIN[k][0], type: BUILTIN[k][1], prompt: '', error: '' }); }); D.fields_ready = true; }
+        var PRE = /(?:^|[^:\w]):([a-zA-Z_]\w*)/g;
+        function varsUsed() {
+          var used = {};
+          function scan(q, where) { var m; PRE.lastIndex = 0; while ((m = PRE.exec(String(q || '')))) (used[m[1]] = used[m[1]] || []).push(where); String(q || '').replace(/\{(\w+)\}/g, function (_, n) { if (/^\s*\//.test(q)) (used[n] = used[n] || []).push(where); }); }
+          scan(D.order_query, 'حالة الطلب'); scan(D.customer_query, 'بيانات المستفيد');
+          D.lookups.forEach(function (l) { scan(l.query, l.title || 'استعلام مخصص'); });
+          return used;
+        }
+        function slugKey(s, i) { var k = String(s || '').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, ''); if (!k || /^\d/.test(k)) k = 'field_' + (i || D.fields.length + 1); while (D.fields.some(function (x) { return x.key === k; })) k += '_2'; return k; }
+        function guessType(n) { n = String(n).toLowerCase(); return /phone|mobile|جوال|هاتف/.test(n) ? 'phone' : /mail|بريد/.test(n) ? 'email' : /id_?num|national|iqama|هوية|إقامة|اقامة/.test(n) ? 'id' : /date|تاريخ|birth|ميلاد/.test(n) ? 'date' : /(^|_)(no|num|number|code|ref)$|رقم/.test(n) ? 'code' : 'text'; }
+        function fields() {
+          var used = varsUsed(), defs = S.i18n.defaults.ar || {};
+          var miss = Object.keys(used).filter(function (k) { return !D.fields.some(function (x) { return x.key === k; }); });
+          A.$('#fmiss', el).innerHTML = miss.length ? '<div class="alert warn" style="margin-bottom:12px">⚠️ متغيرات مستخدمة في الاستعلامات بدون مربع: ' + miss.map(function (k) { return '<button class="btn sm soft" data-addv="' + k + '">+ <span class="ltr">:' + k + '</span></button>'; }).join(' ') + ' <span class="tiny">(بدونها يسأل البوت بسؤال عام)</span></div>' : '';
+          A.$$('[data-addv]', el).forEach(function (b) { b.onclick = function () { var k = b.getAttribute('data-addv'); D.fields.push({ key: k, label: k, type: guessType(k), prompt: '', error: '' }); ch(); fields(); }; });
+          A.$('#flds', el).innerHTML = D.fields.map(function (x, i) {
+            var u = used[x.key];
+            return '<div class="repeat" data-i="' + i + '"><div class="row" style="margin-bottom:8px;flex-wrap:wrap"><input class="in" data-k="label" placeholder="اسم المربع (مثال: رقم الملف)" style="font-weight:700;flex:1;min-width:160px">' +
+              '<span class="ltr" style="display:flex;align-items:center;gap:2px"><b class="muted">:</b><input class="in" data-k="key" placeholder="file_no" dir="ltr" style="width:130px;font-family:ui-monospace,monospace"></span>' +
+              '<select class="in" data-k="type" style="width:auto">' + FTYPES.map(function (t) { return '<option value="' + t[0] + '">' + t[1] + '</option>'; }).join('') + '</select>' +
+              '<button class="btn sm danger ghost icon" data-rm title="حذف المربع">✕</button></div>' +
+              '<div class="grid g2">' + f.text('prompt', 'سؤال البوت', { ph: defs['ask_' + x.key] || ('من فضلك أرسل ' + (x.label || x.key)) }) + f.text('error', 'رسالة عند إدخال قيمة خاطئة (اختياري)', { ph: 'يُكتب تلقائياً حسب النوع' }) + '</div>' +
+              '<details><summary class="tiny muted" style="cursor:pointer">🌐 الترجمة (English / اردو)</summary><div class="grid g3" style="margin-top:6px">' + f.text('label_en', 'Name (English)', { ltr: true }) + f.text('prompt_en', 'Question (English)', { ltr: true }) + f.text('prompt_ur', 'سوال (اردو)') + '</div></details>' +
+              '<div class="tiny ' + (u ? 'muted' : 'muted') + '" style="margin-top:4px">' + (u ? '✅ مستخدم في: ' + esc(u.filter(function (v, j, a) { return a.indexOf(v) === j; }).join('، ')) : '◻️ غير مستخدم بعد — اكتب <span class="ltr">:' + esc(x.key || '…') + '</span> في أي استعلام') + '</div></div>';
+          }).join('');
+          A.$$('.repeat', A.$('#flds', el)).forEach(function (r) {
+            var i = Number(r.getAttribute('data-i')), x = D.fields[i];
+            A.bind(r, x, function (k) { if (k === 'key') { var c = String(x.key || '').replace(/[^a-zA-Z0-9_]/g, '').replace(/^\d+/, ''); if (c !== x.key) { x.key = c; r.querySelector('[data-k=key]').value = c; } } ch(); });
+            r.querySelector('[data-rm]').onclick = function () {
+              var u = varsUsed()[x.key], go = function () { D.fields.splice(i, 1); ch(); fields(); };
+              if (!u) return go();
+              A.confirm('المربع «' + (x.label || x.key) + '» مستخدم في: ' + u.join('، ') + '. إذا حذفته سيسأل البوت عنه بسؤال عام. حذف؟').then(function (ok) { if (ok) go(); });
+            };
+          });
+        }
+        A.$('#addf', el).onclick = function () { D.fields.push({ key: slugKey(''), label: '', type: 'text', prompt: '', error: '' }); ch(); fields(); };
+
+        /* ---------- build a query without writing SQL ---------- */
+        function builder(l) {
+          var m = A.modal({ title: '🪄 بناء الاستعلام بدون كتابة', size: 'wide', body: '<p class="muted">⏳ جارٍ قراءة الجداول من قاعدة البيانات…</p>', buttons: false });
+          A.api('POST', '/api/sites/' + S.site.id + '/datasource/schema', { connection: l.connection || 'main', datasource: D }).then(function (sc) {
+            if (!sc.tables.length) { m.body.innerHTML = '<div class="alert warn">لم أجد جداول في قاعدة البيانات</div>'; return; }
+            var type = sc.type, st = { t: sc.tables[0].name, by: {}, show: {}, mode: 'any', verify: '' };
+            function draw() {
+              var tb = sc.tables.filter(function (t) { return t.name === st.t; })[0] || sc.tables[0];
+              m.body.innerHTML = '<div class="field"><label class="f">1) اختر الجدول</label><select class="in" id="bt">' + sc.tables.map(function (t) { return '<option' + (t.name === st.t ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '</select></div>' +
+                '<label class="f">2) كيف يبحث البوت؟</label><div class="checks" style="margin-bottom:10px"><label><input type="radio" name="bm" value="any"' + (st.mode === 'any' ? ' checked' : '') + '> 🔢 <b>أي رقم مسجّل</b> — يسأل المستفيد سؤالاً واحداً ويبحث بالرقم في كل الأعمدة المحددة (رقم الطلب أو الهوية أو الجوال…)</label><label><input type="radio" name="bm" value="all"' + (st.mode === 'all' ? ' checked' : '') + '> 🧩 <b>كل الشروط معاً</b> — يسأل عن كل عمود محدد على حدة (مثال: رقم الطلب + الجوال)</label></div>' +
+                (st.mode === 'any' ? '<div class="field"><label class="f">🔒 تحقق إضافي (موصى به لحماية بيانات المستفيدين)</label><select class="in" id="bv"><option value="">بدون — يكفي الرقم</option>' + tb.columns.map(function (c) { return '<option value="' + esc(c) + '"' + (st.verify === c ? ' selected' : '') + '>يطلب أيضاً رقم الجوال ويطابقه مع: ' + esc(c) + '</option>'; }).join('') + '</select></div>' : '') +
+                '<label class="f">3) حدّد الأعمدة <span class="muted">— الفارغ منها يُخفى تلقائياً من الرد (مثلاً «السبب» يظهر فقط إذا كان مسجلاً)</span></label><div class="row" style="margin-bottom:8px"><button class="btn sm soft" id="ball">👁️ اعرض كل الأعمدة</button><button class="btn sm ghost" id="bnone">إلغاء الكل</button></div><div class="tbl-wrap"><table class="t"><thead><tr><th>العمود</th><th>🔎 يسأل المستفيد عنه ويبحث به</th><th>👁️ يعرضه في الرد</th></tr></thead><tbody>' +
+                tb.columns.map(function (c, i) {
+                  var by = st.by[c], sh = st.show[c];
+                  return '<tr><td class="ltr"><b>' + esc(c) + '</b></td><td><label class="row"><input type="checkbox" data-by="' + i + '"' + (by ? ' checked' : '') + '>' + (by && st.mode === 'all' ? '<select class="in" data-bf="' + i + '" style="width:auto">' + D.fields.map(function (x) { return '<option value="' + esc(x.key) + '"' + (by === x.key ? ' selected' : '') + '>' + esc(x.label || x.key) + '</option>'; }).join('') + '<option value="__new"' + (by === '__new' ? ' selected' : '') + '>➕ مربع جديد: ' + esc(c) + '</option></select>' : '') + '</label></td>' +
+                    '<td><label class="row"><input type="checkbox" data-sh="' + i + '"' + (sh != null ? ' checked' : '') + '>' + (sh != null ? '<input class="in" data-sl="' + i + '" value="' + esc(sh) + '" placeholder="العنوان في الرد" style="width:160px">' : '') + '</label></td></tr>';
+                }).join('') + '</tbody></table></div><div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn ghost" id="bx">إلغاء</button><button class="btn" id="bg">✅ إنشاء الاستعلام</button></div>';
+              A.$('#bt', m.body).onchange = function () { st = { t: this.value, by: {}, show: {}, mode: st.mode, verify: '' }; draw(); };
+              A.$$('[name=bm]', m.body).forEach(function (r) { r.onchange = function () { st.mode = r.value; draw(); }; });
+              if (A.$('#bv', m.body)) A.$('#bv', m.body).onchange = function () { st.verify = this.value; };
+              A.$('#ball', m.body).onclick = function () { tb.columns.forEach(function (c) { if (st.show[c] == null) st.show[c] = c; }); draw(); };
+              A.$('#bnone', m.body).onclick = function () { st.show = {}; draw(); };
+              A.$$('[data-by]', m.body).forEach(function (b) { b.onchange = function () { var c = tb.columns[b.getAttribute('data-by')]; if (b.checked) { var g = guessType(c), ex = D.fields.filter(function (x) { return x.key === c || (x.type === g && g !== 'text' && g !== 'code'); })[0]; st.by[c] = ex ? ex.key : '__new'; } else delete st.by[c]; draw(); }; });
+              A.$$('[data-bf]', m.body).forEach(function (b) { b.onchange = function () { st.by[tb.columns[b.getAttribute('data-bf')]] = b.value; }; });
+              A.$$('[data-sh]', m.body).forEach(function (b) { b.onchange = function () { var c = tb.columns[b.getAttribute('data-sh')]; if (b.checked) st.show[c] = c; else delete st.show[c]; draw(); }; });
+              A.$$('[data-sl]', m.body).forEach(function (b) { b.oninput = function () { st.show[tb.columns[b.getAttribute('data-sl')]] = b.value; }; });
+              A.$('#bx', m.body).onclick = m.close;
+              A.$('#bg', m.body).onclick = function () {
+                var by = Object.keys(st.by), show = Object.keys(st.show);
+                if (!by.length) return A.toast('اختر عموداً واحداً على الأقل يبحث به البوت', 'err');
+                if (!show.length) return A.toast('اختر ما يعرضه البوت في الرد', 'err');
+                if (st.mode === 'any') {
+                  if (!D.fields.some(function (x) { return x.key === 'any_no'; })) D.fields.push({ key: 'any_no', label: 'الرقم المسجّل', type: 'code', prompt: 'أرسل أي رقم مسجّل لدينا (رقم الطلب أو الهوية أو الجوال) 🔢', error: '' });
+                  by.forEach(function (c) { st.by[c] = 'any_no'; });
+                } else by.forEach(function (c) { if (st.by[c] === '__new') { var k = slugKey(c); D.fields.push({ key: k, label: c, type: guessType(c), prompt: '', error: '' }); st.by[c] = k; } });
+                var q = function (n) { return String(n).split('.').map(function (p) { return type === 'mysql' ? '`' + p.replace(/`/g, '') + '`' : type === 'mssql' ? '[' + p.replace(/]/g, '') + ']' : '"' + p.replace(/"/g, '') + '"'; }).join('.'); };
+                var alias = function (c) { return String(c).replace(/[^\p{L}\p{N}_]+/gu, '_'); };
+                if (type === 'mongodb') {
+                  var flt = {}, prj = {};
+                  if (st.mode === 'any') flt.$or = by.map(function (c) { var o = {}; o[c] = ':any_no'; return o; }); else by.forEach(function (c) { flt[c] = ':' + st.by[c]; });
+                  if (st.mode === 'any' && st.verify) flt[st.verify] = ':phone';
+                  show.forEach(function (c) { prj[c] = 1; });
+                  l.query = JSON.stringify({ collection: st.t, filter: flt, projection: prj, limit: 3 });
+                } else if (type === 'api') { return A.toast('هذا النوع لا يدعم البناء التلقائي', 'err'); }
+                else {
+                  var cols = show.map(function (c) { return q(c) + (alias(c) !== c ? ' AS ' + q(alias(c)) : ''); }).join(', ');
+                  // "any number": compare as text so a letter-number never breaks a numeric column
+                  var asText = function (c) { return type === 'postgres' ? 'CAST(' + q(c) + ' AS TEXT)' : type === 'mysql' ? 'CAST(' + q(c) + ' AS CHAR)' : type === 'mssql' ? 'CAST(' + q(c) + ' AS NVARCHAR(200))' : type === 'oracle' ? 'TO_CHAR(' + q(c) + ')' : q(c); };
+                  var where = st.mode === 'any'
+                    ? (by.length > 1 ? '(' : '') + by.map(function (c) { return asText(c) + ' = :any_no'; }).join(' OR ') + (by.length > 1 ? ')' : '') + (st.verify ? ' AND ' + asText(st.verify) + ' = :phone' : '')
+                    : by.map(function (c) { return q(c) + ' = :' + st.by[c]; }).join(' AND ');
+                  l.query = type === 'mssql' ? 'SELECT TOP 3 ' + cols + ' FROM ' + q(st.t) + ' WHERE ' + where
+                    : type === 'oracle' ? 'SELECT ' + cols + ' FROM ' + q(st.t) + ' WHERE ' + where + ' FETCH FIRST 3 ROWS ONLY'
+                    : 'SELECT ' + cols + ' FROM ' + q(st.t) + ' WHERE ' + where + ' LIMIT 3';
+                }
+                l.template = show.map(function (c) { return (st.show[c] || c) + ': {' + (type === 'oracle' ? alias(c).toLowerCase() : alias(c)) + '}'; }).join('\n');
+                if (!l.title) l.title = String(st.t).split('.').pop();
+                if (!l.keywords) l.keywords = l.title;
+                ch(); lks(); fields(); m.close(); A.toast('تم إنشاء الاستعلام ✅ جرّبه بزر «اختبار» ثم احفظ', 'ok');
+              };
+            }
+            draw();
+          }, function (e) { m.body.innerHTML = '<div class="alert err">❌ ' + esc(e.message) + '</div><p class="small muted">تأكد من رابط الاتصال واحفظ التغييرات، ثم حاول مرة أخرى.</p>'; });
+        }
         A.$('#addc', el).onclick = function () { D.connections.push({ id: uid('db'), name: '', type: 'mysql', connection: '', api_url: '', api_headers: '{}' }); ch(); conns(); lks(); };
         A.$('#addl', el).onclick = function () { D.lookups.push({ id: uid('lk'), title: '', keywords: '', connection: 'main', query: '', template: '', not_found: '' }); ch(); lks(); };
-        conns(); lks();
+        conns(); lks(); fields();
       });
     }
   });

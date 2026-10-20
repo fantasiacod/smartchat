@@ -9,6 +9,7 @@ const { texts, INTENTS, LANGS } = require('./i18n');
 const tickets = require('./tickets');
 const ICONS = require('../public/icons');
 const hooks = require('./webhooks');
+const elig = require('./eligibility');
 
 let vio, aio, JWT_SECRET;
 const online = new Map(); // userId -> {id,name,role}
@@ -16,7 +17,7 @@ const online = new Map(); // userId -> {id,name,role}
 /* ============================== helpers ============================== */
 
 function fill(tpl, ctx) {
-  return String(tpl ?? '').replace(/\{(\w+)\}/g, (_, k) => (ctx[k] ?? '') + '').replace(/[ \t]+([👋!،,.])/g, ' $1').replace(/ {2,}/g, ' ').replace(/^[ ،,]+|[ ،,]+$/gm, '');
+  return String(tpl ?? '').replace(/\{([\p{L}\p{N}_]+)\}/gu, (_, k) => (ctx[k] ?? ctx[String(k).toLowerCase()] ?? '') + '').replace(/[ \t]+([👋!،,.])/g, ' $1').replace(/ {2,}/g, ' ').replace(/^[ ،,]+|[ ،,]+$/gm, '');
 }
 
 function saveConv(conv, fields) {
@@ -152,14 +153,15 @@ function parseCoords(o) {
   return isFinite(lat) && isFinite(lng) ? { lat, lng } : null;
 }
 
-function locationPayload(site) {
-  const o = site.settings.org;
+// src: the organisation (main location) or one branch
+function locationPayload(site, src) {
+  const o = src || site.settings.org;
   const c = parseCoords(o) || (o.map_resolved && isFinite(o.map_resolved.lat) ? o.map_resolved : null);
-  const name = o.name || site.name;
+  const name = src ? [site.settings.org.name || site.name, src.name].filter(Boolean).join(' — ') : (o.name || site.name);
   if (!c && !o.map_url && !o.address) return null;
-  const q = c ? `${c.lat},${c.lng}` : [name, o.address].filter(Boolean).join(' ');
+  const q = c ? `${c.lat},${c.lng}` : [name, o.city, o.address].filter(Boolean).join(' ');
   return {
-    lat: c?.lat, lng: c?.lng, label: name, address: o.address || '',
+    lat: c?.lat, lng: c?.lng, label: name, address: [o.address, src && o.city].filter(Boolean).join(' — '),
     url: o.map_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`,
     directions: c ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}` : (o.map_url || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}`),
     embed: `https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=16&output=embed`
@@ -167,10 +169,9 @@ function locationPayload(site) {
 }
 
 // Short Google Maps links (maps.app.goo.gl) hide the coordinates: follow the redirect once and remember them.
-async function resolveMapLink(siteId) {
-  const site = getSite(siteId); if (!site) return;
-  const o = site.settings.org, url = String(o.map_url || '');
-  if (!url || parseCoords(o) || (o.map_resolved && o.map_resolved.url === url)) return;
+async function resolveOne(o) {
+  const url = String(o.map_url || '');
+  if (!url || parseCoords(o) || (o.map_resolved && o.map_resolved.url === url)) return null;
   let cur = url, found = null;
   try {
     for (let i = 0; i < 4 && !found; i++) {
@@ -181,8 +182,17 @@ async function resolveMapLink(siteId) {
       if (!loc) break; cur = new URL(loc, cur).toString();
     }
   } catch (e) { /* offline or blocked: the map still works by name/address */ }
+  return found ? { url, lat: found.lat, lng: found.lng } : { url };
+}
+async function resolveMapLink(siteId) {
+  const site = getSite(siteId); if (!site) return;
+  const main = await resolveOne(site.settings.org);
+  const br = {};
+  for (const b of site.settings.org.branches || []) { const r = await resolveOne(b); if (r) br[b.id] = r; }
+  if (!main && !Object.keys(br).length) return;
   const fresh = getSite(siteId);
-  fresh.settings.org.map_resolved = found ? { url, lat: found.lat, lng: found.lng } : { url };
+  if (main) fresh.settings.org.map_resolved = main;
+  for (const b of fresh.settings.org.branches || []) if (br[b.id]) b.map_resolved = br[b.id];
   db.prepare('UPDATE sites SET settings=? WHERE id=?').run(JSON.stringify(fresh.settings), siteId);
 }
 
@@ -246,13 +256,49 @@ function sendOrg(conv, site, field, opts = {}) {
   }
 }
 
+const branchesOf = (site) => (site.settings.org.branches || []).filter(b => b && b.name && (b.map_url || b.address || b.phones));
+
+// One location: send the map directly. Several branches: let the visitor choose.
 function sendLocation(conv, site, opts = {}) {
-  const t = tr(conv, site), loc = locationPayload(site);
-  const nav = opts.nav === false ? undefined : navOptions(conv, site);
-  if (!loc) return opts.silent ? false : !!botSay(conv, site, t.org_missing, nav);
-  const extra = { location: loc };
-  if ((site.settings.org.media?.location || []).length) extra.media = site.settings.org.media.location;
-  botSay(conv, site, `📍 ${loc.label}${loc.address ? '\n' + loc.address : ''}`, nav, extra);
+  const t = tr(conv, site), o = site.settings.org, nav = opts.nav === false ? undefined : navOptions(conv, site);
+  const brs = branchesOf(site), main = locationPayload(site);
+  if (brs.length && (brs.length > 1 || main)) {
+    const items = [];
+    if (main) items.push({ label: `🏢 ${t.main_branch}`, action: 'branch', target: 'main' });
+    for (const b of brs) items.push({ label: `📍 ${b.name}${b.city && !String(b.name).includes(b.city) ? ' — ' + b.city : ''}`, action: 'branch', target: b.id });
+    items.push({ label: t.nav_home, action: 'goto', target: '__menu' });
+    botSay(conv, site, t.branches_title, items, { numbered: true });
+    return true;
+  }
+  if (brs.length === 1) return sendBranch(conv, site, brs[0].id, opts);
+  if (!main) return opts.silent ? false : !!botSay(conv, site, t.org_missing, nav);
+  const extra = { location: main };
+  if ((o.media?.location || []).length) extra.media = o.media.location;
+  botSay(conv, site, `📍 ${main.label}${main.address ? '\n' + main.address : ''}`, nav, extra);
+  return true;
+}
+
+function sendBranch(conv, site, id, opts = {}) {
+  const t = tr(conv, site), nav = opts.nav === false ? undefined : navOptions(conv, site);
+  if (id === 'main') {
+    const o = site.settings.org, main = locationPayload(site);
+    if (!main) return sendLocation(conv, site, opts);
+    const extra = { location: main };
+    if ((o.media?.location || []).length) extra.media = o.media.location;
+    botSay(conv, site, `🏢 ${t.main_branch}\n📍 ${main.label}${main.address ? '\n' + main.address : ''}`, nav, extra);
+    return true;
+  }
+  const b = branchesOf(site).find(x => x.id === id);
+  if (!b) return sendLocation(conv, site, opts);
+  const extra = {}, loc = locationPayload(site, b);
+  if (loc) extra.location = loc;
+  const phones = String(b.phones || '').split(/[,،\s]+/).filter(Boolean);
+  if (phones.length) extra.contacts = phones.map(p => ({ icon: '📱', label: b.name, value: p, href: 'tel:' + p }));
+  if ((b.media || []).length) extra.media = b.media;
+  const lines = [`📍 ${b.name}${b.city ? ' — ' + b.city : ''}`];
+  if (b.address) lines.push(b.address);
+  if (b.hours) lines.push(`${t.branch_hours} ${b.hours}`);
+  botSay(conv, site, lines.join('\n'), nav, extra);
   return true;
 }
 
@@ -345,6 +391,7 @@ async function runAction(conv, site, opt, freeText) {
     case 'answer': return botSay(conv, site, fill(L(conv, opt.target || '', opt.i18n, 'target'), ctxOf(conv, site)), navOptions(conv, site), opt.media?.length ? { media: opt.media } : {});
     case 'url': return botSay(conv, site, opt.label, navOptions(conv, site), { link: opt.target, link_label: t.open_link });
     case 'location': case 'company_location': return sendLocation(conv, site);
+    case 'branch': return opt.target ? sendBranch(conv, site, opt.target) : sendLocation(conv, site);
     case 'org': return sendOrg(conv, site, opt.field || 'history');
     case 'company_info': return sendOrg(conv, site, 'history');
     case 'about': return sendAbout(conv, site);
@@ -361,6 +408,12 @@ async function runAction(conv, site, opt, freeText) {
       const k = db.prepare('SELECT * FROM kb WHERE id=? AND site_id=?').get(Number(opt.target), site.id);
       if (!k) return sendNode(conv, site, '__menu');
       return answerKb(conv, site, k);
+    }
+    case 'eligibility': return startElig(conv, site, opt.target);
+    case 'elig': {
+      const a = conv.state.await;
+      if (a?.kind === 'elig' && a.pid === opt.target) return answerElig(conv, site, String(Number(opt.field) + 1));
+      return startElig(conv, site, opt.target);
     }
     case 'end': return closeConversation(conv, 'visitor');
     case 'cancel': return sendNode(conv, site, '__menu');
@@ -396,33 +449,85 @@ function lookupDef(site, kind) {
   const id = String(kind).replace(/^lookup:/, ''), l = (d.lookups || []).find(x => x.id === id);
   if (!l) return null;
   const cfg = !l.connection || l.connection === 'main' ? d : (d.connections || []).find(c => c.id === l.connection);
-  return cfg ? { cfg, query: l.query, template: l.template || '{*}', not_found: l.not_found, title: l.title } : null;
+  return cfg ? { cfg, query: l.query, template: l.template || '{*}', not_found: l.not_found, title: l.title, labels: l.labels || {} } : null;
+}
+
+/* ---------- the boxes the bot asks for (fields) ---------- */
+const BUILTIN_FIELDS = {
+  order_no: { label: 'رقم الطلب', label_en: 'order number', type: 'code' },
+  phone: { label: 'رقم الجوال', label_en: 'mobile number', type: 'phone' },
+  email: { label: 'البريد الإلكتروني', label_en: 'email', type: 'email' },
+  id_number: { label: 'رقم الهوية', label_en: 'ID number', type: 'id' }
+};
+function fieldOf(site, key) {
+  const custom = (site.settings.datasource.fields || []).find(f => f.key === key) || {};
+  const base = BUILTIN_FIELDS[key] || { label: key, type: 'text' };
+  const out = { ...base, key };
+  for (const k of Object.keys(custom)) if (custom[k] !== '' && custom[k] != null) out[k] = custom[k];
+  return out;
+}
+// normalises what the visitor typed; returns null when it is not valid for the field type
+function cleanValue(type, raw) {
+  let v = nlp.toLatinDigits(String(raw || '')).trim();
+  switch (type) {
+    case 'number': v = v.replace(/[\s,،]/g, ''); return /^\d+(\.\d+)?$/.test(v) ? v : null;
+    case 'phone': v = v.replace(/[^\d+]/g, '').replace(/^\+?966/, '0').replace(/^00966/, '0').replace(/^5(\d{8})$/, '05$1'); return /^\+?\d{7,15}$/.test(v) ? v : null;
+    case 'id': v = v.replace(/\D/g, ''); return /^[12]\d{9}$/.test(v) ? v : null;
+    case 'email': v = v.replace(/\s/g, '').toLowerCase(); return /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(v) ? v : null;
+    case 'date': {
+      v = v.replace(/\s/g, '');
+      let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(v);
+      if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+      m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(v);
+      return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null;
+    }
+    case 'code': v = (v.match(/[\p{L}\p{N}\-_/]+/gu) || []).join(''); return v ? v.slice(0, 60) : null;
+    default: v = v.replace(/\s+/g, ' '); return v && v.length <= 200 ? v : null;
+  }
+}
+function fieldPrompt(conv, site, n) {
+  const f = fieldOf(site, n), t = tr(conv, site), label = conv.lang === 'ar' ? f.label : (f['label_' + conv.lang] || f.label_en || f.label);
+  if (conv.lang === 'ar') return f.prompt || site.settings.datasource.param_prompts?.[n] || t['ask_' + n] || fill(t.ask_param, { param: label });
+  return f['prompt_' + conv.lang] || t['ask_' + n] || fill(t.ask_param, { param: label });
 }
 
 function startLookup(conv, site, kind, freeText) {
   const t = tr(conv, site), def = lookupDef(site, kind);
   if (!def || def.cfg.type === 'none' || !def.query) return handoff(conv, site, freeText || null, t.handoff);
   const names = ds.paramNames(def.query);
-  const params = {};
+  // values the visitor already gave in this conversation are reused (no need to ask twice)
+  const params = { ...(conv.meta.known || {}) };
   if (conv.visitor_phone) params.phone = conv.visitor_phone;
   if (conv.visitor_email && (conv.verified || kind === 'customer')) params.email = conv.visitor_email;
-  if (kind !== 'customer' && freeText && names.includes('order_no')) {
+  if (kind !== 'customer' && freeText && names.includes('order_no') && !params.order_no) {
     const m = nlp.toLatinDigits(freeText).match(/\b\d{3,}\b/);
     if (m) params.order_no = m[0];
   }
+  for (const k of Object.keys(params)) if (!names.includes(k)) delete params[k];
   const missing = kind === 'customer' ? (names.some(n => params[n]) ? [] : [names.includes('phone') ? 'phone' : names[0]]) : names.filter(n => !params[n]);
-  saveConv(conv, { state: { ...conv.state, await: { kind, params, missing } } });
+  saveConv(conv, { state: { ...conv.state, await: { kind, params, missing, tries: 0 } } });
   return askNext(conv, site);
 }
 
 function askNext(conv, site) {
   const a = conv.state.await, t = tr(conv, site);
-  if (a.missing.length) {
-    const n = a.missing[0];
-    const custom = site.settings.datasource.param_prompts?.[n];
-    return botSay(conv, site, (conv.lang === 'ar' && custom) || t['ask_' + n] || fill(t.ask_param, { param: n }), [{ label: t.nav_cancel, action: 'cancel' }]);
-  }
+  if (a.missing.length) return botSay(conv, site, fieldPrompt(conv, site, a.missing[0]), [{ label: t.nav_cancel, action: 'cancel' }]);
   return executeLookup(conv, site);
+}
+
+// A reply line whose values are all empty is hidden (e.g. "السبب: {reason}" only shows when a reason was saved).
+// {*} = every column that has a value, with the titles chosen in the query builder.
+const isEmptyVal = (v) => v == null || String(v).trim() === '' || /^(null|undefined)$/i.test(String(v).trim());
+function renderRow(def, row, ctx) {
+  if (def.template === '{*}') {
+    const labels = def.labels || {};
+    return Object.keys(row).filter(k => !isEmptyVal(row[k]) && labels[k] !== '-' && k !== '_id')
+      .map(k => `${labels[k] || String(k).replace(/_/g, ' ')}: ${row[k]}`).join('\n');
+  }
+  return String(def.template || '').split('\n').filter(line => {
+    const keys = [...line.matchAll(/\{([\p{L}\p{N}_]+)\}/gu)].map(m => m[1]);
+    return !keys.length || keys.some(k => !isEmptyVal(ctx[k] ?? ctx[String(k).toLowerCase()]));
+  }).map(line => fill(line, ctx)).join('\n').trim();
 }
 
 async function executeLookup(conv, site) {
@@ -435,6 +540,8 @@ async function executeLookup(conv, site) {
   catch (e) { console.error('[datasource]', e.message); return botSay(conv, site, (conv.lang === 'ar' && d.error_message) || t.db_error, navOptions(conv, site)); }
   const retry = a.kind === 'order' ? 'order_status' : a.kind === 'customer' ? 'customer_info' : 'lookup';
   if (!rows.length) {
+    const known = { ...(conv.meta.known || {}) }; for (const k of Object.keys(a.params)) delete known[k];
+    saveConv(conv, { meta: { ...conv.meta, known } });
     return botSay(conv, site, a.kind === 'customer' ? t.customer_not_found : ((conv.lang === 'ar' && def.not_found) || t.not_found),
       [{ label: t.nav_retry, action: retry, target: a.kind.startsWith('lookup:') ? a.kind.slice(7) : undefined }, ...navOptions(conv, site)]);
   }
@@ -450,11 +557,80 @@ async function executeLookup(conv, site) {
   saveConv(conv, { meta: { ...conv.meta, lookups: lookups.slice(-10) } });
   for (const row of rows.slice(0, 3)) {
     const ctx = { ...a.params, ...row };
-    let text = def.template === '{*}' ? Object.keys(row).map(k => `${k}: ${row[k] ?? ''}`).join('\n') : fill(def.template, ctx);
+    let text = renderRow(def, row, ctx);
     if (def.notes && row.notes && String(row.notes).trim()) text += '\n' + fill(d.notes_template, ctx);
     botSay(conv, site, text);
   }
   return botSay(conv, site, t.anything_else, navOptions(conv, site));
+}
+
+/* ============================== eligibility calculator ============================== */
+
+const programOf = (site, id) => (site.settings.eligibility?.programs || []).find(p => p.id === id && p.enabled !== false);
+
+function startElig(conv, site, pid) {
+  const p = programOf(site, pid), t = tr(conv, site);
+  if (!p || !(p.questions || []).length) return botSay(conv, site, t.unlinked, navOptions(conv, site));
+  saveConv(conv, { state: { ...conv.state, await: { kind: 'elig', pid: p.id, i: 0, ans: {}, tries: 0 } } });
+  if (p.intro) botSay(conv, site, fill(p.intro, ctxOf(conv, site)));
+  return askElig(conv, site);
+}
+
+function askElig(conv, site) {
+  const a = conv.state.await, p = programOf(site, a.pid), t = tr(conv, site);
+  const qs = p.questions, q = qs[a.i];
+  const head = qs.length > 1 ? fill(t.elig_step, { n: a.i + 1, total: qs.length }) + '\n' : '';
+  const cancel = { label: t.nav_cancel, action: 'cancel' };
+  if (q.type === 'number') return botSay(conv, site, head + q.text + (q.unit ? ` (${q.unit})` : ''), [cancel]);
+  const opts = elig.optionsOf(q).map((o, k) => ({ label: o.label, action: 'elig', target: p.id, field: String(k) }));
+  return botSay(conv, site, head + q.text, [...opts, cancel], { numbered: true });
+}
+
+function answerElig(conv, site, text) {
+  const st = conv.state, a = st.await, p = programOf(site, a.pid), t = tr(conv, site);
+  if (!p) { saveConv(conv, { state: { ...st, await: null } }); return sendNode(conv, site, '__menu'); }
+  const q = p.questions[a.i];
+  const r = elig.parseAnswer(q, text, nlp.toLatinDigits);
+  if (r.error) {
+    a.tries = (a.tries || 0) + 1;
+    if (a.tries >= 3) { saveConv(conv, { state: { ...st, await: null } }); return botSay(conv, site, t.invalid_giveup, navOptions(conv, site)); }
+    saveConv(conv, { state: st });
+    botSay(conv, site, q.error || t['elig_bad_' + r.error]);
+    return askElig(conv, site);
+  }
+  a.ans[q.key] = r.value; a.i++; a.tries = 0;
+  // decide as early as possible: a rule that already applies ends the questions
+  const early = elig.evaluate(p, a.ans, { partial: a.i < p.questions.length });
+  if (early.done) return finishElig(conv, site, p, a.ans, early);
+  saveConv(conv, { state: st });
+  return askElig(conv, site);
+}
+
+function finishElig(conv, site, p, answers, res) {
+  const t = tr(conv, site);
+  saveConv(conv, { state: { ...conv.state, await: null }, meta: { ...conv.meta, eligibility: [...(conv.meta.eligibility || []), { at: now(), program: p.title, eligible: res.eligible, amount: res.amount ?? null, reason: res.reason || '', answers }].slice(-5) } });
+  elig.record(site, p, conv, res, answers);
+  hooks.emit(site, 'eligibility.checked', { program: { id: p.id, title: p.title }, eligible: res.eligible, amount: res.amount ?? null, reason: res.reason || '', answers, conversation_id: conv.id });
+  broadcastConv(conv);
+  const fmt = (n) => n == null ? '' : Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const ctx = { ...ctxOf(conv, site), ...res.vars, title: p.title, amount: fmt(res.amount), reason: res.reason || '' };
+  const M = p.messages || {};
+  let body;
+  if (res.eligible) {
+    body = M.eligible ? fill(M.eligible, ctx) : fill(t.elig_eligible, ctx) + (res.amount != null ? '\n' + fill(t.elig_amount, ctx) : '');
+    if (M.disclaimer !== false) body += '\n\n' + t.elig_disclaimer;
+  } else {
+    body = M.not_eligible ? fill(M.not_eligible, ctx) : fill(t.elig_not_eligible, ctx) + (res.reason ? '\n' + fill(t.elig_reason, ctx) : '');
+  }
+  const A = p.after || {}, extra = [];
+  if (res.eligible && A.action) {
+    const label = A.label || t.elig_apply;
+    if (A.action === 'url' && A.url) extra.push({ label, action: 'url', target: A.url });
+    else if (A.action === 'ticket') extra.push({ label, action: 'ticket', field: 'callback' });
+    else if (A.action === 'handoff') extra.push({ label, action: 'handoff' });
+    else if (A.action === 'lookup' && A.target) extra.push({ label, action: 'lookup', target: A.target });
+  }
+  return botSay(conv, site, body.trim(), [...extra, ...navOptions(conv, site)]);
 }
 
 /* ============================== hand-off & learning ============================== */
@@ -567,6 +743,7 @@ async function handleVisitorText(conv, site, text) {
   // 1) waiting for a value
   if (st.await) {
     if (['الغاء', 'cancel', 'منسوخ'].includes(nlp.normalize(text))) return sendNode(conv, site, '__menu');
+    if (st.await.kind === 'elig') return answerElig(conv, site, text);
     if (st.await.kind === 'ticket_status') {
       if (st.await.step === 'number') {
         saveConv(conv, { state: { ...st, await: { kind: 'ticket_status', step: 'phone', number: nlp.toLatinDigits(text).trim().replace(/\s+/g, '').toUpperCase() } } });
@@ -585,12 +762,17 @@ async function handleVisitorText(conv, site, text) {
         reply: tk.reply ? t.ticket_reply_prefix + tk.reply : ''
       }), navOptions(conv, site));
     }
-    let v = nlp.toLatinDigits(text).trim();
-    const n = st.await.missing[0];
-    if (n === 'phone') v = v.replace(/[^\d+]/g, '').replace(/^\+?966/, '0').replace(/^5/, '05');
-    if (n === 'order_no') v = (v.match(/[A-Za-z0-9-]+/g) || [v]).join('');
-    st.await.params[n] = v; st.await.missing.shift();
-    saveConv(conv, { state: st });
+    const n = st.await.missing[0], fld = fieldOf(site, n);
+    const v = cleanValue(fld.type, text);
+    if (v == null) {
+      st.await.tries = (st.await.tries || 0) + 1;
+      if (st.await.tries >= 3) { saveConv(conv, { state: { ...st, await: null } }); return botSay(conv, site, t.invalid_giveup, navOptions(conv, site)); }
+      saveConv(conv, { state: st });
+      const label = conv.lang === 'ar' ? fld.label : (fld['label_' + conv.lang] || fld.label_en || fld.label);
+      return botSay(conv, site, (conv.lang === 'ar' && fld.error) || fill(t.invalid_value, { label, rule: t['rule_' + fld.type] || '' }), [{ label: t.nav_cancel, action: 'cancel' }]);
+    }
+    st.await.params[n] = v; st.await.missing.shift(); st.await.tries = 0;
+    saveConv(conv, { state: st, meta: { ...conv.meta, known: { ...(conv.meta.known || {}), [n]: v } } });
     return askNext(conv, site);
   }
 
@@ -618,6 +800,8 @@ async function handleVisitorText(conv, site, text) {
   if (intentHit(text, I.complaint)) return sendTicketForm(conv, site, 'complaint');
   if (intentHit(text, I.suggestion)) return sendTicketForm(conv, site, 'suggestion');
   if (intentHit(text, [...I.order, ...(b.order_keywords || [])]) && site.settings.datasource.type !== 'none') return startLookup(conv, site, 'order', text);
+  for (const p of site.settings.eligibility?.programs || [])
+    if (p.enabled !== false && (p.questions || []).length && intentHit(text, String(p.keywords || '').split(/[,،\n]/).map(x => x.trim()).filter(Boolean))) return startElig(conv, site, p.id);
   for (const l of site.settings.datasource.lookups || [])
     if (l.query && intentHit(text, String(l.keywords || '').split(/[,،\n]/).map(x => x.trim()).filter(Boolean))) return startLookup(conv, site, 'lookup:' + l.id, text);
 
@@ -629,6 +813,11 @@ async function handleVisitorText(conv, site, text) {
     const kws = String(sec.keywords || '').split(/[,،\n]/).map(x => x.trim()).filter(Boolean);
     if (kws.some(k => nlp.containsPhrase(text, k)) || (sec.title && (nlp.normalize(text) === nlp.normalize(sec.title) || nlp.similarity(text, sec.title) > 0.8))) return sendSection(conv, site, sec);
   }
+  for (const b of branchesOf(site)) {
+    const names = [b.name, b.city].filter(x => x && String(x).trim().length >= 3);
+    if (names.some(n => nlp.containsPhrase(text, n)) && (intentHit(text, [...I.branches, ...I.location, ...I.hours, ...I.contact]) || names.some(n => nlp.normalize(text) === nlp.normalize(n)))) return sendBranch(conv, site, b.id);
+  }
+  if (intentHit(text, I.branches) && branchesOf(site).length) return sendLocation(conv, site);
   if (intentHit(text, I.about) && sendAbout(conv, site, { silent: true })) return;
   for (const f of ['developer', 'location', 'history', 'vision', 'hours', 'contact', 'website'])
     if (intentHit(text, I[f]) && sendOrg(conv, site, f, { silent: true })) return;

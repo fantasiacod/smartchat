@@ -225,6 +225,20 @@ let pass = 0; const ok = (c, m) => { assert.ok(c, m); pass++; console.log('  ✔
   require('../src/chat').maintenance();
   ok(!db.prepare('SELECT id FROM conversations WHERE id=?').get(convId), 'retention deletes old closed conversations');
 
+  // ---------------- several branches / locations
+  await api('PUT', '/api/sites/' + siteId, { settings: { org: { branches: [
+    { id: 'b1', name: 'فرع العوالي', city: 'المدينة المنورة', map_url: 'https://www.google.com/maps/@24.43,39.62,15z', phones: '0148111111', hours: '8ص – 2م' },
+    { id: 'b2', name: 'فرع جدة', city: 'جدة', address: 'حي الروضة', phones: '0126222222' }] } } }, T);
+  const vb = visitor(key, 'vb'); await vb.join(); await vb.emit('start', {}); await wait(120);
+  await vb.say('وين موقعكم؟');
+  ok(vb.last().numbered && vb.last().options.length === 4 && /المقر الرئيسي/.test(vb.last().options[0].label) && /العوالي/.test(vb.last().options[1].label), 'several branches -> numbered list (head office + branches)');
+  await vb.say('2');
+  ok(vb.last().location?.lat === 24.43 && vb.last().contacts?.[0].value === '0148111111' && /8ص/.test(vb.last().body), 'chosen branch -> its map, phone and hours');
+  await vb.say('وين فرع جدة');
+  ok(/جدة/.test(vb.last().body) && /maps/.test(vb.last().location?.embed || '') && vb.last().contacts?.[0].value === '0126222222', 'branch named in the question -> that branch directly');
+  await vb.say('هل عندكم فروع؟');
+  ok(vb.last().options?.length === 4, '"do you have branches?" -> branches list');
+
   // ---------------- working hours (all days closed -> callback request with 2 fields)
   await api('PUT', '/api/sites/' + siteId, { settings: { behavior: { work_hours: { enabled: true, allow_handoff: false, days: [0, 1, 2, 3, 4, 5, 6].map(d => ({ day: d, open: false, from: '08:00', to: '16:00' })) } } } }, T);
   ok((await api('GET', '/api/widget/config?site=' + key)).j.work.open === false, 'widget knows it is outside working hours');
@@ -263,6 +277,104 @@ let pass = 0; const ok = (c, m) => { assert.ok(c, m); pass++; console.log('  ✔
   await vl.say('متى موعد الصرف؟'); await vl.say('1234567890', 300);
   ok(/2026-11-01/.test(vl.last().body) || vl.msgs.some(m => /2026-11-01/.test(m.body || '')), 'custom look-up on a second database (asks for the ID, then answers)');
   apiSrv.close();
+
+  // ---------------- any database type: Excel upload, Google Sheets/CSV link, PostgreSQL (when PG_TEST_URL is set)
+  const ExcelJS = require('exceljs'); const wbk = new ExcelJS.Workbook(); const wsh = wbk.addWorksheet('s');
+  wsh.addRow(['id_number', 'name', 'next_date']); wsh.addRow(['1111111111', 'خالد', '2026-12-01']);
+  const dsUp = await api('POST', '/api/datasource/file?name=' + encodeURIComponent('المستفيدين.xlsx'), null, T, Buffer.from(await wbk.xlsx.writeBuffer()));
+  ok(dsUp.s === 200 && dsUp.j.rows === 1 && dsUp.j.columns.includes('next_date'), 'Excel file uploaded as a data source');
+  const csvSrv = http.createServer((req, res) => { res.setHeader('content-type', 'text/csv'); res.end('phone,status\n0511111111,تم الاعتماد\n'); });
+  await new Promise(r => csvSrv.listen(4014, r));
+  const conns = [{ id: 'xl', name: 'ملف', type: 'file', connection: dsUp.j.connection }, { id: 'gs', name: 'جدول', type: 'sheet', connection: 'http://127.0.0.1:4014/sheet.csv' }];
+  const lks = [{ id: 'l1', title: 'موعد الصرف', keywords: 'موعد الصرف', connection: 'xl', query: 'SELECT next_date FROM data WHERE id_number = :id_number', template: 'موعدك: {next_date}', not_found: 'لا يوجد' },
+    { id: 'l2', title: 'حالة الاعتماد', keywords: 'حالة الاعتماد', connection: 'gs', query: 'SELECT status FROM data WHERE phone = :phone', template: 'الحالة: {status}', not_found: 'لا يوجد' }];
+  if (process.env.PG_TEST_URL) { conns.push({ id: 'pg', name: 'PG', type: 'postgres', connection: process.env.PG_TEST_URL }); lks.push({ id: 'l3', title: 'حالة الطلب', keywords: 'حالة طلب المساعدة', connection: 'pg', query: 'SELECT status FROM charity.aid_requests WHERE request_no = :request_no', template: 'طلبك: {status}', not_found: 'لا يوجد' }); }
+  await api('PUT', '/api/sites/' + siteId, { settings: { datasource: { type: 'demo', connections: conns, lookups: lks } } }, T);
+  const vx = visitor(key, 'vx'); await vx.join(); await vx.emit('start', {}); await wait(120);
+  await vx.say('موعد الصرف'); await vx.say('1111111111', 300);
+  ok(vx.msgs.some(m => /موعدك: 2026-12-01/.test(m.body || '')), 'bot answers from an uploaded Excel file');
+  await vx.say('حالة الاعتماد'); await vx.say('0511111111', 400);
+  ok(vx.msgs.some(m => /الحالة: تم الاعتماد/.test(m.body || '')), 'bot answers from a Google Sheets / CSV link');
+  if (process.env.PG_TEST_URL) { await vx.say('حالة طلب المساعدة'); await vx.say('1001', 500); ok(vx.msgs.some(m => /طلبك: /.test(m.body || '')), 'bot answers from PostgreSQL (demo database)'); }
+  const tdel = await api('POST', `/api/sites/${siteId}/datasource/test`, { which: 'lookup:l1', datasource: { connections: [{ id: 'xl', type: 'file', connection: dsUp.j.connection }], lookups: [{ id: 'l1', connection: 'xl', query: 'DELETE FROM data' }] } }, T);
+  ok(tdel.s === 400, 'write queries blocked on every source type');
+  csvSrv.close();
+
+  // ---------------- custom boxes (fields): own question, validation, memory, schema + any column names
+  const wb2 = new ExcelJS.Workbook(); const ws2 = wb2.addWorksheet('s');
+  ws2.addRow(['رقم الملف', 'تاريخ الميلاد', 'الاسم', 'الحالة']); ws2.addRow(['A-77', '1990-05-01', 'منى', 'نشط']);
+  const up2 = (await api('POST', '/api/datasource/file?name=f.xlsx', null, T, Buffer.from(await wb2.xlsx.writeBuffer()))).j;
+  const sch = await api('POST', `/api/sites/${siteId}/datasource/schema`, { connection: 'f2', datasource: { connections: [{ id: 'f2', type: 'file', connection: up2.connection }] } }, T);
+  ok(sch.s === 200 && sch.j.tables[0].name === 'data' && sch.j.tables[0].columns.includes('رقم_الملف'), 'schema discovery lists tables and columns (Arabic column names too)');
+  const schPg = process.env.PG_TEST_URL ? await api('POST', `/api/sites/${siteId}/datasource/schema`, { connection: 'pg', datasource: { connections: [{ id: 'pg', type: 'postgres', connection: process.env.PG_TEST_URL }] } }, T) : null;
+  if (schPg) ok(schPg.s === 200 && schPg.j.tables.some(t => t.name === 'charity.beneficiaries' && t.columns.includes('id_number')), 'schema discovery on PostgreSQL');
+  await api('PUT', '/api/sites/' + siteId, { settings: { datasource: { type: 'demo', connections: [{ id: 'f2', name: 'ملفات', type: 'file', connection: up2.connection }],
+    fields: [{ key: 'file_no', label: 'رقم الملف', type: 'code', prompt: 'اكتب رقم ملفك 📁' }, { key: 'birth', label: 'تاريخ الميلاد', type: 'date', prompt: 'اكتب تاريخ ميلادك', error: 'التاريخ غير صحيح، اكتبه مثل 1990-05-01' }],
+    lookups: [{ id: 'fl', title: 'ملفي', keywords: 'حالة ملفي', connection: 'f2', query: 'SELECT "الاسم", "الحالة" FROM data WHERE "رقم_الملف" = :file_no AND "تاريخ_الميلاد" = :birth LIMIT 3', template: 'الاسم: {الاسم}\nالحالة: {الحالة}', not_found: 'لا يوجد' }] } } }, T);
+  const vf = visitor(key, 'vf'); await vf.join(); await vf.emit('start', {}); await wait(120);
+  await vf.say('حالة ملفي');
+  ok(vf.last().body === 'اكتب رقم ملفك 📁', 'bot asks with the custom question of the box');
+  await vf.say('A-77'); ok(vf.last().body === 'اكتب تاريخ ميلادك', 'then asks the next box');
+  await vf.say('أمس'); ok(/التاريخ غير صحيح/.test(vf.last().body), 'invalid value → custom error, asks again');
+  await vf.say('١/٥/١٩٩٠', 300);
+  ok(vf.msgs.some(m => /الاسم: منى/.test(m.body || '') && /الحالة: نشط/.test(m.body || '')), 'date normalised (Arabic digits, d/m/y) and Arabic column names fill the reply');
+  const before = vf.msgs.length; await vf.say('حالة ملفي', 300);
+  ok(vf.msgs.slice(before).some(m => /الاسم: منى/.test(m.body || '')) && !vf.msgs.slice(before).some(m => m.body === 'اكتب رقم ملفك 📁'), 'values are remembered within the conversation (not asked twice)');
+  const vi = visitor(key, 'vi'); await vi.join(); await vi.emit('start', {}); await wait(120);
+  await vi.say('حالة ملفي'); await vi.say('A-77'); await vi.say('x'); await vi.say('y'); await vi.say('z');
+  ok(vi.msgs.some(m => /لم أتمكن من قراءة/.test(m.body || '')), 'gives up politely after 3 invalid answers');
+
+  // ---------------- any registered number → everything about the transaction (empty values hidden)
+  const wb3 = new ExcelJS.Workbook(); const ws3 = wb3.addWorksheet('s');
+  ws3.addRow(['request_no', 'id_number', 'phone', 'status', 'reason']);
+  ws3.addRow(['1001', '1012345678', '0501234567', 'تمت الموافقة', '']); ws3.addRow(['1002', '1023456789', '0552345678', 'مرفوض', 'نقص صك الولاية']);
+  const up3 = (await api('POST', '/api/datasource/file?name=t.xlsx', null, T, Buffer.from(await wb3.xlsx.writeBuffer()))).j;
+  await api('PUT', '/api/sites/' + siteId, { settings: { datasource: { type: 'demo', connections: [{ id: 'f3', name: 'المعاملات', type: 'file', connection: up3.connection }],
+    fields: [{ key: 'any_no', label: 'الرقم المسجّل', type: 'code', prompt: 'أرسل أي رقم مسجّل لدينا' }],
+    lookups: [{ id: 'tx', title: 'معاملتي', keywords: 'معاملتي', connection: 'f3', query: 'SELECT "status", "reason" FROM "data" WHERE ("request_no" = :any_no OR "id_number" = :any_no OR "phone" = :any_no) LIMIT 3', template: 'الحالة: {status}\nالسبب: {reason}' },
+      { id: 'tx2', title: 'كل شي', keywords: 'كل بياناتي', connection: 'f3', query: 'SELECT * FROM data WHERE request_no = :any_no', template: '{*}', labels: { status: 'حالة الطلب', phone: '-' } }] } } }, T);
+  const vt = visitor(key, 'vt'); await vt.join(); await vt.emit('start', {}); await wait(120);
+  await vt.say('معاملتي'); ok(vt.last().body === 'أرسل أي رقم مسجّل لدينا', 'one question for any registered number');
+  await vt.say('١٠٢٣٤٥٦٧٨٩', 300);
+  ok(vt.msgs.some(m => m.body === 'الحالة: مرفوض\nالسبب: نقص صك الولاية'), 'found by ID number, the saved reason is shown');
+  const vt2 = visitor(key, 'vt2'); await vt2.join(); await vt2.emit('start', {}); await wait(120);
+  await vt2.say('معاملتي'); await vt2.say('1001', 300);
+  ok(vt2.msgs.some(m => m.body === 'الحالة: تمت الموافقة'), 'found by request number, empty reason line hidden');
+  const n2 = vt2.msgs.length; await vt2.say('كل بياناتي', 300);
+  const all = vt2.msgs.slice(n2).find(m => /حالة الطلب/.test(m.body || ''));
+  ok(all && /حالة الطلب: تمت الموافقة/.test(all.body) && /request no: 1001/.test(all.body) && !/reason/.test(all.body) && !/0501234567/.test(all.body), 'show-all: titles, empty columns hidden, hidden column (-) not shown');
+  if (process.env.PG_TEST_URL) {
+    const ds = require('../src/datasource');
+    const r = await ds.query({ type: 'postgres', connection: process.env.PG_TEST_URL }, 'SELECT status FROM charity.aid_requests WHERE (CAST(request_no AS TEXT) = :any_no OR CAST(beneficiary_id AS TEXT) = :any_no) LIMIT 3', { any_no: 'A-1' });
+    ok(Array.isArray(r), 'any-number search never breaks numeric columns (PostgreSQL)');
+  }
+
+  // ---------------- eligibility calculator
+  const EL = require('../src/eligibility');
+  ok(EL.evalExpr('(الدخل - 100) / عدد_الأفراد * 2', { الدخل: 1100, عدد_الأفراد: 4 }) === 500 && EL.evalExpr('max(10, 3*5)', {}) === 15, 'safe formulas (Arabic names, functions)');
+  let badF = false; try { EL.evalExpr('process.exit()', {}); } catch { badF = true; } ok(badF, 'formulas cannot run code');
+  const eProg = { id: 'p1', title: 'المساعدة الشهرية', keywords: 'هل أنا مؤهل', intro: 'أسئلة قصيرة 🧮', enabled: true,
+    questions: [{ key: 'income', text: 'كم دخل الأسرة؟', type: 'number', unit: 'ريال', min: 0, max: 200000 }, { key: 'family_size', text: 'كم عدد أفراد الأسرة؟', type: 'number', min: 1, max: 30 },
+      { key: 'housing', text: 'نوع السكن؟', type: 'choice', options: [{ label: 'ملك', points: 0 }, { label: 'إيجار', points: 1 }] }, { key: 'other_aid', text: 'هل تستلم مساعدة أخرى؟', type: 'yesno' }],
+    calcs: [{ key: 'per_capita', label: 'دخل الفرد', formula: 'income / family_size' }],
+    rules: [{ left: 'income', op: '>', right: '8000', message: 'الدخل أعلى من الحد المعتمد' }, { left: 'per_capita', op: '>', right: '1500', message: 'دخل الفرد أعلى من الحد' }, { left: 'other_aid', op: '=', right: 'نعم', message: 'تستلم مساعدة من جهة أخرى' }],
+    amount: { formula: '(1500 - per_capita) * family_size * 0.5 + housing_points * 500', min: 300, max: 3000, round: 0 }, messages: { disclaimer: true }, after: { action: 'ticket' } };
+  await api('PUT', '/api/sites/' + siteId, { settings: { eligibility: { programs: [eProg] } } }, T);
+  const vEl = visitor(key, 'vEl'); await vEl.join(); await vEl.emit('start', {}); await wait(120);
+  await vEl.say('هل أنا مؤهل؟');
+  ok(vEl.msgs.some(m => m.body === 'أسئلة قصيرة 🧮') && /كم دخل الأسرة\؟ \(ريال\)/.test(vEl.last().body), 'eligibility starts by keyword: intro + first question');
+  await vEl.say('٩٠٠٠ ريال', 250);
+  ok(/غير مؤهل/.test(vEl.last().body) && /الدخل أعلى من الحد المعتمد/.test(vEl.last().body), 'income above the limit → not eligible immediately, with the reason');
+  const vEl2 = visitor(key, 'vEl2'); await vEl2.join(); await vEl2.emit('start', {}); await wait(120);
+  await vEl2.say('هل أنا مؤهل'); await vEl2.say('كثير'); ok(/رقماً فقط/.test(vEl2.msgs[vEl2.msgs.length - 2].body), 'invalid number → asks again');
+  await vEl2.say('3000'); await vEl2.say('5'); ok(vEl2.last().options && vEl2.last().options[1].label === 'إيجار', 'choice question shows its options');
+  await vEl2.say('2'); await vEl2.say('لا', 300);
+  const eRes2 = vEl2.last();
+  ok(/مؤهل مبدئياً/.test(eRes2.body) && /2,750/.test(eRes2.body) && eRes2.options[0].label === '📝 قدّم طلبك الآن', 'eligible: entitlement amount calculated (per capita, points) + apply button');
+  const eSim = await api('POST', '/api/eligibility/test', { program: eProg, answers: { income: 1000, family_size: 1, housing: 'ملك', other_aid: 'لا' } }, T);
+  ok(eSim.j.eligible && eSim.j.amount === 300, 'simulator + minimum amount applied');
+  const eRes = (await api('GET', `/api/eligibility/results?site=${siteId}&program=p1`, null, T)).j;
+  ok(eRes.summary[0].total === 2 && eRes.summary[0].eligible === 1 && eRes.reasons[0].reason === 'الدخل أعلى من الحد المعتمد', 'results are recorded with reasons');
 
   // ---------------- webhooks (extensibility)
   const got = [];

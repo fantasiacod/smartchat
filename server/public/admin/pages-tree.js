@@ -7,7 +7,8 @@
     goto: { icon: '➡️', name: 'انتقال لعقدة', desc: 'يعرض عقدة أخرى (قائمة فرعية)' },
     answer: { icon: '💬', name: 'إجابة مباشرة', desc: 'نص + صورة/فيديو/PDF' },
     about: { icon: '🏢', name: 'عن الجمعية', desc: 'قائمة بكل أقسام التعريف' },
-    location: { icon: '📍', name: 'الموقع (خريطة)', desc: 'يرسل الخريطة داخل المحادثة' },
+    location: { icon: '📍', name: 'الموقع (خريطة)', desc: 'خريطة واحدة، أو قائمة الفروع' },
+    branch: { icon: '🏢', name: 'فرع محدد', desc: 'خريطة وأرقام فرع واحد' },
     banks: { icon: '🏦', name: 'الحسابات البنكية', desc: 'الآيبان مع زر نسخ' },
     kb_browse: { icon: '🧠', name: 'الأسئلة الشائعة', desc: 'تصفّح الخريطة الذهنية' },
     org: { icon: '📄', name: 'معلومة محددة', desc: 'قسم من «عن الجمعية» أو التواصل…' },
@@ -19,6 +20,7 @@
     order_status: { icon: '📦', name: 'حالة طلب', desc: 'من قاعدة البيانات' },
     customer_info: { icon: '🪪', name: 'بيانات المستفيد', desc: 'من قاعدة البيانات' },
     lookup: { icon: '🔎', name: 'استعلام مخصص', desc: 'من أي قاعدة بيانات مربوطة' },
+    eligibility: { icon: '🧮', name: 'حاسبة الاستحقاق', desc: 'أسئلة ثم: مؤهل / غير مؤهل + القيمة' },
     developer: { icon: '🛠️', name: 'مطوّر البرنامج', desc: 'رابط المطوّر' },
     end: { icon: '✋', name: 'إنهاء المحادثة', desc: 'ثم التقييم' }
   };
@@ -209,10 +211,12 @@
             else if (o.action === 'url') h = A.f.text('target', 'الرابط', { ltr: true, ph: 'https://' });
             else if (o.action === 'kb') h = '<label class="f">السؤال</label><select class="in" data-p="target"><option value="">— اختر —</option>' + kbList.map(function (k) { return '<option value="' + k.id + '"' + (String(o.target) === String(k.id) ? ' selected' : '') + '>' + esc(k.question.slice(0, 70)) + '</option>'; }).join('') + '</select>';
             else if (o.action === 'location') h = '<div class="hint">يرسل خريطة Google داخل المحادثة مع زر الاتجاهات — من رابط الموقع في <a href="#/org">بيانات الجمعية</a></div>';
+            else if (o.action === 'branch') h = '<label class="f">الفرع</label><select class="in" data-p="target"><option value="main">🏢 المقر الرئيسي</option>' + ((S.site.settings.org.branches) || []).map(function (b) { return '<option value="' + esc(b.id) + '"' + (o.target === b.id ? ' selected' : '') + '>📍 ' + esc(b.name || b.id) + '</option>'; }).join('') + '</select><div class="hint">تُضاف الفروع من <a href="#/org/contact">بيانات الجمعية ← التواصل والموقع</a></div>';
             else if (o.action === 'about') h = '<div class="hint">يعرض قائمة مرقّمة بكل أقسام «عن الجمعية» بأيقوناتها — تُعدّل من <a href="#/org">بيانات الجمعية</a></div>';
             else if (o.action === 'banks') h = '<label class="f">التصنيف</label><select class="in" data-p="target"><option value="">كل التصنيفات (يختار المستفيد)</option>' + ((S.site.settings.org.banks) || []).map(function (g) { return '<option value="' + esc(g.id) + '"' + (o.target === g.id ? ' selected' : '') + '>' + esc(g.name) + '</option>'; }).join('') + '</select>';
             else if (o.action === 'kb_browse') h = '<div class="hint">يعرض تصنيفات <a href="#/mindmap">الخريطة الذهنية</a> ثم أسئلتها</div>';
             else if (o.action === 'handoff') h = '<div class="hint">يرن عند الموظفين المتصلين حتى يرد أحدهم، وما يكتبه المستفيد يُحفظ ليتعلّم منه البوت.</div>';
+            else if (o.action === 'eligibility') h = '<label class="f">البرنامج</label><select class="in" data-p="target"><option value="">— اختر —</option>' + (((S.site.settings.eligibility || {}).programs) || []).map(function (p) { return '<option value="' + esc(p.id) + '"' + (o.target === p.id ? ' selected' : '') + '>' + esc(p.title || p.id) + '</option>'; }).join('') + '</select><div class="hint">تُنشأ البرامج من صفحة <a href="#/eligibility">حاسبة الاستحقاق</a></div>';
             else if (o.action === 'lookup') h = '<label class="f">الاستعلام</label><select class="in" data-p="target"><option value="">— اختر —</option>' + ((S.site.settings.datasource.lookups) || []).map(function (l) { return '<option value="' + esc(l.id) + '"' + (o.target === l.id ? ' selected' : '') + '>' + esc(l.title || l.id) + '</option>'; }).join('') + '</select><div class="hint">تُنشأ الاستعلامات من الإعدادات ← قواعد البيانات</div>';
             else if (o.action === 'order_status' || o.action === 'customer_info') h = '<div class="hint">يستعلم من قاعدة البيانات المربوطة في صفحة <a href="#/datasource">قاعدة البيانات</a></div>';
             params.innerHTML = h;

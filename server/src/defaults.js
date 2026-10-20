@@ -41,6 +41,8 @@ function defaultSettings() {
       sections: [],
       // Bank accounts grouped under main categories: [{ id, name, icon, color, accounts: [{ id, bank, holder, iban, number, note }] }]
       banks: [],
+      // branches / extra locations: [{ id, name, city, address, map_url, phones, hours, media: [] }]
+      branches: [],
       sections_v: 0
     },
     developer: { show: true, name: '', description: 'تم تطوير هذا المساعد الذكي بواسطة', url: '', logo: '' },
@@ -81,10 +83,14 @@ function defaultSettings() {
       order_template: '📦 طلب رقم {order_no}\nالحالة: *{status}*', notes_template: '📝 ملاحظات: {notes}',
       customer_template: 'بياناتك المسجلة:\nالاسم: {name}\nالمدينة: {city}\nالفئة: {tier}',
       not_found: '', error_message: '', param_prompts: {},
+      // the boxes the bot asks for: [{ key, label, type: text|number|phone|id|email|date|code, prompt, prompt_en, prompt_ur, error }]
+      fields: [],
       // additional databases / APIs and custom look-ups (e.g. beneficiary file, aid schedule, appointments)
       connections: [],  // [{ id, name, type: mysql|postgres|api, connection, api_url, api_headers }]
       lookups: []       // [{ id, title, keywords, connection: 'main'|<id>, query, template, not_found }]
     },
+    // eligibility calculator programs: [{ id, title, keywords, intro, enabled, questions, calcs, rules, amount, messages, after }]
+    eligibility: { programs: [] },
     security: { allowed_domains: '', identity_secret: crypto.randomBytes(24).toString('hex') }
   };
 }
@@ -158,6 +164,7 @@ function migrateSettings(s) {
     o.sections_v = 1;
   }
   if (!Array.isArray(o.banks)) o.banks = [];
+  if (!Array.isArray(o.branches)) o.branches = [];
   const b = s.behavior || {};
   const bmap = { handoff_message: 'handoff', no_answer_handoff_message: 'no_answer_handoff', fallback_message: 'fallback', agent_joined_message: 'agent_joined', closed_message: 'closed', anything_else: 'anything_else' };
   for (const [from, to] of Object.entries(bmap)) if (b[from] && !t.ar[to]) t.ar[to] = b[from];

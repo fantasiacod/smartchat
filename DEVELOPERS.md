@@ -9,10 +9,11 @@ server/
   src/start.js        نقطة التشغيل (استرجاع التخزين ثم تشغيل الخادم)
   src/server.js       REST API + الصلاحيات + الترويسات الأمنية
   src/chat.js         محرك المحادثة: الشجرة، الخريطة الذهنية، معلومات الجهة، البنوك، التحويل، التعلّم
-  src/datasource.js   الربط مع MySQL / PostgreSQL / REST API (قراءة فقط)
+  src/datasource.js   الربط مع MySQL، PostgreSQL، SQL Server، Oracle، MongoDB، SQLite، Google Sheets، Excel/CSV، REST API (قراءة فقط)
   src/tickets.js      الشكاوى والاقتراحات
   src/notify.js       البريد SMTP و SMS وواتساب
   src/webhooks.js     الإشعارات الصادرة للأنظمة الأخرى
+  src/eligibility.js  حاسبة الاستحقاق (معادلات آمنة بدون تنفيذ كود)
   src/backup.js       النسخ الاحتياطي والاسترجاع والتصفير
   src/reports.js      الإحصائيات وتقارير Excel
   src/i18n.js         نصوص اللغات وكلمات فهم النوايا (عربي / English / اردو)
@@ -23,7 +24,7 @@ server/
   public/icons.js     مكتبة الأيقونات والبنوك (مشتركة بين الخادم والواجهة)
   public/patterns.js  الزخارف
   public/admin/       لوحة التحكم (core.js + صفحات pages-*.js)
-  test/flow.test.js   78 فحصاً لكل التدفقات
+  test/flow.test.js   109 فحوصات لكل التدفقات
   test/load.js        اختبار التحمّل
 ```
 
@@ -32,6 +33,10 @@ server/
 1. في `src/chat.js`: أضف حالة `case 'my_action':` داخل الدالة `runAction`.
 2. في `public/admin/pages-tree.js`: أضف الإجراء إلى القائمة `ACTIONS`، ومعه حقوله في `drawParams` إن احتاج.
 3. أضف فحصاً في `test/flow.test.js`.
+
+## إضافة نوع قاعدة بيانات جديد
+
+في `src/datasource.js`: أضف النوع إلى `TYPES`، وأنشئ الاتصال في `getPool`، ونفّذ الاستعلام في `query` (أعد مصفوفة صفوف). ثم أضفه إلى `TYPES` في صفحة `datasource` داخل `public/admin/pages-v3.js` مع مثال الرابط والاستعلام.
 
 ## إضافة لغة
 
@@ -47,7 +52,7 @@ server/
 
 الترويسات: `X-SmartChat-Event` و `X-SmartChat-Signature: sha256=<HMAC(body, secret)>`.
 
-الأحداث المتاحة: `conversation.started`، `conversation.handoff`، `conversation.closed` (مع نص المحادثة)، `conversation.rated`، `ticket.created`، `ticket.updated`، `kb.learned`.
+الأحداث المتاحة: `conversation.started`، `conversation.handoff`، `conversation.closed` (مع نص المحادثة)، `conversation.rated`، `ticket.created`، `ticket.updated`، `kb.learned`، `eligibility.checked` (نتيجة حاسبة الاستحقاق).
 
 ## REST API (أهم المسارات)
 
@@ -77,6 +82,6 @@ server/
 
 ```bash
 cd server && npm install
-npm test                                              # 78 فحصاً
+npm test                                              # 109 فحوصات
 node test/load.js http://localhost:3000 SITE_KEY 600  # اختبار التحمّل
 ```

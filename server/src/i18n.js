@@ -7,6 +7,7 @@ const LANGS = {
 
 const T = {
   ar: {
+    branches_title: '📍 لدينا أكثر من فرع — اختر الفرع:', main_branch: 'المقر الرئيسي', branch_hours: '🕘 أوقات العمل:',
     related_title: 'أسئلة ذات صلة:',
     after_hours: 'نعتذر، نحن الآن خارج أوقات العمل 🌙\nأوقات العمل:\n{hours}\n\nاترك اسمك ورقم جوالك وسنتواصل معك في أقرب يوم عمل بإذن الله.', t_callback: 'طلب تواصل', ticket_form_callback: 'اترك بياناتك وسنتواصل معك', callback_created: '✅ تم تسجيل طلبك برقم *{number}*.\nسنتواصل معك خلال أوقات العمل الرسمية بإذن الله.', closed_day: 'مغلق', days: 'الأحد,الإثنين,الثلاثاء,الأربعاء,الخميس,الجمعة,السبت', off_hours_status: 'خارج أوقات العمل',
     about_title: 'ماذا تحب أن تعرف عنا؟ اختر من القائمة:', hours_label: '🕘 ساعات العمل', web_social_label: '🌐 موقعنا وحساباتنا', banks_title: '🏦 حساباتنا البنكية — اختر التصنيف:', banks_group: '🏦 {group}', banks_empty: 'لم تتم إضافة حسابات بنكية بعد.', iban: 'الآيبان', account_no: 'رقم الحساب', copy: 'نسخ', copied: 'تم النسخ ✓', kb_browse_title: 'اختر الموضوع:', kb_cat_title: 'اختر سؤالك:', kb_empty: 'لا توجد أسئلة في هذا الموضوع بعد.',
@@ -24,6 +25,10 @@ const T = {
     anything_else: 'هل تحتاج شيئاً آخر؟', fallback: 'عذراً، لم أفهم سؤالك. اختر من القائمة أو اكتب سؤالك بطريقة أخرى.',
     did_you_mean: 'هل تقصد أحد هذه الأسئلة؟', unlinked: 'هذا الخيار غير مفعّل بعد، اختر خياراً آخر.', back_to_bot: 'تمت إعادة المحادثة إلى المساعد الذكي',
     ask_order_no: 'من فضلك أرسل رقم الطلب 🔢', ask_phone: 'أرسل رقم الجوال المسجل 📱', ask_email: 'أرسل بريدك الإلكتروني المسجل ✉️', ask_id_number: 'أرسل رقم الهوية', ask_param: 'من فضلك أرسل {param}',
+    elig_eligible: '✅ أنت مؤهل مبدئياً لـ «{title}»', elig_amount: '💰 قيمة الاستحقاق المتوقعة: {amount} ريال', elig_not_eligible: 'نعتذر، أنت غير مؤهل حالياً لـ «{title}» 🙏', elig_reason: 'السبب: {reason}',
+    elig_bad_number: 'من فضلك اكتب رقماً فقط (مثال: 3500)', elig_bad_range: 'الرقم خارج النطاق المسموح، تأكد منه واكتبه مرة أخرى', elig_bad_choice: 'من فضلك اختر رقماً من الخيارات', elig_step: 'سؤال {n} من {total}', elig_apply: '📝 قدّم طلبك الآن', elig_disclaimer: 'هذه نتيجة مبدئية، والقرار النهائي بعد دراسة الطلب.',
+    invalid_value: '⚠️ {label} غير صحيح. {rule}', invalid_giveup: 'لم أتمكن من قراءة البيانات المدخلة 🙏 يمكنك المحاولة من جديد في أي وقت.',
+    rule_number: 'اكتب أرقاماً فقط.', rule_phone: 'اكتب رقم جوال صحيحاً مثل 0501234567', rule_id: 'رقم الهوية 10 أرقام ويبدأ بـ 1 أو 2.', rule_email: 'اكتب بريداً صحيحاً مثل name@mail.com', rule_date: 'اكتب التاريخ مثل 2026-10-25', rule_code: 'اكتب الرقم كما هو.', rule_text: 'حاول مرة أخرى.',
     not_found: 'لم أجد طلباً مطابقاً لهذه البيانات. تأكد من الرقم وحاول مرة أخرى.', customer_not_found: 'لم أجد بيانات مسجلة بهذه المعلومات.', db_error: 'تعذر الوصول إلى النظام حالياً، يمكنك التحدث مع موظف.',
     org_missing: 'لم تتم إضافة هذه المعلومة بعد.',
     t_complaint: 'شكوى', t_suggestion: 'اقتراح', t_inquiry: 'استفسار',
@@ -36,6 +41,7 @@ const T = {
     s_new: 'جديدة', s_in_progress: 'قيد المعالجة', s_resolved: 'تم الحل', s_closed: 'مغلقة', s_rejected: 'مرفوضة'
   },
   en: {
+    branches_title: '📍 We have several branches — choose one:', main_branch: 'Head office', branch_hours: '🕘 Working hours:',
     related_title: 'Related questions:',
     after_hours: 'Sorry, we are currently outside working hours 🌙\nWorking hours:\n{hours}\n\nLeave your name and mobile number and we will contact you on the next working day.', t_callback: 'Callback request', ticket_form_callback: 'Leave your details and we will call you back', callback_created: '✅ Your request was registered with number *{number}*.\nWe will contact you during official working hours.', closed_day: 'Closed', days: 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday', off_hours_status: 'Outside working hours',
     about_title: 'What would you like to know about us?', hours_label: '🕘 Working hours', web_social_label: '🌐 Website & social', banks_title: '🏦 Our bank accounts — choose a category:', banks_group: '🏦 {group}', banks_empty: 'No bank accounts have been added yet.', iban: 'IBAN', account_no: 'Account no.', copy: 'Copy', copied: 'Copied ✓', kb_browse_title: 'Choose a topic:', kb_cat_title: 'Choose your question:', kb_empty: 'No questions in this topic yet.',
@@ -53,6 +59,10 @@ const T = {
     anything_else: 'Anything else I can help with?', fallback: "Sorry, I didn't understand. Choose from the menu or rephrase your question.",
     did_you_mean: 'Did you mean one of these?', unlinked: 'This option is not available yet, please choose another.', back_to_bot: 'Conversation returned to the assistant',
     ask_order_no: 'Please send your order number 🔢', ask_phone: 'Please send your registered mobile number 📱', ask_email: 'Please send your registered email ✉️', ask_id_number: 'Please send your ID number', ask_param: 'Please send {param}',
+    elig_eligible: '✅ You are initially eligible for “{title}”', elig_amount: '💰 Expected entitlement: {amount} SAR', elig_not_eligible: 'Sorry, you are not eligible for “{title}” at the moment 🙏', elig_reason: 'Reason: {reason}',
+    elig_bad_number: 'Please type a number only (e.g. 3500)', elig_bad_range: 'The number is out of the allowed range, please check it', elig_bad_choice: 'Please choose a number from the options', elig_step: 'Question {n} of {total}', elig_apply: '📝 Apply now', elig_disclaimer: 'This is an initial result; the final decision follows a review of your application.',
+    invalid_value: '⚠️ The {label} is not valid. {rule}', invalid_giveup: "I couldn't read the details you entered 🙏 You can try again any time.",
+    rule_number: 'Please type digits only.', rule_phone: 'Please type a valid mobile number, e.g. 0501234567', rule_id: 'The ID number is 10 digits starting with 1 or 2.', rule_email: 'Please type a valid email, e.g. name@mail.com', rule_date: 'Please type the date like 2026-10-25', rule_code: 'Please type it exactly as shown.', rule_text: 'Please try again.',
     not_found: 'No matching order found. Please check the number and try again.', customer_not_found: 'No records found with this information.', db_error: 'The system is unavailable right now, you can talk to an agent.',
     org_missing: 'This information has not been added yet.',
     t_complaint: 'Complaint', t_suggestion: 'Suggestion', t_inquiry: 'Inquiry',
@@ -65,6 +75,7 @@ const T = {
     s_new: 'New', s_in_progress: 'In progress', s_resolved: 'Resolved', s_closed: 'Closed', s_rejected: 'Rejected'
   },
   ur: {
+    branches_title: '📍 ہماری کئی شاخیں ہیں — شاخ منتخب کریں:', main_branch: 'مرکزی دفتر', branch_hours: '🕘 اوقات کار:',
     related_title: 'متعلقہ سوالات:',
     after_hours: 'معذرت، اس وقت دفتری اوقات ختم ہو چکے ہیں 🌙\nاوقات کار:\n{hours}\n\nاپنا نام اور موبائل نمبر چھوڑیں، ہم اگلے کام کے دن آپ سے رابطہ کریں گے۔', t_callback: 'رابطے کی درخواست', ticket_form_callback: 'اپنی تفصیلات چھوڑیں، ہم رابطہ کریں گے', callback_created: '✅ آپ کی درخواست نمبر *{number}* کے ساتھ درج ہو گئی۔\nہم دفتری اوقات میں آپ سے رابطہ کریں گے۔', closed_day: 'بند', days: 'اتوار,پیر,منگل,بدھ,جمعرات,جمعہ,ہفتہ', off_hours_status: 'دفتری اوقات کے بعد',
     about_title: 'آپ ہمارے بارے میں کیا جاننا چاہتے ہیں؟', hours_label: '🕘 اوقات کار', web_social_label: '🌐 ویب سائٹ اور سوشل میڈیا', banks_title: '🏦 ہمارے بینک اکاؤنٹس — زمرہ منتخب کریں:', banks_group: '🏦 {group}', banks_empty: 'ابھی کوئی بینک اکاؤنٹ شامل نہیں کیا گیا۔', iban: 'IBAN', account_no: 'اکاؤنٹ نمبر', copy: 'کاپی', copied: 'کاپی ہو گیا ✓', kb_browse_title: 'موضوع منتخب کریں:', kb_cat_title: 'اپنا سوال منتخب کریں:', kb_empty: 'اس موضوع میں ابھی کوئی سوال نہیں۔',
@@ -82,6 +93,10 @@ const T = {
     anything_else: 'کیا آپ کو کسی اور چیز کی ضرورت ہے؟', fallback: 'معذرت، میں سمجھ نہیں سکا۔ مینو سے انتخاب کریں یا سوال دوسرے انداز میں لکھیں۔',
     did_you_mean: 'کیا آپ کا مطلب ان میں سے کوئی سوال ہے؟', unlinked: 'یہ آپشن ابھی دستیاب نہیں، کوئی اور منتخب کریں۔', back_to_bot: 'گفتگو دوبارہ اسسٹنٹ کو منتقل کر دی گئی',
     ask_order_no: 'براہ کرم آرڈر نمبر بھیجیں 🔢', ask_phone: 'براہ کرم رجسٹرڈ موبائل نمبر بھیجیں 📱', ask_email: 'براہ کرم رجسٹرڈ ای میل بھیجیں ✉️', ask_id_number: 'براہ کرم شناختی نمبر بھیجیں', ask_param: 'براہ کرم {param} بھیجیں',
+    elig_eligible: '✅ آپ ابتدائی طور پر «{title}» کے اہل ہیں', elig_amount: '💰 متوقع رقم: {amount} ریال', elig_not_eligible: 'معذرت، آپ فی الحال «{title}» کے اہل نہیں ہیں 🙏', elig_reason: 'وجہ: {reason}',
+    elig_bad_number: 'براہ کرم صرف نمبر لکھیں (مثلاً 3500)', elig_bad_range: 'نمبر اجازت شدہ حد سے باہر ہے', elig_bad_choice: 'براہ کرم آپشنز میں سے نمبر منتخب کریں', elig_step: 'سوال {n} از {total}', elig_apply: '📝 ابھی درخواست دیں', elig_disclaimer: 'یہ ابتدائی نتیجہ ہے، حتمی فیصلہ درخواست کے جائزے کے بعد ہوگا۔',
+    invalid_value: '⚠️ {label} درست نہیں۔ {rule}', invalid_giveup: 'میں درج کردہ معلومات نہیں پڑھ سکا 🙏 آپ کسی بھی وقت دوبارہ کوشش کر سکتے ہیں۔',
+    rule_number: 'صرف ہندسے لکھیں۔', rule_phone: 'درست موبائل نمبر لکھیں، مثلاً 0501234567', rule_id: 'شناختی نمبر 10 ہندسوں کا ہے اور 1 یا 2 سے شروع ہوتا ہے۔', rule_email: 'درست ای میل لکھیں، مثلاً name@mail.com', rule_date: 'تاریخ اس طرح لکھیں 2026-10-25', rule_code: 'بالکل اسی طرح لکھیں۔', rule_text: 'دوبارہ کوشش کریں۔',
     not_found: 'اس معلومات سے کوئی آرڈر نہیں ملا۔ نمبر چیک کر کے دوبارہ کوشش کریں۔', customer_not_found: 'اس معلومات سے کوئی ریکارڈ نہیں ملا۔', db_error: 'سسٹم اس وقت دستیاب نہیں، آپ نمائندے سے بات کر سکتے ہیں۔',
     org_missing: 'یہ معلومات ابھی شامل نہیں کی گئی۔',
     t_complaint: 'شکایت', t_suggestion: 'تجویز', t_inquiry: 'استفسار',
@@ -110,6 +125,7 @@ const INTENTS = {
   complaint: ['شكوى', 'اشتكي', 'أشتكي', 'complaint', 'complain', 'شکایت'],
   suggestion: ['اقتراح', 'مقترح', 'suggestion', 'suggest', 'تجویز'],
   banks: ['رقم الحساب', 'ارقام الحسابات', 'أرقام الحسابات', 'الحسابات البنكية', 'حسابات بنكية', 'حساب بنكي', 'الحساب البنكي', 'ايبان', 'آيبان', 'الايبان', 'الآيبان', 'تبرع', 'اتبرع', 'أتبرع', 'التبرع', 'حواله', 'حوالة', 'iban', 'bank account', 'donate', 'donation', 'بینک', 'اکاؤنٹ', 'عطیہ'],
+  branches: ['فرع', 'فروع', 'الفروع', 'فروعكم', 'الفرع', 'branch', 'branches', 'برانچ', 'شاخ', 'شاخیں'],
   about: ['عن الجمعية', 'عنكم', 'تعرف علينا', 'تعرّف علينا', 'معلومات عن الجمعية', 'about', 'ہمارا تعارف'],
   ticket_status: ['حالة الشكوى', 'حالة الاقتراح', 'متابعة شكوى', 'متابعة الشكوى', 'رقم الشكوى', 'ticket status', 'complaint status', 'شکایت کی حالت']
 };

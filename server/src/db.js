@@ -48,6 +48,11 @@ CREATE TABLE IF NOT EXISTS kb (
   source TEXT DEFAULT 'manual', source_conversation INTEGER, hits INTEGER DEFAULT 0, active INTEGER DEFAULT 1,
   created_by INTEGER, created_at TEXT, updated_at TEXT
 );
+CREATE TABLE IF NOT EXISTS elig_results (
+  id INTEGER PRIMARY KEY, site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  program_id TEXT, conversation_id INTEGER, eligible INTEGER, amount REAL, reason TEXT, answers TEXT, created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_elig_site ON elig_results(site_id, program_id, created_at);
 CREATE TABLE IF NOT EXISTS unanswered (
   id INTEGER PRIMARY KEY, site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
   conversation_id INTEGER, question TEXT NOT NULL, lang TEXT, status TEXT DEFAULT 'open',
