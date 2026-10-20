@@ -375,6 +375,14 @@ let pass = 0; const ok = (c, m) => { assert.ok(c, m); pass++; console.log('  ✔
   ok(eSim.j.eligible && eSim.j.amount === 300, 'simulator + minimum amount applied');
   const eRes = (await api('GET', `/api/eligibility/results?site=${siteId}&program=p1`, null, T)).j;
   ok(eRes.summary[0].total === 2 && eRes.summary[0].eligible === 1 && eRes.reasons[0].reason === 'الدخل أعلى من الحد المعتمد', 'results are recorded with reasons');
+  eProg.after = { action: 'url', url: 'https://example.org/apply', label: '📝 قدّم على معونة' }; eProg.messages.not_eligible = 'عذراً، لا تنطبق عليك الشروط حالياً. السبب: {reason}';
+  await api('PUT', '/api/sites/' + siteId, { settings: { eligibility: { programs: [eProg] } } }, T);
+  const vEl3 = visitor(key, 'vEl3'); await vEl3.join(); await vEl3.emit('start', {}); await wait(120);
+  await vEl3.say('هل أنا مؤهل'); await vEl3.say('3000'); await vEl3.say('5'); await vEl3.say('2'); await vEl3.say('لا', 300);
+  ok(vEl3.last().link === 'https://example.org/apply' && vEl3.last().link_label === '📝 قدّم على معونة' && /2,750/.test(vEl3.last().body), 'eligible → application link sent directly with the result');
+  const vEl4 = visitor(key, 'vEl4'); await vEl4.join(); await vEl4.emit('start', {}); await wait(120);
+  await vEl4.say('هل أنا مؤهل'); await vEl4.say('3000'); await vEl4.say('5'); await vEl4.say('2'); await vEl4.say('نعم', 300);
+  ok(vEl4.last().body === 'عذراً، لا تنطبق عليك الشروط حالياً. السبب: تستلم مساعدة من جهة أخرى' && !vEl4.last().link, 'not eligible → the admin\'s own message, no link');
 
   // ---------------- webhooks (extensibility)
   const got = [];

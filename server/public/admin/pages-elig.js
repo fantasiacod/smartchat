@@ -8,11 +8,11 @@
   var AFTER = [['', '— بدون —'], ['ticket', '📞 طلب تواصل (اسم وجوال)'], ['url', '🔗 رابط التقديم'], ['handoff', '👨‍💼 تحويل لموظف'], ['lookup', '🔎 استعلام من قاعدة البيانات']];
 
   function blank() {
-    return { id: uid('el'), title: 'برنامج جديد', keywords: '', intro: '', enabled: true, questions: [], calcs: [], rules: [], amount: { formula: '', min: '', max: '', round: 0, zero_not_eligible: false, zero_message: '' }, messages: { eligible: '', not_eligible: '', disclaimer: true }, after: { action: 'ticket', label: '', url: '', target: '' } };
+    return { id: uid('el'), title: 'برنامج جديد', keywords: '', intro: '', enabled: true, questions: [], calcs: [], rules: [], amount: { formula: '', min: '', max: '', round: 0, zero_not_eligible: false, zero_message: '' }, messages: { eligible: '', not_eligible: '', disclaimer: true }, after: { action: 'url', label: '', url: '', target: '' } };
   }
   function sample() {
     var p = blank();
-    p.title = 'المساعدة الشهرية'; p.keywords = 'هل أنا مؤهل, حساب الاستحقاق, الاستحقاق, احسب استحقاقي, شروط المساعدة';
+    p.title = 'المساعدات الشهرية'; p.keywords = 'هل أنا مؤهل, حساب الاستحقاق, الاستحقاق, احسب استحقاقي, شروط المساعدة';
     p.intro = 'سأطرح عليك بعض الأسئلة القصيرة لمعرفة أهليتك للمساعدة الشهرية وقيمتها التقريبية 🧮';
     p.questions = [
       { id: uid('q'), key: 'resident', text: 'هل تسكن داخل نطاق خدمة الجمعية؟', type: 'yesno' },
@@ -56,36 +56,54 @@
           return v;
         }
 
+        var TABS = [['basic', '⚙️ البرنامج'], ['qs', '❓ الأسئلة'], ['rules', '⛔ الشروط والحساب'], ['result', '💬 النتيجة والتقديم'], ['sim', '🧪 تجربة'], ['res', '📊 النتائج']];
+        var tab = 'basic';
         function editor(p) {
-          return card('⚙️ البرنامج', '<div class="grid g2">' + f.text('title', 'اسم البرنامج', { ph: 'المساعدة الشهرية' }) + f.text('keywords', 'كلمات يُفهم بها الطلب', { ph: 'هل أنا مؤهل, احسب استحقاقي' }) + '</div>' +
+          var sec = function (id, html) { return '<div data-sec="' + id + '"' + (tab === id ? '' : ' class="hidden"') + '>' + html + '</div>'; };
+          return '<div class="tabs" id="etabs" style="margin-bottom:14px">' + TABS.map(function (t) { return '<button data-t="' + t[0] + '"' + (t[0] === tab ? ' class="on"' : '') + '>' + t[1] + '</button>'; }).join('') + '</div>' +
+            sec('basic', card('⚙️ البرنامج', '<div class="grid g2">' + f.text('title', 'اسم البرنامج', { ph: 'المساعدات الشهرية' }) + f.text('keywords', 'كلمات يُفهم بها الطلب', { ph: 'هل أنا مؤهل, احسب استحقاقي' }) + '</div>' +
               f.area('intro', 'رسالة البداية (اختياري)', { rows: 2, ph: 'سأطرح عليك بعض الأسئلة لمعرفة أهليتك…' }) +
-              '<div class="row wrap" style="gap:8px">' + f.swi('enabled', 'مفعّل') + '<span style="flex:1"></span><button class="btn sm soft" id="pmenu">➕ إضافة زر في القائمة الرئيسية</button><button class="btn sm danger ghost" id="pdel">🗑️ حذف البرنامج</button></div>', '', 'c-basic') +
-            card('❓ الأسئلة', '<div id="qs"></div><button class="btn soft sm" id="qadd">+ سؤال</button>', 'يسألها البوت بالترتيب. «الاسم في المعادلات» يُستخدم في الحسابات والشروط (مثل <code>income</code> أو <code>الدخل</code>).') +
-            card('🧮 الحسابات <small class="muted">(اختياري)</small>', '<div id="cs"></div><button class="btn soft sm" id="cadd">+ حساب</button><div class="hint" style="margin-top:8px">مثال: «دخل الفرد» = <code class="ltr">income / family_size</code>. المسموح: + − × ÷ والأقواس، و <code class="ltr">min() max() round()</code>.</div><div id="vchips" class="chips" style="margin-top:8px"></div>') +
-            card('⛔ شروط عدم الأهلية', '<div id="rs"></div><button class="btn soft sm" id="radd">+ شرط</button>', 'يكون المستفيد <b>غير مؤهل</b> إذا تحقق أي شرط. تُفحص الشروط بعد كل إجابة، فإذا تحقق شرط يتوقف البوت فوراً ويخبره بالسبب (مثال: الدخل أكبر من 8000 → غير مؤهل).') +
-            card('💰 قيمة الاستحقاق <small class="muted">(اختياري)</small>', f.text('amount.formula', 'معادلة القيمة', { ltr: true, mono: true, ph: '(1500 - per_capita) * family_size' }) +
-              '<div class="grid g3">' + f.num('amount.min', 'الحد الأدنى', { ph: 'بدون' }) + f.num('amount.max', 'الحد الأعلى', { ph: 'بدون' }) + f.select('amount.round', 'التقريب', [[0, 'لأقرب ريال'], [1, 'منزلة عشرية'], [2, 'منزلتان']]) + '</div>' +
-              f.sw('amount.zero_not_eligible', 'إذا كانت القيمة صفراً أو أقل → غير مؤهل', '') + f.text('amount.zero_message', 'السبب في هذه الحالة', { ph: 'الدخل يغطي الحد المعتمد' })) +
-            card('💬 رسائل النتيجة', '<div class="grid g2">' + f.area('messages.eligible', '✅ عند الأهلية', { rows: 3, ph: '✅ أنت مؤهل مبدئياً لـ «{title}»\n💰 قيمة الاستحقاق المتوقعة: {amount} ريال' }) + f.area('messages.not_eligible', '⛔ عند عدم الأهلية', { rows: 3, ph: 'نعتذر، أنت غير مؤهل حالياً لـ «{title}» 🙏\nالسبب: {reason}' }) + '</div>' +
-              '<div class="hint">اتركها فارغة للنص الافتراضي (بالعربي والإنجليزي والأردو). المتغيرات: <code>{amount}</code> <code>{reason}</code> <code>{title}</code> وأي اسم سؤال أو حساب.</div>' +
-              f.sw('messages.disclaimer', 'إضافة تنبيه «هذه نتيجة مبدئية والقرار النهائي بعد دراسة الطلب»', '') +
-              '<div class="grid g3">' + f.select('after.action', 'زر بعد الأهلية', AFTER) + f.text('after.label', 'نص الزر', { ph: '📝 قدّم طلبك الآن' }) + '<div id="aft"></div></div>') +
-            card('🧪 جرّب الحاسبة', '<div id="sim"></div>', 'أدخل إجابات تجريبية لترى النتيجة قبل الحفظ.') +
-            card('📊 نتائج المستفيدين', '<div id="res"><p class="muted small">⏳</p></div>');
+              '<div class="row wrap" style="gap:8px">' + f.swi('enabled', 'مفعّل') + '<span style="flex:1"></span><button class="btn sm danger ghost" id="pdel">🗑️ حذف البرنامج</button></div>', '', 'c-basic') +
+              card('🔗 مكان الحاسبة في البوت', '<div id="plink"></div><button class="btn soft sm" id="pmenu">🔗 ربط بزر في القائمة الرئيسية</button>', 'اربط الحاسبة بزر موجود (مثل «المساعدات الشهرية») أو أضف زراً جديداً. ويبدأ البوت الحاسبة أيضاً إذا كتب المستفيد إحدى الكلمات أعلاه.')) +
+            sec('qs', card('❓ الأسئلة', '<div id="qs"></div><button class="btn soft sm" id="qadd">+ سؤال</button>', 'يسألها البوت بالترتيب. «الاسم في المعادلات» يُستخدم في الحسابات والشروط (مثل <code>income</code> أو <code>الدخل</code>).')) +
+            sec('rules', card('⛔ شروط عدم الأهلية', '<div id="rs"></div><button class="btn soft sm" id="radd">+ شرط</button>', 'يكون المستفيد <b>غير مؤهل</b> إذا تحقق أي شرط. تُفحص بعد كل إجابة، فإذا تحقق شرط يتوقف البوت فوراً (مثال: الدخل أكبر من 8000 → غير مؤهل).') +
+              card('🧮 الحسابات <small class="muted">(اختياري)</small>', '<div id="cs"></div><button class="btn soft sm" id="cadd">+ حساب</button><div class="hint" style="margin-top:8px">مثال: «دخل الفرد» = <code class="ltr">income / family_size</code>. المسموح: + − × ÷ والأقواس، و <code class="ltr">min() max() round()</code>.</div><div id="vchips" class="chips" style="margin-top:8px"></div>') +
+              card('💰 قيمة الاستحقاق <small class="muted">(اختياري)</small>', f.text('amount.formula', 'معادلة القيمة', { ltr: true, mono: true, ph: '(1500 - per_capita) * family_size' }) +
+                '<div class="grid g3">' + f.num('amount.min', 'الحد الأدنى', { ph: 'بدون' }) + f.num('amount.max', 'الحد الأعلى', { ph: 'بدون' }) + f.select('amount.round', 'التقريب', [[0, 'لأقرب ريال'], [1, 'منزلة عشرية'], [2, 'منزلتان']]) + '</div>' +
+                f.sw('amount.zero_not_eligible', 'إذا كانت القيمة صفراً أو أقل → غير مؤهل', '') + f.text('amount.zero_message', 'السبب في هذه الحالة', { ph: 'الدخل يغطي الحد المعتمد' }), '', 'c-amount')) +
+            sec('result', '<div class="grid g2" id="c-msg"><div>' + card('✅ إذا كان مؤهلاً', f.area('messages.eligible', 'الرسالة', { rows: 4, ph: '✅ أنت مؤهل مبدئياً لـ «{title}»\n💰 قيمة الاستحقاق المتوقعة: {amount} ريال' }) +
+                f.select('after.action', 'بعد الرسالة', [['url', '🔗 إرسال رابط التقديم'], ['ticket', '📞 طلب بيانات للتواصل (اسم وجوال)'], ['handoff', '👨‍💼 تحويل لموظف'], ['lookup', '🔎 استعلام من قاعدة البيانات'], ['', '— لا شيء —']]) + '<div id="aft"></div>' +
+                f.sw('messages.disclaimer', 'إضافة: «هذه نتيجة مبدئية والقرار النهائي بعد دراسة الطلب»', '')) + '</div><div>' +
+              card('⛔ إذا لم يكن مؤهلاً', f.area('messages.not_eligible', 'رسالتك للمستفيد', { rows: 4, ph: 'نعتذر، أنت غير مؤهل حالياً لـ «{title}» 🙏\nالسبب: {reason}' }) +
+                '<div class="hint">اكتب الرسالة كما تريد. <code>{reason}</code> = سبب عدم الأهلية من الشروط (اختياري). اتركها فارغة للنص الافتراضي.</div>') + '</div></div>' +
+              '<div class="hint">المتغيرات: <code>{amount}</code> قيمة الاستحقاق، <code>{reason}</code> السبب، <code>{title}</code> اسم البرنامج، وأي اسم سؤال أو حساب. الرسائل الفارغة تُكتب تلقائياً بالعربي والإنجليزي والأردو.</div>') +
+            sec('sim', card('🧪 جرّب الحاسبة', '<div id="sim"></div>', 'أدخل إجابات تجريبية لترى النتيجة قبل الحفظ.')) +
+            sec('res', card('📊 نتائج المستفيدين', '<div id="res"><p class="muted small">⏳</p></div>'));
         }
 
         function wire(p) {
           p.questions = p.questions || []; p.calcs = p.calcs || []; p.rules = p.rules || []; p.amount = p.amount || {}; p.messages = p.messages || {}; p.after = p.after || {};
           if (p.messages.disclaimer === undefined) p.messages.disclaimer = true;
           A.bind(el.querySelector('#c-basic'), p, function (k) { ch(); if (k === 'title' || k === 'enabled') A.$$('[data-pi]', el)[cur].innerHTML = (p.enabled === false ? '⏸️ ' : '🧮 ') + esc(p.title || 'بدون اسم'); });
-          A.$$('.card', el).slice(4, 6).forEach(function (c) { A.bind(c, p, function (k) { ch(); if (k === 'after.action') after(); }); });
+          [A.$('#c-amount', el), A.$('#c-msg', el)].forEach(function (c) { A.bind(c, p, function (k) { ch(); if (k === 'after.action') after(); }); });
+          A.$$('#etabs button', el).forEach(function (b) { b.onclick = function () { tab = b.getAttribute('data-t'); A.$$('#etabs button', el).forEach(function (x) { x.classList.toggle('on', x === b); }); A.$$('[data-sec]', el).forEach(function (x) { x.classList.toggle('hidden', x.getAttribute('data-sec') !== tab); }); if (tab === 'res') results(p); if (tab === 'sim') sim(p); }; });
           A.$('#pdel', el).onclick = function () { A.confirm('حذف البرنامج «' + (p.title || '') + '»؟').then(function (ok) { if (ok) { P.splice(cur, 1); ch(); draw(); } }); };
+          function linked() {
+            var out = [];
+            (S.site.tree.nodes || []).forEach(function (n) { (n.options || []).forEach(function (o) { if (o.action === 'eligibility' && o.target === p.id) out.push((n.title || n.id) + ' ← ' + o.label); }); });
+            A.$('#plink', el).innerHTML = out.length ? '<div class="alert ok" style="margin-bottom:10px">✅ مربوطة بـ: ' + out.map(esc).join('، ') + '</div>' : '<div class="alert warn" style="margin-bottom:10px">⚠️ غير مربوطة بأي زر بعد</div>';
+          }
+          linked();
           A.$('#pmenu', el).onclick = function () {
             var tree = A.clone(S.site.tree), menu = tree.nodes.find(function (n) { return n.id === 'menu'; }) || tree.nodes.find(function (n) { return n.id === tree.root; });
             if (!menu) return A.toast('لم أجد القائمة الرئيسية', 'err');
-            if (menu.options.some(function (o) { return o.action === 'eligibility' && o.target === p.id; })) return A.toast('الزر موجود مسبقاً في القائمة', 'ok');
-            menu.options.push({ label: '🧮 ' + (p.title || 'حاسبة الاستحقاق'), action: 'eligibility', target: p.id });
-            (A.dirty ? A.saveSite({ settings: d }) : Promise.resolve()).then(function () { return A.saveSite({ tree: tree }); }).then(function () { A.setDirty(false); A.toast('تم الحفظ وإضافة الزر في القائمة الرئيسية ✅', 'ok'); }, A.fail);
+            var m = A.modal({ title: '🔗 ربط «' + esc(p.title || '') + '» بزر', body: '<p class="small muted">اختر الزر الذي يفتح الحاسبة عند الضغط عليه:</p><div class="checks">' + menu.options.map(function (o, i) { return '<label><input type="radio" name="lb" value="' + i + '"' + (o.action === 'eligibility' && o.target === p.id ? ' checked' : '') + '> ' + (i + 1) + ') ' + esc(o.label) + '</label>'; }).join('') + '<label><input type="radio" name="lb" value="new"> ➕ زر جديد: 🧮 ' + esc(p.title || '') + '</label></div>',
+              buttons: [{ label: 'إلغاء', ghost: true }, { label: '✅ ربط وحفظ', onClick: function (close, bg) {
+                var v = (bg.querySelector('[name=lb]:checked') || {}).value; if (v == null) { A.toast('اختر زراً', 'err'); return false; }
+                if (v === 'new') menu.options.push({ label: '🧮 ' + (p.title || 'حاسبة الاستحقاق'), action: 'eligibility', target: p.id });
+                else { var o = menu.options[Number(v)]; o.action = 'eligibility'; o.target = p.id; delete o.field; }
+                return (A.dirty ? A.saveSite({ settings: d }) : Promise.resolve()).then(function () { return A.saveSite({ tree: tree }); }).then(function () { A.setDirty(false); linked(); A.toast('تم الربط ✅ — الزر يفتح الحاسبة الآن', 'ok'); });
+              } }] });
           };
           questions(p); calcs(p); rules(p); after(); sim(p); results(p);
 
@@ -158,10 +176,10 @@
 
           function after() {
             var a = p.after, box = A.$('#aft', el);
-            box.innerHTML = a.action === 'url' ? f.text('after.url', 'رابط التقديم', { ltr: true, ph: 'https://…' })
+            box.innerHTML = a.action === 'url' ? '<div class="grid g2">' + f.text('after.url', 'رابط التقديم', { ltr: true, ph: 'https://…' }) + f.text('after.label', 'نص الزر', { ph: '📝 قدّم طلبك الآن' }) + '</div>' + (a.url ? '' : '<div class="alert warn">⚠️ اكتب رابط التقديم</div>')
               : a.action === 'lookup' ? f.select('after.target', 'الاستعلام', [['', '— اختر —']].concat((S.site.settings.datasource.lookups || []).map(function (l) { return [l.id, l.title || l.id]; })))
-              : a.action === 'ticket' ? '<div class="hint" style="margin-top:28px">يطلب الاسم والجوال ويسجّلها في «الشكاوى والاقتراحات» كطلب تواصل</div>' : '';
-            A.bind(box, p, ch);
+              : a.action === 'ticket' ? '<div class="hint">يطلب الاسم والجوال ويسجّلها في «الشكاوى والاقتراحات» كطلب تواصل</div>' : '';
+            A.bind(box, p, function (k) { ch(); if (k === 'after.url') { var w = box.querySelector('.alert'); if (w) w.classList.toggle('hidden', !!p.after.url); } });
           }
 
           function sim(p) {

@@ -623,10 +623,11 @@ function finishElig(conv, site, p, answers, res) {
     body = M.not_eligible ? fill(M.not_eligible, ctx) : fill(t.elig_not_eligible, ctx) + (res.reason ? '\n' + fill(t.elig_reason, ctx) : '');
   }
   const A = p.after || {}, extra = [];
+  // eligible + application link: the link is sent inside the result message (no extra form or click)
+  if (res.eligible && A.action === 'url' && A.url) return botSay(conv, site, body.trim(), navOptions(conv, site), { link: A.url, link_label: A.label || t.elig_apply });
   if (res.eligible && A.action) {
     const label = A.label || t.elig_apply;
-    if (A.action === 'url' && A.url) extra.push({ label, action: 'url', target: A.url });
-    else if (A.action === 'ticket') extra.push({ label, action: 'ticket', field: 'callback' });
+    if (A.action === 'ticket') extra.push({ label, action: 'ticket', field: 'callback' });
     else if (A.action === 'handoff') extra.push({ label, action: 'handoff' });
     else if (A.action === 'lookup' && A.target) extra.push({ label, action: 'lookup', target: A.target });
   }
