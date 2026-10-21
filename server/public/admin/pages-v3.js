@@ -475,7 +475,7 @@
           if (!t) return '';
           if (c.type === 'api') return '<div class="grid g2">' + f.text(extra + 'api_url', 'رابط API الأساسي', { ltr: true, ph: 'https://api.example.com' }) + f.text(extra + 'api_headers', 'Headers (JSON)', { ltr: true, mono: true, ph: '{"Authorization":"Bearer …"}' }) + '</div><div class="hint">' + t[3] + '</div>';
           if (c.type === 'wordpress') return f.text(extra + 'wp_url', 'رابط موقع ووردبريس', { ltr: true, ph: 'https://example.com' }) +
-            '<ol class="steps small" style="margin:8px 0"><li>نزّل الإضافة الجديدة (2.2) من <a href="#/install">تركيب المحادثة</a> وارفعها في ووردبريس (استبدال الحالية).</li><li>في ووردبريس: <b>الإعدادات ← Smart Chat Agent</b> ← اختر جداول قاعدة ووردبريس، و/أو فعّل <b>قاعدة بيانات خارجية</b> واكتب بياناتها هناك (تبقى في موقعك) ثم اختر جداولها ← حفظ.</li><li>اضغط «🔎 عرض الجداول» للتأكد، ثم أنشئ الاستعلامات من تبويب «الاستعلامات».</li></ol>' +
+            '<ol class="steps small" style="margin:8px 0"><li>اكتب رابط الصفحة الرئيسية لموقعك (مثل https://example.com — وليس رابط لوحة ووردبريس).</li><li>نزّل الإضافة الجديدة (2.2) من <a href="#/install">تركيب المحادثة</a> وارفعها في ووردبريس (استبدال الحالية).</li><li>في ووردبريس: <b>الإعدادات ← Smart Chat Agent</b> ← اختر جداول قاعدة ووردبريس، و/أو فعّل <b>قاعدة بيانات خارجية</b> واكتب بياناتها هناك (تبقى في موقعك) ثم اختر جداولها ← حفظ.</li><li>اضغط «🔎 عرض الجداول» للتأكد، ثم أنشئ الاستعلامات من تبويب «الاستعلامات».</li></ol>' +
             '<div class="row wrap"><button type="button" class="btn soft sm" data-wpt>🔎 عرض الجداول المسموحة</button><span class="small" data-wpi></span></div><div class="hint">' + TT.wordpress[3] + '. البحث يتم من داخل موقعك، لذا جرّب المحادثة من صفحة في موقعك.</div>';
           if (c.type === 'file') return '<div class="row wrap"><button type="button" class="btn soft" data-upl>📤 رفع ملف Excel / CSV</button><span class="small" data-finfo>' + (c.connection ? '⏳' : '<span class="muted">لم يُرفع ملف بعد</span>') + '</span></div><div class="hint">' + t[3] + '</div>';
           return f.text(extra + 'connection', 'رابط الاتصال', { ltr: true, mono: true, ph: t[2], hint: t[3] });
@@ -486,19 +486,21 @@
             return new Promise(function (res, rej) {
               var w = window.open(r.url, 'scbridge', 'width=420,height=260');
               if (!w) return rej(new Error('اسمح بالنوافذ المنبثقة لهذه الصفحة ثم أعد المحاولة'));
-              var tm = setTimeout(function () { window.removeEventListener('message', on); rej(new Error('لم يصل رد من موقع ووردبريس — تأكد من تحديث الإضافة إلى الإصدار 2.1 ومن رابط الموقع')); }, 45000);
+              var tm = setTimeout(function () { window.removeEventListener('message', on); var e = new Error('لم يصل رد من موقع ووردبريس خلال 25 ثانية. الأسباب المحتملة: (1) الإضافة ليست الإصدار 2.2 — حدّثها من «تركيب المحادثة» (2) رابط الموقع غير صحيح (3) «رابط الخادم» في إعدادات الإضافة لا يطابق رابط هذه اللوحة. افتح النافذة يدوياً لترى الرسالة:'); e.link = r.url; rej(e); }, 25000);
               function on(e) { if (e.origin !== r.origin || !e.data || e.data.type !== 'smartchat-bridge') return; clearTimeout(tm); window.removeEventListener('message', on); e.data.ok ? res(e.data) : rej(new Error(e.data.error === 'bad signature' ? 'المفتاح السري لا يطابق — نزّل الإضافة من جديد من صفحة التركيب' : e.data.error)); }
               window.addEventListener('message', on);
             });
           });
         }
         function wireConn(box, c, onChange) {
+          var wpu = box.querySelector('[data-k$="wp_url"]');
+          if (wpu) wpu.addEventListener('change', function () { var v = wpu.value.trim().replace(/[?#].*$/, '').replace(/\/(wp-admin|wp-login\.php|wp-json|index\.php)(\/.*)?$/i, '').replace(/\/+$/, ''); if (v !== wpu.value) { wpu.value = v; c.wp_url = v; onChange(); A.toast('تم تعديل الرابط إلى رابط الموقع الرئيسي: ' + v, 'ok'); } });
           var wpt = box.querySelector('[data-wpt]');
           if (wpt) wpt.onclick = function () {
             var info = box.querySelector('[data-wpi]'); info.textContent = '⏳';
             var cid = c === D ? 'main' : c.id;
             (A.dirty ? A.saveSite({ settings: { datasource: D } }).then(function () { A.setDirty(false); }) : Promise.resolve()).then(function () { return wpBridge(cid, 'schema'); })
-              .then(function (x) { info.innerHTML = x.tables.length ? '✅ ' + x.tables.map(function (t) { return '<b>' + esc(t.name) + '</b> <span class="tiny muted">(' + t.columns.length + ' عمود)</span>'; }).join('، ') : '⚠️ متصل، لكن لم تُختر أي جداول في إعدادات الإضافة'; }, function (e) { info.textContent = '❌ ' + e.message; });
+              .then(function (x) { info.innerHTML = x.tables.length ? '✅ ' + x.tables.map(function (t) { return '<b>' + esc(t.name.replace(/^ext:/, '')) + '</b> <span class="tiny muted">(' + t.columns.length + ' عمود)</span>'; }).join('، ') : '⚠️ متصل بالموقع، لكن لم تُختر أي جداول في إعدادات الإضافة (ووردبريس ← الإعدادات ← Smart Chat Agent)'; }, function (e) { info.innerHTML = '❌ ' + esc(e.message) + (e.link ? ' <a href="' + esc(e.link) + '" target="_blank" rel="noopener">فتح الصفحة ↗</a>' : ''); });
           };
           var up = box.querySelector('[data-upl]'), info = box.querySelector('[data-finfo]');
           if (info && c.connection) A.GET('/api/datasource/file-info?conn=' + encodeURIComponent(c.connection)).then(function (x) { info.innerHTML = x.name ? '✅ <b>' + esc(x.name) + '</b> — ' + x.rows + ' صف · الأعمدة: <span class="ltr tiny">' + esc(x.columns.join(', ')) + '</span>' : '<span class="muted">الملف غير موجود — ارفعه مرة أخرى</span>'; });

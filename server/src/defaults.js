@@ -114,7 +114,10 @@ function defaultTree() {
           { label: '📞 أرقام التواصل', action: 'org', field: 'contact', i18n: { en: { label: '📞 Contact numbers' }, ur: { label: '📞 رابطہ نمبر' } } },
           { label: '🏦 الحسابات البنكية', action: 'banks', i18n: { en: { label: '🏦 Bank accounts' }, ur: { label: '🏦 بینک اکاؤنٹس' } } },
           { label: '❓ الأسئلة الشائعة', action: 'kb_browse', i18n: { en: { label: '❓ FAQ' }, ur: { label: '❓ عام سوالات' } } },
-          { label: '📝 الشكاوى والاقتراحات', action: 'goto', target: 'tickets', i18n: { en: { label: '📝 Complaints & suggestions' }, ur: { label: '📝 شکایات و تجاویز' } } }
+          { label: '📝 الشكاوى والاقتراحات', action: 'goto', target: 'tickets', i18n: { en: { label: '📝 Complaints & suggestions' }, ur: { label: '📝 شکایات و تجاویز' } } },
+          // appear automatically once queries / eligibility programs are added in the dashboard
+          { label: '🔎 استعلاماتي (طلباتي وبياناتي)', action: 'lookups_menu', i18n: { en: { label: '🔎 My requests & details' }, ur: { label: '🔎 میری درخواستیں اور معلومات' } } },
+          { label: '🧮 حساب آلية الاستحقاق', action: 'eligibility_menu', i18n: { en: { label: '🧮 Eligibility check' }, ur: { label: '🧮 اہلیت کا حساب' } } }
         ] },
       { id: 'tickets', title: 'الشكاوى والاقتراحات', x: 740, y: 260, numbered: true,
         message: 'نسعد بسماع ملاحظاتك. ماذا تريد أن تفعل؟',

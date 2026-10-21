@@ -17,8 +17,9 @@
     handoff: { icon: '👨‍💼', name: 'تحويل لموظف', desc: 'اختياري — البوت يحوّل تلقائياً عند الحاجة' },
     kb: { icon: '📚', name: 'سؤال من المعرفة', desc: 'إجابة محفوظة' },
     url: { icon: '🔗', name: 'رابط', desc: 'يفتح صفحة' },
-    order_status: { icon: '📦', name: 'حالة طلب', desc: 'من قاعدة البيانات' },
-    customer_info: { icon: '🪪', name: 'بيانات المستفيد', desc: 'من قاعدة البيانات' },
+    lookups_menu: { icon: '🔎', name: 'قائمة الاستعلامات', desc: 'طلباتي وبياناتي — تتحدث تلقائياً' },
+    order_status: { icon: '📦', name: 'حالة الطلب (مدمج)', desc: 'استعلام «حالة الطلب» من قاعدة البيانات' },
+    customer_info: { icon: '🪪', name: 'بيانات المستفيد (مدمج)', desc: 'استعلام «بيانات المستفيد» المدمج' },
     lookup: { icon: '🔎', name: 'استعلام مخصص', desc: 'من أي قاعدة بيانات مربوطة' },
     eligibility_menu: { icon: '📋', name: 'قائمة حساب الاستحقاق', desc: 'كل برامج الاستحقاق الظاهرة' },
     eligibility: { icon: '🧮', name: 'حاسبة الاستحقاق', desc: 'أسئلة ثم: مؤهل / غير مؤهل + القيمة' },
@@ -65,6 +66,25 @@
     }
     draw();
   };
+  // ready-made menus: built from the site's current queries / programs and linked to the main menu when dropped
+  var HOME = { label: '↩️ القائمة الرئيسية', action: 'goto', target: 'menu' };
+  var READY = {
+    queries: { icon: '🔎', name: 'طلباتي وبياناتي', desc: 'كل استعلامات قاعدة البيانات', build: function () {
+      var L = ((S.site.settings.datasource || {}).lookups || []).filter(function (l) { return l.query; });
+      var opts = L.length ? L.map(function (l) { return { label: (l.id === 'my_data' ? '🪪 ' : '🔎 ') + (l.title || l.id), action: 'lookup', target: l.id }; }) : [{ label: '📦 حالة الطلب', action: 'order_status' }, { label: '🪪 بيانات المستفيد', action: 'customer_info' }];
+      return { title: 'طلباتي وبياناتي', message: 'ماذا تريد أن تستعلم عنه؟ 🔎', numbered: true, options: opts.concat([{ label: '🔎 متابعة شكوى أو اقتراح', action: 'ticket_status' }, HOME]) };
+    } },
+    elig: { icon: '🧮', name: 'حساب الاستحقاق', desc: 'برامج الاستحقاق كلها', build: function () {
+      var P = (((S.site.settings.eligibility || {}).programs) || []).filter(function (p) { return p.enabled !== false && (p.questions || []).length; });
+      return { title: 'حساب آلية الاستحقاق', message: 'اختر نوع المساعدة لمعرفة أهليتك وقيمة استحقاقك 🧮', numbered: true, options: P.map(function (p) { return { label: '🧮 ' + p.title, action: 'eligibility', target: p.id }; }).concat([HOME]) };
+    } },
+    contact: { icon: '📞', name: 'تواصل معنا', desc: 'الأرقام، الموقع، الحسابات، موظف', build: function () {
+      return { title: 'تواصل معنا', message: 'كيف تحب أن تتواصل معنا؟', numbered: true, options: [{ label: '📞 أرقام التواصل', action: 'org', field: 'contact' }, { label: '📍 موقعنا على الخريطة', action: 'location' }, { label: '📱 حسابات التواصل', action: 'org', field: 'social' }, { label: '🏦 الحسابات البنكية', action: 'banks' }, { label: '👨‍💼 التحدث مع موظف', action: 'handoff' }, HOME] };
+    } },
+    services: { icon: '🗂️', name: 'خدماتنا', desc: 'عن الجمعية، الأسئلة، الشكاوى', build: function () {
+      return { title: 'خدماتنا', message: 'اختر الخدمة:', numbered: true, options: [{ label: '🏢 تعرّف علينا', action: 'about' }, { label: '❓ الأسئلة الشائعة', action: 'kb_browse' }, { label: '📝 تقديم شكوى', action: 'ticket', field: 'complaint' }, { label: '💡 تقديم اقتراح', action: 'ticket', field: 'suggestion' }, { label: '🔎 متابعة طلب سابق', action: 'ticket_status' }, HOME] };
+    } }
+  };
   function uid() { return 'n' + Math.random().toString(36).slice(2, 8); }
   function actLabel(o, tree) {
     var a = ACTIONS[o.action] || { icon: '?', name: o.action };
@@ -80,14 +100,19 @@
       var tree = A.clone(S.site.tree), sel = null, view = { x: 0, y: 0, k: 0.8 }, kbList = [];
       tree.nodes.forEach(function (n) { n.options = n.options || []; });
       A.GET('/api/kb?site=' + S.site.id).then(function (k) { kbList = k; });
-      root.innerHTML = '<div class="tree-wrap"><aside class="palette"><div class="section-title"><h2>عُقد</h2></div>' +
+      var DYN = [].concat(((S.site.settings.datasource || {}).lookups || []).filter(function (l) { return l.query; }).map(function (l) { return { act: 'lookup', target: l.id, icon: '🔎', label: l.title || l.id }; }),
+        (((S.site.settings.eligibility || {}).programs) || []).map(function (p) { return { act: 'eligibility', target: p.id, icon: '🧮', label: p.title || p.id }; }));
+      root.innerHTML = '<div class="tree-wrap"><aside class="palette"><div class="section-title"><h2>⚡ قوائم جاهزة</h2></div><p class="tiny muted" style="margin:-8px 0 8px">اسحبها إلى المساحة (أو اضغطها) — تعمل فوراً وتُضاف للقائمة الرئيسية</p>' +
+        Object.keys(READY).map(function (k) { var t = READY[k]; return '<div class="pi" draggable="true" data-ready="' + k + '" style="border-color:var(--primary)"><i>' + t.icon + '</i><div><b>' + t.name + '</b><small>' + t.desc + '</small></div></div>'; }).join('') +
+        (DYN.length ? '<div class="section-title" style="margin-top:16px"><h2>استعلاماتك وبرامجك</h2></div><p class="tiny muted" style="margin:-8px 0 8px">اسحبها إلى أي عقدة</p>' + DYN.map(function (d) { return '<div class="pi" draggable="true" data-act="' + d.act + '" data-target="' + esc(d.target) + '" data-label="' + esc(d.icon + ' ' + d.label) + '" style="padding:7px 10px"><i style="font-size:16px;width:26px;height:26px">' + d.icon + '</i><div><b class="small">' + esc(d.label) + '</b></div></div>'; }).join('') : '') +
+        '<div class="section-title" style="margin-top:16px"><h2>عُقد فارغة</h2></div>' +
         Object.keys(TEMPLATES).map(function (k) { var t = TEMPLATES[k]; return '<div class="pi" draggable="true" data-tpl="' + k + '"><i>' + t.icon + '</i><div><b>' + t.name + '</b><small>' + t.desc + '</small></div></div>'; }).join('') +
         '<div class="section-title" style="margin-top:16px"><h2>أزرار</h2></div><p class="tiny muted" style="margin:-8px 0 8px">اسحب الزر وأفلته على أي عقدة</p>' +
         Object.keys(ACTIONS).map(function (k) { var a = ACTIONS[k]; return '<div class="pi" draggable="true" data-act="' + k + '" style="padding:7px 10px"><i style="font-size:16px;width:26px;height:26px">' + a.icon + '</i><div><b class="small">' + a.name + '</b></div></div>'; }).join('') +
         '</aside><div class="canvas" id="cv"><div class="help">🖱️ اسحب الخلفية للتحريك · العجلة للتكبير · اسحب ● من الزر إلى عقدة لربطهما</div><div class="world" id="wd"><svg class="links" id="lk" width="1" height="1"></svg></div>' +
         '<div class="zoom"><button class="btn ghost icon" id="zi">＋</button><button class="btn ghost icon" id="zo">－</button><button class="btn ghost sm" id="zf">⤢ ملاءمة</button><button class="btn ghost sm" id="ar">🧹 ترتيب تلقائي</button></div></div>' +
         '<aside class="inspector" id="ins"></aside></div>' +
-        '<div class="savebar" style="margin:0;position:fixed;bottom:0;inset-inline:250px 0;z-index:30"><span class="dirty"></span><button class="btn soft" id="medit">✏️ تعديل أزرار القائمة الرئيسية</button><button class="btn ghost" id="tpl">↺ تطبيق القالب الجاهز</button><button class="btn" id="sv">💾 حفظ الشجرة</button></div>';
+        '<div class="savebar" style="margin:0;position:fixed;bottom:0;inset-inline:250px 0;z-index:30"><span class="dirty"></span><button class="btn soft" id="chk">🩺 فحص الأزرار</button><button class="btn soft" id="medit">✏️ تعديل أزرار القائمة الرئيسية</button><button class="btn ghost" id="tpl">↺ تطبيق القالب الجاهز</button><button class="btn" id="sv">💾 حفظ الشجرة</button></div>';
       var cv = A.$('#cv'), wd = A.$('#wd'), lk = A.$('#lk'), ins = A.$('#ins');
       var dirty = function () { A.setDirty(true); };
 
@@ -161,10 +186,7 @@
         el.addEventListener('dragleave', function () { if (sel !== id) el.classList.remove('sel'); });
         el.addEventListener('drop', function (e) {
           if (!dragData || !dragData.act) return; e.preventDefault(); e.stopPropagation();
-          var act = dragData.act; dragData = null; sel = id;
-          var o = { label: ACTIONS[act].icon + ' ' + ACTIONS[act].name, action: act };
-          if (act === 'org') o.field = 'contact'; if (act === 'ticket') o.field = 'complaint';
-          if (act === 'goto') o.target = 'menu';
+          var o = newOpt(dragData.act, dragData.target, dragData.label); dragData = null; sel = id;
           n.options.push(o); dirty(); draw(); inspect(n.options.length - 1);
         });
       }
@@ -246,6 +268,7 @@
             else if (o.action === 'banks') h = '<label class="f">التصنيف</label><select class="in" data-p="target"><option value="">كل التصنيفات (يختار المستفيد)</option>' + ((S.site.settings.org.banks) || []).map(function (g) { return '<option value="' + esc(g.id) + '"' + (o.target === g.id ? ' selected' : '') + '>' + esc(g.name) + '</option>'; }).join('') + '</select>';
             else if (o.action === 'kb_browse') h = '<div class="hint">يعرض تصنيفات <a href="#/mindmap">الخريطة الذهنية</a> ثم أسئلتها</div>';
             else if (o.action === 'handoff') h = '<div class="hint">يرن عند الموظفين المتصلين حتى يرد أحدهم، وما يكتبه المستفيد يُحفظ ليتعلّم منه البوت.</div>';
+            else if (o.action === 'lookups_menu') h = '<div class="hint">يعرض كل استعلامات <a href="#/datasource">قواعد البيانات</a> (بياناتي، حالة الطلب، موعد الصرف…) ويُخفى تلقائياً إن لم توجد استعلامات</div>';
             else if (o.action === 'eligibility_menu') h = '<div class="hint">يعرض البرامج الظاهرة من صفحة <a href="#/eligibility">حاسبة الاستحقاق</a></div>';
             else if (o.action === 'eligibility') h = '<label class="f">البرنامج</label><select class="in" data-p="target"><option value="">— اختر —</option>' + (((S.site.settings.eligibility || {}).programs) || []).map(function (p) { return '<option value="' + esc(p.id) + '"' + (o.target === p.id ? ' selected' : '') + '>' + esc(p.title || p.id) + '</option>'; }).join('') + '</select><div class="hint">تُنشأ البرامج من صفحة <a href="#/eligibility">حاسبة الاستحقاق</a></div>';
             else if (o.action === 'lookup') h = '<label class="f">الاستعلام</label><select class="in" data-p="target"><option value="">— اختر —</option>' + ((S.site.settings.datasource.lookups) || []).map(function (l) { return '<option value="' + esc(l.id) + '"' + (o.target === l.id ? ' selected' : '') + '>' + esc(l.title || l.id) + '</option>'; }).join('') + '</select><div class="hint">تُنشأ الاستعلامات من الإعدادات ← قواعد البيانات</div>';
@@ -282,11 +305,13 @@
       /* palette drag & drop (fixed: canvas accepts drops) */
       var dragData = null;
       A.$$('.pi', root).forEach(function (p) {
-        p.addEventListener('dragstart', function (e) { dragData = { tpl: p.getAttribute('data-tpl'), act: p.getAttribute('data-act') }; e.dataTransfer.setData('text/plain', 'sc'); e.dataTransfer.effectAllowed = 'copy'; });
+        p.addEventListener('dragstart', function (e) { dragData = { tpl: p.getAttribute('data-tpl'), ready: p.getAttribute('data-ready'), act: p.getAttribute('data-act'), target: p.getAttribute('data-target'), label: p.getAttribute('data-label') }; e.dataTransfer.setData('text/plain', 'sc'); e.dataTransfer.effectAllowed = 'copy'; });
         p.addEventListener('dragend', function () { dragData = null; cv.classList.remove('drop'); });
         p.addEventListener('click', function () { // click = add at centre (touch friendly)
-          if (p.getAttribute('data-tpl')) { var r = cv.getBoundingClientRect(); addTemplate(p.getAttribute('data-tpl'), toWorld(r.left + r.width / 2 - 120, r.top + r.height / 3)); }
-          else if (sel) { var n = tree.nodes.find(function (x) { return x.id === sel; }), act = p.getAttribute('data-act'); var o = { label: ACTIONS[act].icon + ' ' + ACTIONS[act].name, action: act }; if (act === 'org') o.field = 'contact'; if (act === 'ticket') o.field = 'complaint'; n.options.push(o); dirty(); draw(); inspect(n.options.length - 1); }
+          var r0 = cv.getBoundingClientRect();
+          if (p.getAttribute('data-ready')) addReady(p.getAttribute('data-ready'), toWorld(r0.left + r0.width / 2 - 120, r0.top + r0.height / 3));
+          else if (p.getAttribute('data-tpl')) addTemplate(p.getAttribute('data-tpl'), toWorld(r0.left + r0.width / 2 - 120, r0.top + r0.height / 3));
+          else if (sel) { var n = tree.nodes.find(function (x) { return x.id === sel; }); n.options.push(newOpt(p.getAttribute('data-act'), p.getAttribute('data-target'), p.getAttribute('data-label'))); dirty(); draw(); inspect(n.options.length - 1); }
           else A.toast('اختر عقدة أولاً ثم اضغط الزر، أو اسحبه إلى العقدة');
         });
       });
@@ -295,10 +320,27 @@
       cv.addEventListener('drop', function (e) {
         e.preventDefault(); cv.classList.remove('drop'); if (!dragData) return;
         var w = toWorld(e.clientX, e.clientY);
-        if (dragData.tpl) addTemplate(dragData.tpl, { x: w.x - 125, y: w.y - 30 });
+        if (dragData.ready) addReady(dragData.ready, { x: w.x - 125, y: w.y - 30 });
+        else if (dragData.tpl) addTemplate(dragData.tpl, { x: w.x - 125, y: w.y - 30 });
         else A.toast('أفلت الزر فوق عقدة لإضافته إليها');
         dragData = null;
       });
+      function newOpt(act, target, label) {
+        var o = { label: label || (ACTIONS[act].icon + ' ' + ACTIONS[act].name), action: act };
+        if (target) o.target = target;
+        if (act === 'org') o.field = 'contact'; if (act === 'ticket') o.field = 'complaint';
+        if (act === 'goto' && !o.target) o.target = 'menu';
+        return o;
+      }
+      function mainMenu() { return tree.nodes.find(function (n) { return n.id === 'menu'; }) || tree.nodes.find(function (n) { return n.id === tree.root; }); }
+      function addReady(k, at) {
+        var R = READY[k], n = R.build(); n.id = uid(); n.x = Math.round(at.x); n.y = Math.round(at.y);
+        if (n.options.length <= 1) A.toast(k === 'elig' ? '⚠️ لا توجد برامج استحقاق بعد — أنشئها من «حاسبة الاستحقاق»' : '⚠️ القائمة فارغة', 'err');
+        tree.nodes.push(n);
+        var m = mainMenu();
+        if (m && m.id !== n.id) { m.options.push({ label: R.icon + ' ' + R.name, action: 'goto', target: n.id }); A.toast('✅ أُضيفت القائمة وزرها في القائمة الرئيسية — اضغط «حفظ الشجرة»', 'ok'); }
+        sel = n.id; dirty(); draw(); inspect();
+      }
       function addTemplate(k, at) {
         var n = A.clone(TEMPLATES[k].node); n.id = uid(); n.x = Math.round(at.x); n.y = Math.round(at.y);
         tree.nodes.push(n); sel = n.id; dirty(); draw(); inspect();
@@ -333,9 +375,37 @@
         dirty(); draw(); fit();
       }
       A.$('#zi').onclick = function () { zoom(1.15); }; A.$('#zo').onclick = function () { zoom(0.87); }; A.$('#zf').onclick = fit; A.$('#ar').onclick = arrange;
+      // checks every button: is it linked to something that exists and is ready?
+      function checkTree() {
+        var st = S.site.settings, ds = st.datasource || {}, L = ds.lookups || [], P = (st.eligibility || {}).programs || [], out = [];
+        var reach = {}, q = [tree.root, 'menu']; while (q.length) { var id = q.shift(); if (reach[id]) continue; reach[id] = 1; var nn = tree.nodes.find(function (x) { return x.id === id; }); if (!nn) continue; nn.options.forEach(function (o) { if (o.action === 'goto' && o.target) q.push(o.target === '__menu' ? 'menu' : o.target); }); if (nn.auto_next) q.push(nn.auto_next); }
+        tree.nodes.forEach(function (n) {
+          if (!reach[n.id]) out.push(['⚠️', n.title || n.id, 'لا يصل إليها أي زر (عقدة معزولة)']);
+          n.options.forEach(function (o) {
+            var w = (n.title || n.id) + ' ← ' + o.label, bad = null;
+            if (!String(o.label || '').trim()) bad = 'الزر بدون اسم';
+            else if (o.action === 'goto' && o.target !== '__menu' && !tree.nodes.some(function (x) { return x.id === o.target; })) bad = 'غير مربوط بعقدة';
+            else if (o.action === 'lookup') { var l = L.find(function (x) { return x.id === o.target; }); bad = !l ? 'الاستعلام غير موجود' : !l.query ? 'الاستعلام بدون محتوى' : null; }
+            else if (o.action === 'eligibility' && o.target) { var p = P.find(function (x) { return x.id === o.target; }); bad = !p ? 'برنامج الاستحقاق غير موجود' : p.enabled === false ? 'البرنامج موقوف' : !(p.questions || []).length ? 'البرنامج بدون أسئلة' : null; }
+            else if (o.action === 'kb' && !kbList.some(function (k) { return String(k.id) === String(o.target); })) bad = 'السؤال غير موجود في الخريطة الذهنية';
+            else if (o.action === 'url' && !/^https?:\/\//.test(o.target || '')) bad = 'الرابط فارغ أو غير صحيح';
+            else if (o.action === 'answer' && !String(o.target || '').trim()) bad = 'الإجابة فارغة';
+            else if ((o.action === 'order_status' || o.action === 'customer_info') && (ds.type === 'none' || !(o.action === 'order_status' ? ds.order_query : ds.customer_query))) bad = 'لم يُضبط الاستعلام المدمج — استخدم «قائمة الاستعلامات» أو استعلاماً مخصصاً';
+            else if (o.action === 'branch' && o.target && !((st.org || {}).branches || []).some(function (b) { return b.id === o.target; })) bad = 'الفرع غير موجود';
+            else if (o.action === 'lookups_menu' && !L.some(function (x) { return x.query; })) out.push(['ℹ️', w, 'مخفي حتى تضيف استعلاماً في قواعد البيانات']);
+            else if (o.action === 'eligibility_menu' && !P.some(function (x) { return x.enabled !== false && x.visible !== false && (x.questions || []).length; })) out.push(['ℹ️', w, 'مخفي حتى تضيف برنامج استحقاق']);
+            if (bad) out.push(['❌', w, bad]);
+          });
+        });
+        return out;
+      }
+      A.$('#chk').onclick = function () {
+        var r = checkTree(), n = tree.nodes.reduce(function (a, x) { return a + x.options.length; }, 0), errs = r.filter(function (x) { return x[0] === '❌'; }).length;
+        A.modal({ title: '🩺 فحص الأزرار', body: '<div class="alert ' + (errs ? 'err' : 'ok') + '">' + (errs ? '❌ ' + errs + ' زر يحتاج إصلاحاً من أصل ' + n : '✅ كل الأزرار (' + n + ') مربوطة وتعمل') + '</div>' + (r.length ? '<div class="tbl-wrap"><table class="t"><tbody>' + r.map(function (x) { return '<tr><td>' + x[0] + '</td><td><b>' + esc(x[1]) + '</b></td><td class="small">' + esc(x[2]) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '') });
+      };
       A.$('#sv').onclick = function () {
-        var broken = []; tree.nodes.forEach(function (n) { n.options.forEach(function (o) { if (o.action === 'goto' && !tree.nodes.some(function (x) { return x.id === o.target; }) && o.target !== '__menu') broken.push((n.title || n.id) + ' ← ' + o.label); }); });
-        if (broken.length) A.toast('⚠️ أزرار غير مربوطة: ' + broken.slice(0, 3).join('، '), 'err');
+        var broken = checkTree().filter(function (x) { return x[0] === '❌'; });
+        if (broken.length) A.toast('⚠️ ' + broken.length + ' زر يحتاج إصلاحاً — اضغط «🩺 فحص الأزرار»', 'err');
         A.saveSite({ tree: tree }).then(function () { A.setDirty(false); A.toast('تم حفظ الشجرة ✅ — التغييرات تظهر فوراً للزوار', 'ok'); }).catch(A.fail);
       };
       A.$('#medit').onclick = function () { A.menuEditor(tree, function () { dirty(); draw(); A.toast('تم التعديل — اضغط «حفظ الشجرة» لتظهر للزوار', 'ok'); }); };

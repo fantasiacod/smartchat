@@ -434,6 +434,34 @@ let pass = 0; const ok = (c, m) => { assert.ok(c, m); pass++; console.log('  ✔
   const sg = await api('POST', `/api/sites/${siteId}/wp-bridge`, { connection: 'wp', op: 'schema' }, T);
   ok(sg.s === 200 && sg.j.url.startsWith('https://example.org/?smartchat_bridge=') && sg.j.origin === 'https://example.org', 'signed link for listing the allowed WordPress tables');
 
+  // ---------------- every kind of button works (pressed one by one)
+  const kbAny = (await api('GET', `/api/kb?site=${siteId}`, null, T)).j[0];
+  const ALL = [['goto', { target: 'tickets' }], ['answer', { target: 'نص الإجابة' }], ['about', {}], ['location', {}], ['branch', {}], ['banks', {}], ['kb_browse', {}], ['org', { field: 'contact' }],
+    ['ticket', { field: 'complaint' }], ['ticket_status', {}], ['kb', { target: String(kbAny.id) }], ['url', { target: 'https://example.org' }], ['order_status', {}], ['customer_info', {}],
+    ['lookup', { target: 'lk1' }], ['lookups_menu', {}], ['eligibility_menu', {}], ['eligibility', { target: 'p1' }], ['developer', {}], ['handoff', {}], ['end', {}]];
+  const trAll = JSON.parse(JSON.stringify((await api('GET', '/api/sites', null, T)).j[0].tree));
+  trAll.nodes.find(n => n.id === 'menu').options = ALL.map(([a, x]) => ({ label: 'زر ' + a, action: a, ...x }));
+  await api('PUT', '/api/sites/' + siteId, { tree: trAll, settings: { org: { developer: { name: 'مطوّر', url: 'https://dev.example' } }, behavior: { work_hours: { enabled: false } },
+    datasource: { type: 'demo', order_query: 'SELECT status FROM demo_orders WHERE order_no = :order_no AND phone = :phone', customer_query: 'SELECT name FROM demo_customers WHERE phone = :phone',
+      connections: [], lookups: [{ id: 'lk1', title: 'حالة طلبي', keywords: 'حالة طلبي', connection: 'main', query: 'SELECT status FROM demo_orders WHERE order_no = :order_no', template: 'الحالة: {status}' }] },
+    eligibility: { programs: [{ ...eProg, id: 'p1', visible: true, source: {} }] } } }, T);
+  const errLog = []; const origErr = console.error; console.error = (...a) => { errLog.push(a.join(' ')); };
+  const badBtns = [];
+  for (let i = 0; i < ALL.length; i++) {
+    const vb = visitor(key, 'vbtn' + i); await vb.join(); await vb.emit('start', {}); await wait(150);
+    const menuM = [...vb.msgs].reverse().find(m => m.options && m.options.length >= ALL.length - 2);
+    const opt = menuM && menuM.options.findIndex(o => o.label === 'زر ' + ALL[i][0]);
+    if (!menuM || opt < 0) { badBtns.push(ALL[i][0] + ' (not shown)'); continue; }
+    const before = vb.msgs.length, e0 = errLog.length;
+    await vb.emit('option', { mid: menuM.id, i: opt }); await wait(350);
+    const fresh = vb.msgs.slice(before).filter(m => m.sender === 'bot' || m.sender === 'system');
+    const ok1 = ALL[i][0] === 'end' ? vb.closed : ALL[i][0] === 'handoff' ? (vb.status === 'waiting' || fresh.length > 0) : fresh.length > 0 && !fresh.some(m => /غير مفعّل بعد|not active yet/.test(m.body || ''));
+    if (!ok1 || errLog.length > e0) badBtns.push(ALL[i][0] + (errLog.length > e0 ? ' (error: ' + errLog[errLog.length - 1].slice(0, 80) + ')' : ''));
+    vb.s.disconnect();
+  }
+  console.error = origErr;
+  ok(!badBtns.length, `all ${ALL.length} kinds of buttons answer correctly` + (badBtns.length ? ' — failed: ' + badBtns.join(', ') : ''));
+
   // ---------------- webhooks (extensibility)
   const got = [];
   const hookSrv = http.createServer((req, res) => { let b = ''; req.on('data', c => b += c); req.on('end', () => { got.push({ ev: req.headers['x-smartchat-event'], sig: req.headers['x-smartchat-signature'], body: b }); res.end('ok'); }); });

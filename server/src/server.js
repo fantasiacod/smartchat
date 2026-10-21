@@ -449,7 +449,8 @@ app.post('/api/sites/:id/wp-bridge', auth('admin'), (req, res) => {
   const cfg = { ...site.settings.datasource, ...(req.body.datasource || {}) };
   const id = req.body.connection || 'main', conn = id === 'main' ? cfg : (cfg.connections || []).find(c => c.id === id);
   if (!conn || conn.type !== 'wordpress') return res.status(400).json({ error: 'اختر قاعدة بيانات من نوع ووردبريس' });
-  const wp = String(conn.wp_url || '').trim().replace(/\/+$/, '');
+  // accept any page of the site (even /wp-admin/index.php): keep only the site address
+  const wp = String(conn.wp_url || '').trim().replace(/[?#].*$/, '').replace(/\/(wp-admin|wp-login\.php|wp-json|index\.php)(\/.*)?$/i, '').replace(/\/+$/, '');
   if (!/^https?:\/\/[^\s]+$/.test(wp)) return res.status(400).json({ error: 'اكتب رابط موقع ووردبريس (مثال: https://example.com)' });
   try {
     const r = ds.wpRequest(site, req.body.op === 'schema' ? {} : (req.body.query || '{}'), req.body.params || {}, req.body.op === 'schema' ? 'schema' : 'read');

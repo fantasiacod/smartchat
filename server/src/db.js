@@ -221,5 +221,23 @@ function foldEligibilityButtons() {
 }
 foldEligibilityButtons();
 
+// one-time: existing sites get the «استعلاماتي» button (it stays hidden until a query exists)
+function addLookupsButton() {
+  for (const row of db.prepare('SELECT id, settings, tree FROM sites').all()) {
+    let s, tree; try { s = JSON.parse(row.settings || '{}'); tree = JSON.parse(row.tree || 'null'); } catch { continue; }
+    s.datasource = s.datasource || {};
+    if (s.datasource.list_button_added || !tree?.nodes) continue;
+    s.datasource.list_button_added = true;
+    const menu = tree.nodes.find(n => n.id === 'menu') || tree.nodes.find(n => n.id === tree.root);
+    if (menu && !menu.options.some(o => o.action === 'lookups_menu')) {
+      const at = menu.options.findIndex(o => o.action === 'eligibility_menu');
+      const btn = { label: '🔎 استعلاماتي (طلباتي وبياناتي)', action: 'lookups_menu', i18n: { en: { label: '🔎 My requests & details' }, ur: { label: '🔎 میری درخواستیں اور معلومات' } } };
+      if (at >= 0) menu.options.splice(at, 0, btn); else menu.options.push(btn);
+    }
+    db.prepare('UPDATE sites SET settings=?, tree=? WHERE id=?').run(JSON.stringify(s), JSON.stringify(tree), row.id);
+  }
+}
+addLookupsButton();
+
 
 module.exports = { db, now, getSite, getSiteByKey, createSite, getConv, hydrateConv, audit, meta, DATA_DIR };

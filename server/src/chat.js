@@ -131,11 +131,18 @@ function findNode(site, id) {
   return tree.nodes.find(n => n.id === id);
 }
 
+// buttons shown to visitors: hidden ones and empty lists (no queries / no programs yet) are left out
+function visibleOpts(site, node) {
+  return (node?.options || []).filter(o => !o.hidden
+    && !(o.action === 'lookups_menu' && !listedLookups(site).length)
+    && !(o.action === 'eligibility_menu' && !(site.settings.eligibility?.programs || []).some(p => p.enabled !== false && p.visible !== false && (p.questions || []).length)));
+}
+
 function sendNode(conv, site, nodeId, depth = 0) {
   const node = findNode(site, nodeId);
   if (!node) return botSay(conv, site, tr(conv, site).unlinked, navOptions(conv, site));
   saveConv(conv, { state: { ...conv.state, node: node.id, await: null } });
-  const opts = (node.options || []).filter(o => !o.hidden).map(o => ({ ...o, label: L(conv, o.label, o.i18n, 'label') }));
+  const opts = visibleOpts(site, node).map(o => ({ ...o, label: L(conv, o.label, o.i18n, 'label') }));
   const msg = fill(L(conv, node.message, node.i18n, 'message'), ctxOf(conv, site));
   const extra = {};
   if (node.media?.length) extra.media = node.media;
@@ -411,6 +418,7 @@ async function runAction(conv, site, opt, freeText) {
     }
     case 'eligibility': return opt.target ? startElig(conv, site, opt.target) : sendEligHub(conv, site);
     case 'eligibility_menu': return sendEligHub(conv, site);
+    case 'lookups_menu': return sendLookupsHub(conv, site);
     case 'elig': {
       const a = conv.state.await;
       if (a?.kind === 'elig' && a.pid === opt.target) return answerElig(conv, site, String(Number(opt.field) + 1));
@@ -581,6 +589,16 @@ async function executeLookup(conv, site) {
 /* ============================== eligibility calculator ============================== */
 
 const programOf = (site, id) => (site.settings.eligibility?.programs || []).find(p => p.id === id && p.enabled !== false);
+
+// «استعلاماتي»: one main-menu button that lists every database query (new queries appear automatically)
+const listedLookups = (site) => (site.settings.datasource.lookups || []).filter(l => l.query && l.in_list !== false && site.settings.datasource && ((!l.connection || l.connection === 'main') ? site.settings.datasource.type !== 'none' : (site.settings.datasource.connections || []).some(c => c.id === l.connection)));
+function sendLookupsHub(conv, site) {
+  const t = tr(conv, site), list = listedLookups(site);
+  if (!list.length) return botSay(conv, site, t.unlinked, navOptions(conv, site));
+  if (list.length === 1) return startLookup(conv, site, 'lookup:' + list[0].id, null);
+  const opts = list.map(l => ({ label: (l.icon || '🔎') + ' ' + (l.title || l.id), action: 'lookup', target: l.id }));
+  return botSay(conv, site, site.settings.datasource.list_message || t.lookups_hub, [...opts, ...navOptions(conv, site)], { numbered: true });
+}
 
 // the hub: one main-menu button that lists every visible program (monthly aid, seasonal aid…)
 function sendEligHub(conv, site) {
@@ -855,7 +873,8 @@ async function handleVisitorText(conv, site, text) {
     // ...unless the latest buttons are plain navigation: then a number means the main menu
     const latest = db.prepare("SELECT payload FROM messages WHERE conversation_id=? AND sender='bot' AND payload LIKE '%\"options\"%' ORDER BY id DESC LIMIT 1").get(conv.id);
     const lp = parsePayload(latest?.payload);
-    const numbered = lp?.numbered ? lp.options : ((findNode(site, '__menu')?.options || []).filter(o => !o.hidden).length ? findNode(site, '__menu').options.filter(o => !o.hidden) : lastOptions(conv, true));
+    const mainVis = visibleOpts(site, findNode(site, '__menu'));
+    const numbered = lp?.numbered ? lp.options : (mainVis.length ? mainVis : lastOptions(conv, true));
     const pick = numbered[choice - 1] || opts[choice - 1];
     if (pick) return runAction(conv, site, pick, null);
     return sendNode(conv, site, '__menu');
