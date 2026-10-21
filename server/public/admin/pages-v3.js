@@ -458,6 +458,7 @@
       A.settingsPage(root, ['datasource'], function (el, d, ch) {
         var D = d.datasource; D.connections = D.connections || []; D.lookups = D.lookups || [];
         var TYPES = [
+          ['wordpress', '🧩 قاعدة بيانات موقع ووردبريس (عبر الإضافة)', '', 'تعمل حتى مع الاستضافات التي تمنع الاتصال الخارجي (مثل InfinityFree): إضافة ووردبريس تقرأ البيانات من داخل الموقع، وفقط من الجداول التي تسمح بها', '{"table":"beneficiaries","where":{"id_number":":id_number"},"columns":["full_name","file_status"]}'],
           ['mysql', '🐬 MySQL / MariaDB', 'mysql://user:pass@host:3306/db', 'يشمل: استضافات cPanel، PlanetScale، AWS RDS، Azure MySQL. أضف ?ssl=true للخوادم السحابية التي تتطلب SSL', "SELECT status FROM orders WHERE order_no = :order_no AND phone = :phone"],
           ['postgres', '🐘 PostgreSQL', 'postgres://user:pass@host:5432/db', 'يشمل: Supabase، Neon، AWS RDS، Google Cloud SQL، Azure. في Supabase استخدم رابط Session pooler', "SELECT status FROM orders WHERE order_no = :order_no AND phone = :phone"],
           ['mssql', '🟦 SQL Server / Azure SQL', 'Server=host,1433;Database=db;User Id=user;Password=pass;Encrypt=true;TrustServerCertificate=true', 'أو mssql://user:pass@host:1433/db — يشمل SQL Server داخل الجهة و Azure SQL', "SELECT TOP 3 status FROM orders WHERE order_no = :order_no AND phone = :phone"],
@@ -473,10 +474,32 @@
           var t = TT[c.type];
           if (!t) return '';
           if (c.type === 'api') return '<div class="grid g2">' + f.text(extra + 'api_url', 'رابط API الأساسي', { ltr: true, ph: 'https://api.example.com' }) + f.text(extra + 'api_headers', 'Headers (JSON)', { ltr: true, mono: true, ph: '{"Authorization":"Bearer …"}' }) + '</div><div class="hint">' + t[3] + '</div>';
+          if (c.type === 'wordpress') return f.text(extra + 'wp_url', 'رابط موقع ووردبريس', { ltr: true, ph: 'https://example.com' }) +
+            '<ol class="steps small" style="margin:8px 0"><li>نزّل الإضافة الجديدة من <a href="#/install">تركيب المحادثة</a> وارفعها في ووردبريس (تحديث الإضافة).</li><li>في ووردبريس: <b>الإعدادات ← Smart Chat Agent</b> ← اختر الجداول التي يقرأ منها البوت ← حفظ.</li><li>اضغط «🔎 عرض الجداول» للتأكد، ثم أنشئ الاستعلامات من تبويب «الاستعلامات».</li></ol>' +
+            '<div class="row wrap"><button type="button" class="btn soft sm" data-wpt>🔎 عرض الجداول المسموحة</button><span class="small" data-wpi></span></div><div class="hint">' + TT.wordpress[3] + '. البحث يتم من داخل موقعك، لذا جرّب المحادثة من صفحة في موقعك.</div>';
           if (c.type === 'file') return '<div class="row wrap"><button type="button" class="btn soft" data-upl>📤 رفع ملف Excel / CSV</button><span class="small" data-finfo>' + (c.connection ? '⏳' : '<span class="muted">لم يُرفع ملف بعد</span>') + '</span></div><div class="hint">' + t[3] + '</div>';
           return f.text(extra + 'connection', 'رابط الاتصال', { ltr: true, mono: true, ph: t[2], hint: t[3] });
         }
+        // opens a small window on the WordPress site; the plugin answers (allowed tables / a test read) by postMessage
+        function wpBridge(connId, op, query, params) {
+          return A.api('POST', '/api/sites/' + S.site.id + '/wp-bridge', { connection: connId, op: op, query: query, params: params || {}, datasource: D }).then(function (r) {
+            return new Promise(function (res, rej) {
+              var w = window.open(r.url, 'scbridge', 'width=420,height=260');
+              if (!w) return rej(new Error('اسمح بالنوافذ المنبثقة لهذه الصفحة ثم أعد المحاولة'));
+              var tm = setTimeout(function () { window.removeEventListener('message', on); rej(new Error('لم يصل رد من موقع ووردبريس — تأكد من تحديث الإضافة إلى الإصدار 2.1 ومن رابط الموقع')); }, 45000);
+              function on(e) { if (e.origin !== r.origin || !e.data || e.data.type !== 'smartchat-bridge') return; clearTimeout(tm); window.removeEventListener('message', on); e.data.ok ? res(e.data) : rej(new Error(e.data.error === 'bad signature' ? 'المفتاح السري لا يطابق — نزّل الإضافة من جديد من صفحة التركيب' : e.data.error)); }
+              window.addEventListener('message', on);
+            });
+          });
+        }
         function wireConn(box, c, onChange) {
+          var wpt = box.querySelector('[data-wpt]');
+          if (wpt) wpt.onclick = function () {
+            var info = box.querySelector('[data-wpi]'); info.textContent = '⏳';
+            var cid = c === D ? 'main' : c.id;
+            (A.dirty ? A.saveSite({ settings: { datasource: D } }).then(function () { A.setDirty(false); }) : Promise.resolve()).then(function () { return wpBridge(cid, 'schema'); })
+              .then(function (x) { info.innerHTML = x.tables.length ? '✅ ' + x.tables.map(function (t) { return '<b>' + esc(t.name) + '</b> <span class="tiny muted">(' + t.columns.length + ' عمود)</span>'; }).join('، ') : '⚠️ متصل، لكن لم تُختر أي جداول في إعدادات الإضافة'; }, function (e) { info.textContent = '❌ ' + e.message; });
+          };
           var up = box.querySelector('[data-upl]'), info = box.querySelector('[data-finfo]');
           if (info && c.connection) A.GET('/api/datasource/file-info?conn=' + encodeURIComponent(c.connection)).then(function (x) { info.innerHTML = x.name ? '✅ <b>' + esc(x.name) + '</b> — ' + x.rows + ' صف · الأعمدة: <span class="ltr tiny">' + esc(x.columns.join(', ')) + '</span>' : '<span class="muted">الملف غير موجود — ارفعه مرة أخرى</span>'; });
           if (up) up.onclick = function () {
@@ -495,7 +518,7 @@
           '<div data-dsec="fields" class="hidden">' + card('🧾 المربعات التي يسألها البوت', '<div id="fmiss"></div><div id="flds"></div><button class="btn soft sm" id="addf">+ مربع جديد</button>', 'كل مربع = معلومة يطلبها البوت من المستفيد قبل البحث (رقم الملف، الاسم، تاريخ الميلاد…). اكتب اسمه المختصر في الاستعلام بعد نقطتين مثل <code>:file_no</code>، والبوت يسأل عنه بالسؤال الذي تكتبه ويتحقق من صحة الإجابة. يعمل مع كل أنواع قواعد البيانات.') + '</div>' +
           '<div data-dsec="q" class="hidden">' + card('🔎 استعلامات البوت', '<details open><summary class="b" style="cursor:pointer;margin-bottom:10px">📦 حالة الطلب (مدمج)</summary>' + f.area('datasource.order_query', 'الاستعلام', { mono: true, rows: 2 }) + '<div class="grid g2">' + f.area('datasource.order_template', 'قالب الرد', { rows: 2 }) + f.area('datasource.notes_template', 'قالب الملاحظات', { rows: 2 }) + '</div></details>' +
             '<details><summary class="b" style="cursor:pointer;margin-bottom:10px">🪪 بيانات المستفيد (مدمج)</summary>' + f.area('datasource.customer_query', 'الاستعلام', { mono: true, rows: 2 }) + f.area('datasource.customer_template', 'قالب الرد', { rows: 3 }) + '</details>' +
-            '<div class="section-title" style="margin-top:16px"><h2>استعلامات مخصصة</h2></div><div id="lks"></div><button class="btn soft sm" id="addl">+ استعلام جديد</button>', 'كل استعلام مخصص له كلمات يفهم بها البوت الطلب، ويمكن ربطه بزر في «القوائم والأزرار» (إجراء: استعلام مخصص).') + '</div>';
+            '<div class="section-title" style="margin-top:16px"><h2>استعلامات مخصصة</h2></div><div id="lks"></div><button class="btn soft sm" id="addl">+ استعلام جديد</button> <button class="btn gold sm" id="addmy">🪪 جاهز: «بياناتي» برقم الهوية</button>', 'كل استعلام مخصص له كلمات يفهم بها البوت الطلب، ويمكن ربطه بزر في «القوائم والأزرار» (إجراء: استعلام مخصص).') + '</div>';
         A.bind(el, d, function (k) { ch(); if (k === 'datasource.type') mainConn(); if (/_query$/.test(k)) fields(); });
         A.$$('#dstabs button', el).forEach(function (b) { b.onclick = function () { var t = b.getAttribute('data-t'); A.$$('#dstabs button', el).forEach(function (x) { x.classList.toggle('on', x === b); }); A.$$('[data-dsec]', el).forEach(function (x) { x.classList.toggle('hidden', x.getAttribute('data-dsec') !== t); }); }; });
         function mainConn() {
@@ -511,22 +534,33 @@
           }).join('') || '<p class="small muted">لا توجد مصادر إضافية</p>';
           A.$$('.repeat', A.$('#conns', el)).forEach(function (r) { var i = Number(r.getAttribute('data-i')), c = D.connections[i]; A.bind(r, c, function (k) { ch(); if (k === 'type') { c.connection = ''; conns(); lks(); } }); wireConn(r, c, ch); r.querySelector('[data-rm]').onclick = function () { D.connections.splice(i, 1); ch(); conns(); lks(); }; });
         }
+        function inMenu(id) { var m = S.site.tree.nodes.find(function (n) { return n.id === 'menu'; }) || S.site.tree.nodes.find(function (n) { return n.id === S.site.tree.root; }); return !!(m && m.options.some(function (o) { return o.action === 'lookup' && o.target === id; })); }
         function lks() {
           var opts = [['main', 'الرئيسية']].concat(D.connections.map(function (c) { return [c.id, (c.name || c.id) + ' (' + ((TT[c.type] || [0, c.type])[1]) + ')']; }));
           A.$('#lks', el).innerHTML = D.lookups.map(function (l, i) {
             return '<div class="repeat" data-i="' + i + '"><div class="row" style="margin-bottom:8px"><input class="in" data-k="title" placeholder="اسم الاستعلام (مثال: موعد صرف المساعدة)" style="font-weight:700"><select class="in" data-k="connection" style="width:auto">' + opts.map(function (o) { return '<option value="' + esc(o[0]) + '">🗄️ ' + esc(o[1]) + '</option>'; }).join('') + '</select><button class="btn sm danger ghost icon" data-rm>✕</button></div>' +
               f.text('keywords', 'كلمات يُفهم بها الطلب', { ph: 'موعد الصرف, متى الصرف, صرف المساعدة' }) + f.area('query', 'الاستعلام (أو مسار API)', { mono: true, rows: 2, ph: 'SELECT next_date, amount FROM aid WHERE id_number = :id_number' }) +
               '<div class="grid g2">' + f.area('template', 'قالب الرد', { rows: 2, ph: 'موعد الصرف القادم: {next_date}\nالمبلغ: {amount} ريال' }) + f.text('not_found', 'عند عدم وجود نتيجة', { ph: 'لم أجد بيانات بهذه المعلومات.' }) + '</div>' +
-              '<div class="row"><button class="btn sm gold" data-bld>🪄 بناء الاستعلام بدون كتابة</button><input class="in" data-tp placeholder=\'{"id_number":"1234567890"}\' dir="ltr" style="font-family:ui-monospace,monospace"><button class="btn sm soft" data-t>🧪 اختبار</button></div><pre class="code hidden" data-r style="margin-top:8px;max-height:200px;overflow:auto"></pre></div>';
+              '<div class="row"><button class="btn sm gold" data-bld>🪄 بناء الاستعلام بدون كتابة</button><button class="btn sm soft" data-menu>' + (inMenu(l.id) ? '✅ في القائمة الرئيسية' : '➕ زر في القائمة الرئيسية') + '</button><input class="in" data-tp placeholder=\'{"id_number":"1234567890"}\' dir="ltr" style="font-family:ui-monospace,monospace"><button class="btn sm soft" data-t>🧪 اختبار</button></div><pre class="code hidden" data-r style="margin-top:8px;max-height:200px;overflow:auto"></pre></div>';
           }).join('') || '<p class="small muted">لا توجد استعلامات مخصصة</p>';
           A.$$('.repeat', A.$('#lks', el)).forEach(function (r) {
             var i = Number(r.getAttribute('data-i')), l = D.lookups[i];
             A.bind(r, l, function (k) { ch(); if (k === 'query') fields(); });
             r.querySelector('[data-bld]').onclick = function () { builder(l); };
+            r.querySelector('[data-menu]').onclick = function () {
+              if (inMenu(l.id)) return A.toast('الزر موجود في القائمة الرئيسية — غيّر اسمه أو أخفِه من «القوائم والأزرار» ← تعديل أزرار القائمة', 'ok');
+              if (!l.query) return A.toast('أنشئ الاستعلام أولاً', 'err');
+              var tree = A.clone(S.site.tree), m = tree.nodes.find(function (n) { return n.id === 'menu'; }) || tree.nodes.find(function (n) { return n.id === tree.root; });
+              var last = m.options.length && /رئيسية|إنهاء/.test(m.options[m.options.length - 1].label || '') ? m.options.length - 1 : m.options.length;
+              m.options.splice(last, 0, { label: (l.id === 'my_data' ? '🪪 ' : '🔎 ') + (l.title || 'استعلام'), action: 'lookup', target: l.id });
+              A.saveSite({ settings: { datasource: D } }).then(function () { return A.saveSite({ tree: tree }); }).then(function () { A.setDirty(false); A.toast('تمت الإضافة للقائمة الرئيسية ✅', 'ok'); lks(); }, A.fail);
+            };
             r.querySelector('[data-rm]').onclick = function () { D.lookups.splice(i, 1); ch(); lks(); };
             r.querySelector('[data-t]').onclick = function () {
               var params = {}, out = r.querySelector('[data-r]'); try { params = JSON.parse(r.querySelector('[data-tp]').value || '{}'); } catch (e) { return A.toast('صيغة JSON غير صحيحة', 'err'); }
               out.classList.remove('hidden'); out.textContent = '…';
+              var lcn = !l.connection || l.connection === 'main' ? D : D.connections.find(function (c) { return c.id === l.connection; }) || {};
+              if (lcn.type === 'wordpress') return wpBridge(l.connection || 'main', 'read', l.query, params).then(function (x) { out.textContent = '✅ من موقع ووردبريس:\n' + JSON.stringify(x.rows, null, 2); }, function (e) { out.textContent = '❌ ' + e.message; });
               A.api('POST', '/api/sites/' + S.site.id + '/datasource/test', { which: l.id, params: params, datasource: D }).then(function (x) { out.textContent = '✅ المتغيرات: ' + x.params.join(', ') + '\n' + JSON.stringify(x.rows, null, 2); }).catch(function (e) { out.textContent = '❌ ' + e.message + (A.dirty ? '\n(احفظ التغييرات أولاً إذا أضفت قاعدة بيانات جديدة)' : ''); });
             };
           });
@@ -577,14 +611,15 @@
         /* ---------- build a query without writing SQL ---------- */
         function builder(l) {
           var m = A.modal({ title: '🪄 بناء الاستعلام بدون كتابة', size: 'wide', body: '<p class="muted">⏳ جارٍ قراءة الجداول من قاعدة البيانات…</p>', buttons: false });
-          A.api('POST', '/api/sites/' + S.site.id + '/datasource/schema', { connection: l.connection || 'main', datasource: D }).then(function (sc) {
+          var lc = !l.connection || l.connection === 'main' ? D : D.connections.find(function (c) { return c.id === l.connection; }) || {};
+          (lc.type === 'wordpress' ? wpBridge(l.connection || 'main', 'schema').then(function (x) { return { type: 'wordpress', tables: x.tables }; }) : A.api('POST', '/api/sites/' + S.site.id + '/datasource/schema', { connection: l.connection || 'main', datasource: D })).then(function (sc) {
             if (!sc.tables.length) { m.body.innerHTML = '<div class="alert warn">لم أجد جداول في قاعدة البيانات</div>'; return; }
-            var type = sc.type, st = { t: sc.tables[0].name, by: {}, show: {}, mode: 'any', verify: '' };
+            var type = sc.type, st = { t: sc.tables[0].name, by: {}, show: {}, mode: l.id === 'my_data' ? 'all' : 'any', verify: '' };
             function draw() {
               var tb = sc.tables.filter(function (t) { return t.name === st.t; })[0] || sc.tables[0];
               m.body.innerHTML = '<div class="field"><label class="f">1) اختر الجدول</label><select class="in" id="bt">' + sc.tables.map(function (t) { return '<option' + (t.name === st.t ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '</select></div>' +
                 '<label class="f">2) كيف يبحث البوت؟</label><div class="checks" style="margin-bottom:10px"><label><input type="radio" name="bm" value="any"' + (st.mode === 'any' ? ' checked' : '') + '> 🔢 <b>أي رقم مسجّل</b> — يسأل المستفيد سؤالاً واحداً ويبحث بالرقم في كل الأعمدة المحددة (رقم الطلب أو الهوية أو الجوال…)</label><label><input type="radio" name="bm" value="all"' + (st.mode === 'all' ? ' checked' : '') + '> 🧩 <b>كل الشروط معاً</b> — يسأل عن كل عمود محدد على حدة (مثال: رقم الطلب + الجوال)</label></div>' +
-                (st.mode === 'any' ? '<div class="field"><label class="f">🔒 تحقق إضافي (موصى به لحماية بيانات المستفيدين)</label><select class="in" id="bv"><option value="">بدون — يكفي الرقم</option>' + tb.columns.map(function (c) { return '<option value="' + esc(c) + '"' + (st.verify === c ? ' selected' : '') + '>يطلب أيضاً رقم الجوال ويطابقه مع: ' + esc(c) + '</option>'; }).join('') + '</select></div>' : '') +
+                (st.mode === 'any' && type !== 'wordpress' ? '<div class="field"><label class="f">🔒 تحقق إضافي (موصى به لحماية بيانات المستفيدين)</label><select class="in" id="bv"><option value="">بدون — يكفي الرقم</option>' + tb.columns.map(function (c) { return '<option value="' + esc(c) + '"' + (st.verify === c ? ' selected' : '') + '>يطلب أيضاً رقم الجوال ويطابقه مع: ' + esc(c) + '</option>'; }).join('') + '</select></div>' : '') +
                 '<label class="f">3) حدّد الأعمدة <span class="muted">— الفارغ منها يُخفى تلقائياً من الرد (مثلاً «السبب» يظهر فقط إذا كان مسجلاً)</span></label><div class="row" style="margin-bottom:8px"><button class="btn sm soft" id="ball">👁️ اعرض كل الأعمدة</button><button class="btn sm ghost" id="bnone">إلغاء الكل</button></div><div class="tbl-wrap"><table class="t"><thead><tr><th>العمود</th><th>🔎 يسأل المستفيد عنه ويبحث به</th><th>👁️ يعرضه في الرد</th></tr></thead><tbody>' +
                 tb.columns.map(function (c, i) {
                   var by = st.by[c], sh = st.show[c];
@@ -605,6 +640,8 @@
                 var by = Object.keys(st.by), show = Object.keys(st.show);
                 if (!by.length) return A.toast('اختر عموداً واحداً على الأقل يبحث به البوت', 'err');
                 if (!show.length) return A.toast('اختر ما يعرضه البوت في الرد', 'err');
+                if (st.mode === 'any' && by.length === 1) st.mode = 'all'; // one column: ask for it by its own name
+                if (st.mode === 'all') by.forEach(function (c) { if (!st.by[c] || st.by[c] === 'any_no') { var g = guessType(c), ex = D.fields.filter(function (x) { return x.key === c || (x.type === g && g !== 'text' && g !== 'code'); })[0]; st.by[c] = ex ? ex.key : '__new'; } });
                 if (st.mode === 'any') {
                   if (!D.fields.some(function (x) { return x.key === 'any_no'; })) D.fields.push({ key: 'any_no', label: 'الرقم المسجّل', type: 'code', prompt: 'أرسل أي رقم مسجّل لدينا (رقم الطلب أو الهوية أو الجوال) 🔢', error: '' });
                   by.forEach(function (c) { st.by[c] = 'any_no'; });
@@ -617,6 +654,10 @@
                   if (st.mode === 'any' && st.verify) flt[st.verify] = ':phone';
                   show.forEach(function (c) { prj[c] = 1; });
                   l.query = JSON.stringify({ collection: st.t, filter: flt, projection: prj, limit: 3 });
+                } else if (type === 'wordpress') {
+                  var wh = {}; by.forEach(function (c) { wh[c] = ':' + st.by[c]; });
+                  l.query = JSON.stringify({ table: st.t, where: wh, any: st.mode === 'any', columns: show });
+                  l.labels = {}; show.forEach(function (c) { l.labels[c] = st.show[c] || c; });
                 } else if (type === 'api') { return A.toast('هذا النوع لا يدعم البناء التلقائي', 'err'); }
                 else {
                   var cols = show.map(function (c) { return q(c) + (alias(c) !== c ? ' AS ' + q(alias(c)) : ''); }).join(', ');
@@ -629,7 +670,8 @@
                     : type === 'oracle' ? 'SELECT ' + cols + ' FROM ' + q(st.t) + ' WHERE ' + where + ' FETCH FIRST 3 ROWS ONLY'
                     : 'SELECT ' + cols + ' FROM ' + q(st.t) + ' WHERE ' + where + ' LIMIT 3';
                 }
-                l.template = show.map(function (c) { return (st.show[c] || c) + ': {' + (type === 'oracle' ? alias(c).toLowerCase() : alias(c)) + '}'; }).join('\n');
+                l.template = type === 'wordpress' ? (l.id === 'my_data' ? '🪪 بياناتك المسجلة لدينا:\n{*}' : '{*}') : show.map(function (c) { return (st.show[c] || c) + ': {' + (type === 'oracle' ? alias(c).toLowerCase() : alias(c)) + '}'; }).join('\n');
+                if (l.id === 'my_data' && type !== 'wordpress') l.template = '🪪 بياناتك المسجلة لدينا:\n' + l.template;
                 if (!l.title) l.title = String(st.t).split('.').pop();
                 if (!l.keywords) l.keywords = l.title;
                 ch(); lks(); fields(); m.close(); A.toast('تم إنشاء الاستعلام ✅ جرّبه بزر «اختبار» ثم احفظ', 'ok');
@@ -639,6 +681,12 @@
           }, function (e) { m.body.innerHTML = '<div class="alert err">❌ ' + esc(e.message) + '</div><p class="small muted">تأكد من رابط الاتصال واحفظ التغييرات، ثم حاول مرة أخرى.</p>'; });
         }
         A.$('#addc', el).onclick = function () { D.connections.push({ id: uid('db'), name: '', type: 'mysql', connection: '', api_url: '', api_headers: '{}' }); ch(); conns(); lks(); };
+        A.$('#addmy', el).onclick = function () {
+          var l = D.lookups.find(function (x) { return x.id === 'my_data'; });
+          if (!l) { l = { id: 'my_data', title: 'بياناتي', keywords: 'بياناتي, ملفي, معلوماتي, بيانات المستفيد, استعلام برقم الهوية', connection: D.type === 'none' && D.connections[0] ? D.connections[0].id : 'main', query: '', template: '', not_found: 'لم أجد بيانات مسجلة برقم الهوية هذا. تأكد من الرقم وحاول مرة أخرى 🙏' }; D.lookups.unshift(l); ch(); lks(); }
+          A.toast('اختر جدول المستفيدين، وضع ✔ على عمود رقم الهوية في «يبحث به»، ثم «اعرض كل الأعمدة»', 'ok');
+          builder(l);
+        };
         A.$('#addl', el).onclick = function () { D.lookups.push({ id: uid('lk'), title: '', keywords: '', connection: 'main', query: '', template: '', not_found: '' }); ch(); lks(); };
         conns(); lks(); fields();
       });

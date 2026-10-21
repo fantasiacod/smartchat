@@ -406,6 +406,34 @@ let pass = 0; const ok = (c, m) => { assert.ok(c, m); pass++; console.log('  ✔
   await api('PUT', '/api/sites/' + siteId, { settings: { appearance: { pattern: 'girih12', occasions: { auto: true } } } }, T);
   ok(['girih12', 'ramadan', 'eid', 'national'].includes((await api('GET', '/api/widget/config?site=' + key)).j.appearance.pattern), 'automatic occasion decoration switch');
 
+  // ---------------- main menu: hidden buttons, WordPress bridge (data read inside the site), calculator from the database
+  const siteNow = (await api('GET', '/api/sites', null, T)).j[0];
+  const tr2 = JSON.parse(JSON.stringify(siteNow.tree)), mn = tr2.nodes.find(n => n.id === 'menu');
+  mn.options[0].hidden = true; const firstLabel = mn.options[1].label;
+  await api('PUT', '/api/sites/' + siteId, { tree: tr2 }, T);
+  const vm = visitor(key, 'vm'); await vm.join(); await vm.emit('start', {}); await wait(150);
+  const menuMsg = [...vm.msgs].reverse().find(m => m.options && m.numbered);
+  ok(menuMsg && menuMsg.options[0].label === firstLabel, 'hidden main-menu button is not shown (numbers follow the visible ones)');
+  const secret = siteNow.settings.security.identity_secret;
+  const wpLookups = [{ id: 'my_data', title: 'بياناتي', keywords: 'بياناتي', connection: 'wp', query: JSON.stringify({ table: 'beneficiaries', where: { id_number: ':id_number' }, columns: ['full_name', 'income', 'family_size', 'reason'] }), template: '🪪 بياناتك:\n{*}', labels: { full_name: 'الاسم', income: 'الدخل', family_size: 'عدد الأفراد', reason: 'السبب' } }];
+  await api('PUT', '/api/sites/' + siteId, { settings: { datasource: { type: 'none', connections: [{ id: 'wp', name: 'موقعي', type: 'wordpress', wp_url: 'https://example.org' }], lookups: wpLookups },
+    eligibility: { programs: [{ ...eProg, source: { lookup: 'my_data', map: { income: 'income', family_size: 'family_size' }, show: true } }] } } }, T);
+  const vw = visitor(key, 'vw'); let sigOk = true;
+  vw.s.on('bridge', (b) => { // plays the WordPress plugin: checks the signature, answers from its table
+    const good = require('crypto').createHmac('sha256', secret).update(b.data).digest('hex') === b.sig; sigOk = sigOk && good;
+    const r = JSON.parse(b.data);
+    const rows = r.where.id_number === '1012345678' ? [{ full_name: 'أحمد العتيبي', income: '3000', family_size: '5', reason: '' }] : [];
+    vw.s.emit('bridge_result', { id: b.id, rows });
+  });
+  await vw.join(); await vw.emit('start', {}); await wait(120);
+  await vw.say('بياناتي'); await vw.say('1012345678', 400);
+  const card = vw.msgs.find(m => /بياناتك:/.test(m.body || ''));
+  ok(sigOk && card && /الاسم: أحمد العتيبي/.test(card.body) && /الدخل: 3000/.test(card.body) && !/السبب/.test(card.body), 'WordPress site database: ID number → all saved details (signed request, empty values hidden)');
+  await vw.say('هل أنا مؤهل', 200);
+  ok(/وجدت بياناتك/.test(vw.msgs[vw.msgs.length - 2].body || '') && /نوع السكن/.test(vw.last().body), 'calculator reads income & family size from the database, asks only what is missing');
+  const sg = await api('POST', `/api/sites/${siteId}/wp-bridge`, { connection: 'wp', op: 'schema' }, T);
+  ok(sg.s === 200 && sg.j.url.startsWith('https://example.org/?smartchat_bridge=') && sg.j.origin === 'https://example.org', 'signed link for listing the allowed WordPress tables');
+
   // ---------------- webhooks (extensibility)
   const got = [];
   const hookSrv = http.createServer((req, res) => { let b = ''; req.on('data', c => b += c); req.on('end', () => { got.push({ ev: req.headers['x-smartchat-event'], sig: req.headers['x-smartchat-signature'], body: b }); res.end('ok'); }); });

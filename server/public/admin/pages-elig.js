@@ -55,7 +55,7 @@
         function hubCard() {
           var vis = P.filter(function (x) { return x.enabled !== false && x.visible !== false; }).length;
           return card('📋 زر «حساب آلية الاستحقاق» في القائمة الرئيسية', '<div class="row wrap" style="gap:12px;align-items:center;margin-bottom:10px"><label class="switch"><input type="checkbox" id="hubon"' + (hubShown() ? ' checked' : '') + '><span class="tr"></span><span class="lbl"><b>إظهار الزر في القائمة الرئيسية</b></span></label><span class="tiny muted">' + (hubShown() ? '✅ ظاهر' : '⏸️ مخفي') + ' — بداخله ' + vis + ' ' + (vis === 1 ? 'برنامج' : 'برامج') + '</span></div>' +
-            '<div class="grid g3">' + f.text('hub.label', 'نص الزر', { ph: '🧮 حساب آلية الاستحقاق' }) + f.text('hub.message', 'الرسالة داخل الزر', { ph: 'اختر نوع المساعدة لمعرفة أهليتك وقيمة استحقاقك 🧮' }) + f.text('hub.keywords', 'كلمات إضافية تفتحه', { ph: 'الاستحقاق, هل أنا مستحق' }) + '</div>' +
+            '<div class="row" style="margin-bottom:10px"><button class="btn sm soft" id="medit2">✏️ تعديل أسماء وترتيب أزرار القائمة الرئيسية</button></div>' + '<div class="grid g3">' + f.text('hub.label', 'نص الزر', { ph: '🧮 حساب آلية الاستحقاق' }) + f.text('hub.message', 'الرسالة داخل الزر', { ph: 'اختر نوع المساعدة لمعرفة أهليتك وقيمة استحقاقك 🧮' }) + f.text('hub.keywords', 'كلمات إضافية تفتحه', { ph: 'الاستحقاق, هل أنا مستحق' }) + '</div>' +
             (P.length ? '<label class="f">البرامج داخل الزر <small>— أخفِ أي برنامج دون حذفه</small></label><div class="checks">' + P.map(function (x, i) { return '<label><input type="checkbox" data-vis="' + i + '"' + (x.visible !== false ? ' checked' : '') + '> ' + (x.visible !== false ? '👁️ ' : '🙈 ') + esc(x.title || 'بدون اسم') + (x.enabled === false ? ' <span class="tiny muted">(موقوف)</span>' : '') + '</label>'; }).join('') + '</div>' : ''), 'عند الضغط عليه يعرض البوت قائمة البرامج (المساعدات الشهرية، الموسمية، …) فيختار المستفيد منها ثم تبدأ الأسئلة.', 'c-hub');
         }
         function draw() {
@@ -69,6 +69,7 @@
           [['#pnew', blank], ['#pnew2', blank], ['#psample', sample], ['#psample2', sample]].forEach(function (z) { var b = A.$(z[0], el); if (b) b.onclick = function () { add(z[1]()); }; });
           A.bind(A.$('#c-hub', el), d.eligibility, ch);
           A.$('#hubon', el).onchange = function () { var on = this.checked; setHub(on).then(function () { A.toast(on ? 'ظهر الزر في القائمة الرئيسية ✅' : 'أُخفي الزر من القائمة الرئيسية', 'ok'); draw(); }, function (e) { A.fail(e); draw(); }); };
+          A.$('#medit2', el).onclick = function () { A.menuEditor(A.clone(S.site.tree), function (tree) { var m = menuNode(tree), o = m && m.options.find(function (x) { return x.action === 'eligibility_menu'; }); if (o) H.label = o.label; return (A.dirty || o ? A.saveSite({ settings: d }) : Promise.resolve()).then(function () { return A.saveSite({ tree: tree }); }).then(function () { A.setDirty(false); A.toast('تم حفظ أزرار القائمة ✅', 'ok'); draw(); }); }); };
           A.$$('[data-vis]', el).forEach(function (c) { c.onchange = function () { P[Number(c.getAttribute('data-vis'))].visible = c.checked; ch(); draw(); }; });
           if (p) wire(p);
         }
@@ -90,6 +91,7 @@
               '<div class="row wrap" style="gap:8px">' + f.swi('enabled', 'مفعّل') + '<span style="flex:1"></span><button class="btn sm danger ghost" id="pdel">🗑️ حذف البرنامج</button></div>', '', 'c-basic') +
               card('🔗 مكان البرنامج في البوت', f.sw('visible', '👁️ يظهر داخل زر «' + esc(H.label) + '»', 'إذا أخفيته لا يظهر في القائمة، لكن يبقى يعمل إذا كتب المستفيد إحدى كلماته') +
                 '<details style="margin-top:8px"><summary class="tiny muted" style="cursor:pointer">متقدم: ربطه بزر مستقل</summary><div id="plink" style="margin-top:8px"></div><button class="btn ghost sm" id="pmenu">🔗 ربط بزر في القائمة الرئيسية</button></details>', '', 'c-place')) +
+            sec('basic', card('🗄️ جلب بيانات المستفيد من قاعدة البيانات <small class="muted">(اختياري)</small>', '<div id="srcbox"></div>', 'بدل أن يسأل البوت عن الدخل وعدد الأفراد…، يطلب رقم الهوية فقط ويقرأ البيانات المسجلة لديكم، ثم يسأل عن الناقص فقط ويحسب الاستحقاق.')) +
             sec('qs', card('❓ الأسئلة', '<div id="qs"></div><button class="btn soft sm" id="qadd">+ سؤال</button>', 'يسألها البوت بالترتيب. «الاسم في المعادلات» يُستخدم في الحسابات والشروط (مثل <code>income</code> أو <code>الدخل</code>).')) +
             sec('rules', card('⛔ شروط عدم الأهلية', '<div id="rs"></div><button class="btn soft sm" id="radd">+ شرط</button>', 'يكون المستفيد <b>غير مؤهل</b> إذا تحقق أي شرط. تُفحص بعد كل إجابة، فإذا تحقق شرط يتوقف البوت فوراً (مثال: الدخل أكبر من 8000 → غير مؤهل).') +
               card('🧮 الحسابات <small class="muted">(اختياري)</small>', '<div id="cs"></div><button class="btn soft sm" id="cadd">+ حساب</button><div class="hint" style="margin-top:8px">مثال: «دخل الفرد» = <code class="ltr">income / family_size</code>. المسموح: + − × ÷ والأقواس، و <code class="ltr">min() max() round()</code>.</div><div id="vchips" class="chips" style="margin-top:8px"></div>') +
@@ -132,7 +134,19 @@
                 return (A.dirty ? A.saveSite({ settings: d }) : Promise.resolve()).then(function () { return A.saveSite({ tree: tree }); }).then(function () { A.setDirty(false); linked(); A.toast('تم الربط ✅ — الزر يفتح الحاسبة الآن', 'ok'); });
               } }] });
           };
-          questions(p); calcs(p); rules(p); after(); sim(p); results(p);
+          questions(p); calcs(p); rules(p); after(); sim(p); results(p); source();
+
+          function source() {
+            var box = A.$('#srcbox', el), L = (S.site.settings.datasource.lookups || []).filter(function (l) { return l.query; });
+            p.source = p.source || {}; var src = p.source; src.map = src.map || {};
+            box.innerHTML = f.select('source.lookup', 'الاستعلام الذي يجلب بيانات المستفيد', [['', '— بدون: يسأل كل الأسئلة —']].concat(L.map(function (l) { return [l.id, '🔎 ' + (l.title || l.id)]; }))) +
+              (L.length ? '' : '<div class="alert warn">لا توجد استعلامات بعد — أنشئ استعلاماً (مثل «بياناتي» برقم الهوية) من <a href="#/settings">الإعدادات ← قواعد البيانات ← الاستعلامات</a>.</div>') +
+              (src.lookup ? '<label class="f">ربط كل سؤال بعمود في قاعدة البيانات <small>— اتركه فارغاً إذا كان اسم العمود مطابقاً، أو اكتب «-» ليُسأل دائماً</small></label><div class="tbl-wrap"><table class="t"><tbody>' + p.questions.map(function (q) { return '<tr><td>' + esc(q.text || q.key) + '</td><td><input class="in" data-sm="' + esc(q.key) + '" value="' + esc(src.map[q.key] || '') + '" placeholder="' + esc(q.key) + '" dir="ltr" style="font-family:ui-monospace,monospace"></td></tr>'; }).join('') + '</tbody></table></div>' +
+                f.sw('source.show', 'يعرض للمستفيد البيانات التي وجدها', '') + f.sw('source.required', 'إذا لم توجد بياناته: يتوقف ويعتذر (بدلاً من إكمال الأسئلة)', '') + (src.required ? f.text('source.not_found', 'رسالة عدم وجود البيانات', { ph: 'لم أجد بيانات مسجلة بهذه المعلومات 🙏' }) : '') : '');
+            if (src.show === undefined) src.show = true;
+            A.bind(box, p, function (k) { ch(); if (k === 'source.lookup' || k === 'source.required') source(); });
+            A.$$('[data-sm]', box).forEach(function (i) { i.oninput = function () { var v = i.value.trim(); if (v) src.map[i.getAttribute('data-sm')] = v === '-' ? '__never__' : v; else delete src.map[i.getAttribute('data-sm')]; ch(); }; if (src.map[i.getAttribute('data-sm')] === '__never__') i.value = '-'; });
+          }
 
           function questions(p) {
             A.$('#qs', el).innerHTML = p.questions.map(function (q, i) {

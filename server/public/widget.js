@@ -508,6 +508,14 @@
       if (state.open && !state.closed) render(); else renderHead();
     });
     socket.on('typing', function (t) { var tp = root.querySelector('.typing'); if (!tp) return; tp.classList.toggle('on', !!t.typing); var b = root.querySelector('.body'); if (b) b.scrollTop = b.scrollHeight; });
+    // database look-ups on a WordPress site: the site reads the data itself (signed by the server, read-only)
+    socket.on('bridge', function (b) {
+      var W = window.SmartChatWP;
+      if (!W || !W.rest || !window.fetch) return socket.emit('bridge_result', { id: b.id, error: 'not_on_site' });
+      fetch(W.rest + 'read', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: b.data, sig: b.sig }) })
+        .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j && j.message || ('HTTP ' + r.status)); return j; }); })
+        .then(function (j) { socket.emit('bridge_result', { id: b.id, rows: j.rows || [] }); }, function (e) { socket.emit('bridge_result', { id: b.id, error: String(e && e.message || e) }); });
+    });
     socket.on('closed', function () { state.closed = true; state.status = 'closed'; state.rated = false; if (state.open) render(); else { state.unread++; setLauncher(); } });
 
     window.SmartChat = { open: function () { toggle(true); }, close: function () { toggle(false); }, toggle: function () { toggle(); }, setLanguage: function (l) { if (LG.enabled.indexOf(l) >= 0) { lang = l; store.set('lang', l); socket.emit('lang', { lang: l }); applyLang(); render(); } } };

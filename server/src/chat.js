@@ -135,7 +135,7 @@ function sendNode(conv, site, nodeId, depth = 0) {
   const node = findNode(site, nodeId);
   if (!node) return botSay(conv, site, tr(conv, site).unlinked, navOptions(conv, site));
   saveConv(conv, { state: { ...conv.state, node: node.id, await: null } });
-  const opts = (node.options || []).map(o => ({ ...o, label: L(conv, o.label, o.i18n, 'label') }));
+  const opts = (node.options || []).filter(o => !o.hidden).map(o => ({ ...o, label: L(conv, o.label, o.i18n, 'label') }));
   const msg = fill(L(conv, node.message, node.i18n, 'message'), ctxOf(conv, site));
   const extra = {};
   if (node.media?.length) extra.media = node.media;
@@ -453,6 +453,18 @@ function lookupDef(site, kind) {
   return cfg ? { cfg, query: l.query, template: l.template || '{*}', not_found: l.not_found, title: l.title, labels: l.labels || {} } : null;
 }
 
+/* ---------- reading data: directly, or through the WordPress site (bridge) ---------- */
+const bridgeWaits = new Map();
+function readRows(conv, site, cfg, query, params) {
+  if (cfg.type !== 'wordpress') return ds.query(cfg, query, params);
+  const id = crypto.randomBytes(8).toString('hex'), req = ds.wpRequest(site, query, params);
+  return new Promise((resolve, reject) => {
+    const tm = setTimeout(() => { bridgeWaits.delete(id); reject(new Error('لم يصل رد من موقع ووردبريس (هل المحادثة مفتوحة من داخل الموقع؟)')); }, 15000);
+    bridgeWaits.set(id, { conv: conv.id, done: (r) => { clearTimeout(tm); bridgeWaits.delete(id); r.error ? reject(new Error(r.error)) : resolve(ds.normRows(Array.isArray(r.rows) ? r.rows : [])); } });
+    vio.to('c' + conv.id).emit('bridge', { id, ...req });
+  });
+}
+
 /* ---------- the boxes the bot asks for (fields) ---------- */
 const BUILTIN_FIELDS = {
   order_no: { label: 'رقم الطلب', label_en: 'order number', type: 'code' },
@@ -513,6 +525,7 @@ function startLookup(conv, site, kind, freeText) {
 function askNext(conv, site) {
   const a = conv.state.await, t = tr(conv, site);
   if (a.missing.length) return botSay(conv, site, fieldPrompt(conv, site, a.missing[0]), [{ label: t.nav_cancel, action: 'cancel' }]);
+  if (a.kind === 'elig_src') return eligFromSource(conv, site);
   return executeLookup(conv, site);
 }
 
@@ -520,15 +533,15 @@ function askNext(conv, site) {
 // {*} = every column that has a value, with the titles chosen in the query builder.
 const isEmptyVal = (v) => v == null || String(v).trim() === '' || /^(null|undefined)$/i.test(String(v).trim());
 function renderRow(def, row, ctx) {
-  if (def.template === '{*}') {
-    const labels = def.labels || {};
+  // {*} (alone on a line) = every column that has a value, with the titles chosen for it
+  const all = () => { const labels = def.labels || {};
     return Object.keys(row).filter(k => !isEmptyVal(row[k]) && labels[k] !== '-' && k !== '_id')
-      .map(k => `${labels[k] || String(k).replace(/_/g, ' ')}: ${row[k]}`).join('\n');
-  }
-  return String(def.template || '').split('\n').filter(line => {
+      .map(k => `${labels[k] || labels[String(k).toLowerCase()] || String(k).replace(/_/g, ' ')}: ${row[k]}`).join('\n'); };
+  return String(def.template || '').split('\n').map(line => {
+    if (line.trim() === '{*}') return all();
     const keys = [...line.matchAll(/\{([\p{L}\p{N}_]+)\}/gu)].map(m => m[1]);
-    return !keys.length || keys.some(k => !isEmptyVal(ctx[k] ?? ctx[String(k).toLowerCase()]));
-  }).map(line => fill(line, ctx)).join('\n').trim();
+    return !keys.length || keys.some(k => !isEmptyVal(ctx[k] ?? ctx[String(k).toLowerCase()])) ? fill(line, ctx) : null;
+  }).filter(l => l != null && l !== '').join('\n').trim();
 }
 
 async function executeLookup(conv, site) {
@@ -537,7 +550,7 @@ async function executeLookup(conv, site) {
   const def = lookupDef(site, a.kind);
   if (!def) return sendNode(conv, site, '__menu');
   let rows;
-  try { rows = await ds.query(def.cfg, def.query, a.params); }
+  try { rows = await readRows(conv, site, def.cfg, def.query, a.params); }
   catch (e) { console.error('[datasource]', e.message); return botSay(conv, site, (conv.lang === 'ar' && d.error_message) || t.db_error, navOptions(conv, site)); }
   const retry = a.kind === 'order' ? 'order_status' : a.kind === 'customer' ? 'customer_info' : 'lookup';
   if (!rows.length) {
@@ -582,9 +595,54 @@ function sendEligHub(conv, site) {
 function startElig(conv, site, pid) {
   const p = programOf(site, pid), t = tr(conv, site);
   if (!p || !(p.questions || []).length) return botSay(conv, site, t.unlinked, navOptions(conv, site));
-  saveConv(conv, { state: { ...conv.state, await: { kind: 'elig', pid: p.id, i: 0, ans: {}, tries: 0 } } });
   if (p.intro) botSay(conv, site, fill(p.intro, ctxOf(conv, site)));
+  // data from the database first (e.g. ask the ID number, then read income / family size)
+  const def = p.source?.lookup ? lookupDef(site, 'lookup:' + p.source.lookup) : null;
+  if (def && def.cfg.type !== 'none' && def.query) {
+    const names = ds.paramNames(def.query), params = { ...(conv.meta.known || {}) };
+    if (conv.visitor_phone) params.phone = conv.visitor_phone;
+    for (const k of Object.keys(params)) if (!names.includes(k)) delete params[k];
+    saveConv(conv, { state: { ...conv.state, await: { kind: 'elig_src', pid: p.id, params, missing: names.filter(n => !params[n]), tries: 0 } } });
+    return askNext(conv, site);
+  }
+  return beginEligQuestions(conv, site, p, {});
+}
+
+// answers already known (from the database) are skipped
+function beginEligQuestions(conv, site, p, ans) {
+  let i = 0; while (i < p.questions.length && p.questions[i].key in ans) i++;
+  const early = elig.evaluate(p, ans, { partial: i < p.questions.length });
+  if (early.done) return finishElig(conv, site, p, ans, early);
+  saveConv(conv, { state: { ...conv.state, await: { kind: 'elig', pid: p.id, i, ans, tries: 0 } } });
   return askElig(conv, site);
+}
+
+async function eligFromSource(conv, site) {
+  const a = conv.state.await, p = programOf(site, a.pid), t = tr(conv, site);
+  if (!p) return sendNode(conv, site, '__menu');
+  const S = p.source || {}, def = lookupDef(site, 'lookup:' + S.lookup);
+  let row = null;
+  try { row = def ? (await readRows(conv, site, def.cfg, def.query, a.params))[0] || null : null; }
+  catch (e) { console.error('[eligibility source]', e.message); }
+  if (!row) {
+    const known = { ...(conv.meta.known || {}) }; for (const k of Object.keys(a.params)) delete known[k];
+    saveConv(conv, { state: { ...conv.state, await: null }, meta: { ...conv.meta, known } });
+    if (S.required) return botSay(conv, site, (conv.lang === 'ar' && S.not_found) || t.elig_src_not_found, [{ label: t.nav_retry, action: 'eligibility', target: p.id }, ...navOptions(conv, site)]);
+    botSay(conv, site, t.elig_src_continue);
+    return beginEligQuestions(conv, site, p, {});
+  }
+  const map = S.map || {}, ans = {}, shown = [];
+  const pick = (col) => { if (!col) return undefined; for (const k of Object.keys(row)) if (k === col || k.toLowerCase() === String(col).toLowerCase()) return row[k]; return undefined; };
+  for (const q of p.questions) {
+    const v = pick(map[q.key] || q.key);
+    if (v == null || String(v).trim() === '') continue;
+    const r = elig.parseAnswer(q, q.type === 'yesno' && /^(1|true|yes|y)$/i.test(String(v).trim()) ? 'نعم' : q.type === 'yesno' && /^(0|false|no|n)$/i.test(String(v).trim()) ? 'لا' : String(v), nlp.toLatinDigits);
+    if (r.error) continue;
+    ans[q.key] = r.value; shown.push(`${q.label || q.text.replace(/[؟?]\s*$/, '')}: ${typeof r.value === 'number' ? r.value.toLocaleString('en-US') : r.value}`);
+  }
+  saveConv(conv, { state: { ...conv.state, await: null } });
+  if (S.show !== false && shown.length) botSay(conv, site, t.elig_src_found + '\n' + shown.join('\n'));
+  return beginEligQuestions(conv, site, p, ans);
 }
 
 function askElig(conv, site) {
@@ -610,6 +668,7 @@ function answerElig(conv, site, text) {
     return askElig(conv, site);
   }
   a.ans[q.key] = r.value; a.i++; a.tries = 0;
+  while (a.i < p.questions.length && p.questions[a.i].key in a.ans) a.i++;
   // decide as early as possible: a rule that already applies ends the questions
   const early = elig.evaluate(p, a.ans, { partial: a.i < p.questions.length });
   if (early.done) return finishElig(conv, site, p, a.ans, early);
@@ -796,7 +855,7 @@ async function handleVisitorText(conv, site, text) {
     // ...unless the latest buttons are plain navigation: then a number means the main menu
     const latest = db.prepare("SELECT payload FROM messages WHERE conversation_id=? AND sender='bot' AND payload LIKE '%\"options\"%' ORDER BY id DESC LIMIT 1").get(conv.id);
     const lp = parsePayload(latest?.payload);
-    const numbered = lp?.numbered ? lp.options : (findNode(site, '__menu')?.options || lastOptions(conv, true));
+    const numbered = lp?.numbered ? lp.options : ((findNode(site, '__menu')?.options || []).filter(o => !o.hidden).length ? findNode(site, '__menu').options.filter(o => !o.hidden) : lastOptions(conv, true));
     const pick = numbered[choice - 1] || opts[choice - 1];
     if (pick) return runAction(conv, site, pick, null);
     return sendNode(conv, site, '__menu');
@@ -1035,6 +1094,10 @@ function setup(io, secret) {
     socket.on('typing', (p) => { if (conv) aio.emit('visitor:typing', { conversation_id: conv.id, typing: !!p?.typing, text: String(p?.text || '').slice(0, 200) }); });
     socket.on('close', (_, ack) => { reloadConv(); if (conv) closeConversation(conv, 'visitor'); ack?.({ ok: true }); });
 
+    socket.on('bridge_result', (p) => {
+      const w = bridgeWaits.get(String(p?.id || ''));
+      if (w && conv && w.conv === conv.id) w.done({ rows: p.rows, error: p.error ? String(p.error).slice(0, 200) : null });
+    });
     socket.on('rate', (p, ack) => {
       reloadConv();
       if (!conv || conv.status !== 'closed' || conv.rating != null) return ack?.({ error: 'rate' });

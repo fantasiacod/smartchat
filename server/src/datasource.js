@@ -17,7 +17,7 @@ const { db, meta } = require('./db');
 
 const pools = new Map();
 const PARAM_RE = /(?<![:\w]):([a-zA-Z_]\w*)/g;
-const TYPES = ['demo', 'none', 'mysql', 'postgres', 'mssql', 'oracle', 'sqlite', 'mongodb', 'sheet', 'file', 'api'];
+const TYPES = ['demo', 'none', 'wordpress', 'mysql', 'postgres', 'mssql', 'oracle', 'sqlite', 'mongodb', 'sheet', 'file', 'api'];
 
 function paramNames(q) {
   const set = new Set();
@@ -169,6 +169,7 @@ async function runQuery(ds, q, params = {}) {
   const p = (n) => params[n] ?? null;
   switch (ds.type) {
     case 'api': return apiQuery(ds, q, params);
+    case 'wordpress': throw new Error('قاعدة بيانات ووردبريس تُقرأ من داخل الموقع نفسه: جرّبها من نافذة المحادثة في موقعك أو بزر «اختبار»');
     case 'demo': {
       assertReadOnly(q);
       // the demo source runs on the app's own database: only the demo tables may be read
@@ -288,4 +289,13 @@ async function schema(ds) {
   }
 }
 
-module.exports = { schema, query, paramNames, resetPools, importFile, fileInfo, parseCSV, TYPES };
+// WordPress bridge: the look-up is a JSON spec {table, columns, where:{col: ":param"}, any}; it is signed here and
+// read by the plugin inside the site (no SQL leaves the server)
+function wpRequest(site, spec, params, op = 'read') {
+  let s = spec; if (typeof s === 'string') { try { s = JSON.parse(s || '{}'); } catch { throw new Error('صيغة استعلام ووردبريس غير صحيحة'); } }
+  const where = {}; for (const [c, v] of Object.entries(s.where || {})) { const m = /^:([a-zA-Z_]\w*)$/.exec(String(v)); where[c] = m ? (params[m[1]] ?? '') : v; }
+  const data = JSON.stringify({ op, table: s.table, columns: s.columns || [], where, any: !!s.any, exp: Math.floor(Date.now() / 1000) + 120, nonce: require('crypto').randomBytes(12).toString('hex') });
+  return { data, sig: require('crypto').createHmac('sha256', site.settings.security.identity_secret).update(data).digest('hex') };
+}
+
+module.exports = { wpRequest, normRows, schema, query, paramNames, resetPools, importFile, fileInfo, parseCSV, TYPES };

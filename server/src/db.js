@@ -199,4 +199,27 @@ function audit(userId, action, details) {
 seed();
 upgradeSites();
 
+// one-time: a main-menu button that opened a single eligibility program becomes the
+// «حساب آلية الاستحقاق» list button (all programs live inside it)
+function foldEligibilityButtons() {
+  for (const row of db.prepare('SELECT id, settings, tree FROM sites').all()) {
+    let s, tree; try { s = JSON.parse(row.settings || '{}'); tree = JSON.parse(row.tree || 'null'); } catch { continue; }
+    if (!tree?.nodes || s.eligibility?.hub_folded) continue;
+    const menu = tree.nodes.find(n => n.id === 'menu') || tree.nodes.find(n => n.id === tree.root);
+    s.eligibility = s.eligibility || {}; s.eligibility.hub_folded = true;
+    if (menu && !menu.options?.some(o => o.action === 'eligibility_menu')) {
+      const i = (menu.options || []).findIndex(o => o.action === 'eligibility');
+      if (i >= 0) {
+        const label = s.eligibility.hub?.label || '🧮 حساب آلية الاستحقاق';
+        menu.options[i] = { label, action: 'eligibility_menu', i18n: { en: { label: '🧮 Eligibility check' }, ur: { label: '🧮 اہلیت کا حساب' } } };
+        menu.options = menu.options.filter((o, j) => j === i || o.action !== 'eligibility');
+        console.log(`[upgrade] site ${row.id}: eligibility button → «${label}» list`);
+      }
+    }
+    db.prepare('UPDATE sites SET settings=?, tree=? WHERE id=?').run(JSON.stringify(s), JSON.stringify(tree), row.id);
+  }
+}
+foldEligibilityButtons();
+
+
 module.exports = { db, now, getSite, getSiteByKey, createSite, getConv, hydrateConv, audit, meta, DATA_DIR };

@@ -36,6 +36,35 @@
     tickets: { icon: '📝', name: 'شكاوى واقتراحات', desc: 'نماذج مرقّمة تلقائياً', node: { title: 'الشكاوى والاقتراحات', message: 'كيف نخدمك؟', numbered: true, options: [{ label: '📝 تقديم شكوى', action: 'ticket', field: 'complaint' }, { label: '💡 تقديم اقتراح', action: 'ticket', field: 'suggestion' }, { label: '🔎 متابعة طلب سابق', action: 'ticket_status' }, { label: '↩️ القائمة الرئيسية', action: 'goto', target: 'menu' }] } },
     faq: { icon: '🧠', name: 'أسئلة شائعة', desc: 'من الخريطة الذهنية', node: { title: 'الأسئلة الشائعة', message: 'اختر الموضوع:', numbered: true, options: [{ label: '❓ تصفّح الأسئلة', action: 'kb_browse' }, { label: '↩️ القائمة الرئيسية', action: 'goto', target: 'menu' }] } }
   };
+  /* quick editor for the main menu: rename, reorder, show / hide — works on the given tree, then onApply(tree) */
+  A.menuEditor = function (tree, onApply) {
+    var menu = tree.nodes.find(function (n) { return n.id === 'menu'; }) || tree.nodes.find(function (n) { return n.id === tree.root; });
+    if (!menu) return A.toast('لم أجد القائمة الرئيسية', 'err');
+    var opts = menu.options.map(function (o) { return A.clone(o); });
+    var m = A.modal({ title: '✏️ أزرار القائمة الرئيسية', size: 'wide', body: '<div id="me"></div>', buttons: [{ label: 'إلغاء', ghost: true }, { label: '✅ تطبيق', onClick: function () {
+      if (opts.some(function (o) { return !String(o.label || '').trim(); })) { A.toast('اكتب اسماً لكل زر', 'err'); return false; }
+      menu.options = opts; return onApply(tree);
+    } }] });
+    function draw() {
+      var n = 0;
+      A.$('#me', m.body).innerHTML = '<p class="small muted">غيّر اسم أي زر، أو رتّبه بالأسهم، أو أخفِه من القائمة دون حذفه. الأرقام تتحدّث تلقائياً حسب الأزرار الظاهرة.</p>' + opts.map(function (o, i) {
+        var a = ACTIONS[o.action] || { icon: '•', name: o.action };
+        return '<div class="row" style="gap:6px;margin-bottom:8px;' + (o.hidden ? 'opacity:.5' : '') + '"><b class="chip" style="min-width:34px;justify-content:center">' + (o.hidden ? '—' : ++n) + '</b>' +
+          '<input class="in" data-l="' + i + '" value="' + esc(o.label) + '" style="flex:1;font-weight:700">' +
+          '<input class="in" data-en="' + i + '" value="' + esc((o.i18n && o.i18n.en && o.i18n.en.label) || '') + '" placeholder="English" dir="ltr" style="width:170px">' +
+          '<span class="tiny muted" style="width:120px">' + a.icon + ' ' + esc(a.name) + '</span>' +
+          '<button class="btn sm ghost icon" data-u="' + i + '">↑</button><button class="btn sm ghost icon" data-d="' + i + '">↓</button>' +
+          '<button class="btn sm ' + (o.hidden ? 'soft' : 'ghost') + '" data-h="' + i + '" title="إظهار / إخفاء">' + (o.hidden ? '🙈 مخفي' : '👁️ ظاهر') + '</button></div>';
+      }).join('');
+      A.$$('[data-l]', m.body).forEach(function (x) { x.oninput = function () { opts[x.getAttribute('data-l')].label = x.value; }; });
+      A.$$('[data-en]', m.body).forEach(function (x) { x.oninput = function () { var o = opts[x.getAttribute('data-en')]; o.i18n = o.i18n || {}; o.i18n.en = o.i18n.en || {}; o.i18n.en.label = x.value; }; });
+      var mv = function (i, d) { var j = i + d; if (j < 0 || j >= opts.length) return; var t = opts[i]; opts[i] = opts[j]; opts[j] = t; draw(); };
+      A.$$('[data-u]', m.body).forEach(function (b) { b.onclick = function () { mv(Number(b.getAttribute('data-u')), -1); }; });
+      A.$$('[data-d]', m.body).forEach(function (b) { b.onclick = function () { mv(Number(b.getAttribute('data-d')), 1); }; });
+      A.$$('[data-h]', m.body).forEach(function (b) { b.onclick = function () { var o = opts[b.getAttribute('data-h')]; o.hidden = !o.hidden; draw(); }; });
+    }
+    draw();
+  };
   function uid() { return 'n' + Math.random().toString(36).slice(2, 8); }
   function actLabel(o, tree) {
     var a = ACTIONS[o.action] || { icon: '?', name: o.action };
@@ -58,7 +87,7 @@
         '</aside><div class="canvas" id="cv"><div class="help">🖱️ اسحب الخلفية للتحريك · العجلة للتكبير · اسحب ● من الزر إلى عقدة لربطهما</div><div class="world" id="wd"><svg class="links" id="lk" width="1" height="1"></svg></div>' +
         '<div class="zoom"><button class="btn ghost icon" id="zi">＋</button><button class="btn ghost icon" id="zo">－</button><button class="btn ghost sm" id="zf">⤢ ملاءمة</button><button class="btn ghost sm" id="ar">🧹 ترتيب تلقائي</button></div></div>' +
         '<aside class="inspector" id="ins"></aside></div>' +
-        '<div class="savebar" style="margin:0;position:fixed;bottom:0;inset-inline:250px 0;z-index:30"><span class="dirty"></span><button class="btn ghost" id="tpl">↺ تطبيق القالب الجاهز</button><button class="btn" id="sv">💾 حفظ الشجرة</button></div>';
+        '<div class="savebar" style="margin:0;position:fixed;bottom:0;inset-inline:250px 0;z-index:30"><span class="dirty"></span><button class="btn soft" id="medit">✏️ تعديل أزرار القائمة الرئيسية</button><button class="btn ghost" id="tpl">↺ تطبيق القالب الجاهز</button><button class="btn" id="sv">💾 حفظ الشجرة</button></div>';
       var cv = A.$('#cv'), wd = A.$('#wd'), lk = A.$('#lk'), ins = A.$('#ins');
       var dirty = function () { A.setDirty(true); };
 
@@ -309,6 +338,7 @@
         if (broken.length) A.toast('⚠️ أزرار غير مربوطة: ' + broken.slice(0, 3).join('، '), 'err');
         A.saveSite({ tree: tree }).then(function () { A.setDirty(false); A.toast('تم حفظ الشجرة ✅ — التغييرات تظهر فوراً للزوار', 'ok'); }).catch(A.fail);
       };
+      A.$('#medit').onclick = function () { A.menuEditor(tree, function () { dirty(); draw(); A.toast('تم التعديل — اضغط «حفظ الشجرة» لتظهر للزوار', 'ok'); }); };
       A.$('#tpl').onclick = function () {
         A.confirm('سيتم استبدال الشجرة الحالية بالقالب الجاهز (ترحيب ← قائمة مرقّمة: الموقع، تعرّف علينا، التواصل، الأسئلة، الشكاوى، موظف). متابعة؟').then(function (ok) {
           if (!ok) return; A.GET('/api/tree-template').then(function (t) { tree = t; tree.nodes.forEach(function (n) { n.options = n.options || []; }); sel = null; dirty(); draw(); inspect(); fit(); });

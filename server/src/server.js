@@ -443,6 +443,20 @@ app.post('/api/sites/:id/datasource/test', auth('admin'), async (req, res) => {
   catch (e) { res.status(400).json({ error: e.message, params: ds.paramNames(which) }); }
 });
 
+// a signed link the dashboard opens in a small window on the WordPress site (list allowed tables / test a read)
+app.post('/api/sites/:id/wp-bridge', auth('admin'), (req, res) => {
+  const site = getSite(Number(req.params.id));
+  const cfg = { ...site.settings.datasource, ...(req.body.datasource || {}) };
+  const id = req.body.connection || 'main', conn = id === 'main' ? cfg : (cfg.connections || []).find(c => c.id === id);
+  if (!conn || conn.type !== 'wordpress') return res.status(400).json({ error: 'اختر قاعدة بيانات من نوع ووردبريس' });
+  const wp = String(conn.wp_url || '').trim().replace(/\/+$/, '');
+  if (!/^https?:\/\/[^\s]+$/.test(wp)) return res.status(400).json({ error: 'اكتب رابط موقع ووردبريس (مثال: https://example.com)' });
+  try {
+    const r = ds.wpRequest(site, req.body.op === 'schema' ? {} : (req.body.query || '{}'), req.body.params || {}, req.body.op === 'schema' ? 'schema' : 'read');
+    res.json({ url: `${wp}/?smartchat_bridge=${encodeURIComponent(r.data)}&sig=${r.sig}`, origin: new URL(wp).origin });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.post('/api/sites/:id/datasource/schema', auth('admin'), async (req, res) => {
   const site = getSite(Number(req.params.id));
   const cfg = keepMasked({ ...site.settings.datasource, ...(req.body.datasource || {}) }, site.settings.datasource);
