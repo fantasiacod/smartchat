@@ -458,7 +458,7 @@
       A.settingsPage(root, ['datasource'], function (el, d, ch) {
         var D = d.datasource; D.connections = D.connections || []; D.lookups = D.lookups || [];
         var TYPES = [
-          ['wordpress', '🧩 قاعدة بيانات موقع ووردبريس (عبر الإضافة)', '', 'تعمل حتى مع الاستضافات التي تمنع الاتصال الخارجي (مثل InfinityFree): إضافة ووردبريس تقرأ البيانات من داخل الموقع، وفقط من الجداول التي تسمح بها', '{"table":"beneficiaries","where":{"id_number":":id_number"},"columns":["full_name","file_status"]}'],
+          ['wordpress', '🧩 قاعدة بيانات موقع ووردبريس (عبر الإضافة)', '', 'تعمل حتى إذا كانت قاعدة البيانات داخل شبكة الشركة أو في استضافة تمنع الاتصال الخارجي (مثل InfinityFree): إضافة ووردبريس تقرأ من خادم الموقع — من قاعدة ووردبريس أو من قاعدة MySQL منفصلة — وفقط من الجداول التي تسمح بها', '{"table":"beneficiaries","where":{"id_number":":id_number"},"columns":["full_name","file_status"]}'],
           ['mysql', '🐬 MySQL / MariaDB', 'mysql://user:pass@host:3306/db', 'يشمل: استضافات cPanel، PlanetScale، AWS RDS، Azure MySQL. أضف ?ssl=true للخوادم السحابية التي تتطلب SSL', "SELECT status FROM orders WHERE order_no = :order_no AND phone = :phone"],
           ['postgres', '🐘 PostgreSQL', 'postgres://user:pass@host:5432/db', 'يشمل: Supabase، Neon، AWS RDS، Google Cloud SQL، Azure. في Supabase استخدم رابط Session pooler', "SELECT status FROM orders WHERE order_no = :order_no AND phone = :phone"],
           ['mssql', '🟦 SQL Server / Azure SQL', 'Server=host,1433;Database=db;User Id=user;Password=pass;Encrypt=true;TrustServerCertificate=true', 'أو mssql://user:pass@host:1433/db — يشمل SQL Server داخل الجهة و Azure SQL', "SELECT TOP 3 status FROM orders WHERE order_no = :order_no AND phone = :phone"],
@@ -475,7 +475,7 @@
           if (!t) return '';
           if (c.type === 'api') return '<div class="grid g2">' + f.text(extra + 'api_url', 'رابط API الأساسي', { ltr: true, ph: 'https://api.example.com' }) + f.text(extra + 'api_headers', 'Headers (JSON)', { ltr: true, mono: true, ph: '{"Authorization":"Bearer …"}' }) + '</div><div class="hint">' + t[3] + '</div>';
           if (c.type === 'wordpress') return f.text(extra + 'wp_url', 'رابط موقع ووردبريس', { ltr: true, ph: 'https://example.com' }) +
-            '<ol class="steps small" style="margin:8px 0"><li>نزّل الإضافة الجديدة من <a href="#/install">تركيب المحادثة</a> وارفعها في ووردبريس (تحديث الإضافة).</li><li>في ووردبريس: <b>الإعدادات ← Smart Chat Agent</b> ← اختر الجداول التي يقرأ منها البوت ← حفظ.</li><li>اضغط «🔎 عرض الجداول» للتأكد، ثم أنشئ الاستعلامات من تبويب «الاستعلامات».</li></ol>' +
+            '<ol class="steps small" style="margin:8px 0"><li>نزّل الإضافة الجديدة (2.2) من <a href="#/install">تركيب المحادثة</a> وارفعها في ووردبريس (استبدال الحالية).</li><li>في ووردبريس: <b>الإعدادات ← Smart Chat Agent</b> ← اختر جداول قاعدة ووردبريس، و/أو فعّل <b>قاعدة بيانات خارجية</b> واكتب بياناتها هناك (تبقى في موقعك) ثم اختر جداولها ← حفظ.</li><li>اضغط «🔎 عرض الجداول» للتأكد، ثم أنشئ الاستعلامات من تبويب «الاستعلامات».</li></ol>' +
             '<div class="row wrap"><button type="button" class="btn soft sm" data-wpt>🔎 عرض الجداول المسموحة</button><span class="small" data-wpi></span></div><div class="hint">' + TT.wordpress[3] + '. البحث يتم من داخل موقعك، لذا جرّب المحادثة من صفحة في موقعك.</div>';
           if (c.type === 'file') return '<div class="row wrap"><button type="button" class="btn soft" data-upl>📤 رفع ملف Excel / CSV</button><span class="small" data-finfo>' + (c.connection ? '⏳' : '<span class="muted">لم يُرفع ملف بعد</span>') + '</span></div><div class="hint">' + t[3] + '</div>';
           return f.text(extra + 'connection', 'رابط الاتصال', { ltr: true, mono: true, ph: t[2], hint: t[3] });
@@ -672,7 +672,7 @@
                 }
                 l.template = type === 'wordpress' ? (l.id === 'my_data' ? '🪪 بياناتك المسجلة لدينا:\n{*}' : '{*}') : show.map(function (c) { return (st.show[c] || c) + ': {' + (type === 'oracle' ? alias(c).toLowerCase() : alias(c)) + '}'; }).join('\n');
                 if (l.id === 'my_data' && type !== 'wordpress') l.template = '🪪 بياناتك المسجلة لدينا:\n' + l.template;
-                if (!l.title) l.title = String(st.t).split('.').pop();
+                if (!l.title) l.title = String(st.t).replace(/^ext:/, '').split('.').pop();
                 if (!l.keywords) l.keywords = l.title;
                 ch(); lks(); fields(); m.close(); A.toast('تم إنشاء الاستعلام ✅ جرّبه بزر «اختبار» ثم احفظ', 'ok');
               };

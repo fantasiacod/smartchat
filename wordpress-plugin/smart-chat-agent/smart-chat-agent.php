@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Smart Chat Agent
  * Description: يضيف المساعد الذكي وخدمة العملاء المباشرة إلى موقعك، مع توثيق هوية العملاء المسجلين تلقائياً.
- * Version: 2.1.0
+ * Version: 2.2.0
  * Author: Smart Chat
  * Text Domain: smart-chat-agent
  * Requires at least: 5.6
@@ -36,6 +36,7 @@ class Smart_Chat_Agent {
         $def = function ($v) { return strpos($v, '__SC_') === 0 ? '' : $v; };
         $o = wp_parse_args(get_option(self::OPT, []), [
             'server' => '', 'site_key' => '', 'secret' => '', 'enabled' => 1, 'identify' => 1, 'exclude' => '', 'tables' => [],
+            'ext_on' => 0, 'ext_host' => '', 'ext_port' => '3306', 'ext_name' => '', 'ext_user' => '', 'ext_pass' => '',
         ]);
         if (!$o['server']) $o['server'] = $def(SMART_CHAT_DEFAULT_SERVER);
         if (!$o['site_key']) $o['site_key'] = $def(SMART_CHAT_DEFAULT_KEY);
@@ -57,7 +58,14 @@ class Smart_Chat_Agent {
                 'identify' => empty($v['identify']) ? 0 : 1,
                 'exclude'  => sanitize_textarea_field($v['exclude'] ?? ''),
                 // tables the bot may read (chosen by the site admin; WordPress accounts / settings are never offered)
-                'tables'   => array_values(array_intersect(array_map('sanitize_text_field', (array) ($v['tables'] ?? [])), $this->all_tables())),
+                'ext_on'   => empty($v['ext_on']) ? 0 : 1,
+                'ext_host' => sanitize_text_field($v['ext_host'] ?? ''),
+                'ext_port' => (string) max(1, min(65535, (int) ($v['ext_port'] ?? 3306))),
+                'ext_name' => sanitize_text_field($v['ext_name'] ?? ''),
+                'ext_user' => sanitize_text_field($v['ext_user'] ?? ''),
+                // empty = keep the saved password (it is never shown again nor sent to the chat server)
+                'ext_pass' => ($v['ext_pass'] ?? '') !== '' ? (string) $v['ext_pass'] : (string) ($this->opts()['ext_pass'] ?? ''),
+                'tables'   => array_values(array_map('sanitize_text_field', (array) ($v['tables'] ?? []))),
             ];
         }]);
     }
@@ -78,9 +86,20 @@ class Smart_Chat_Agent {
                     <tr><th>توثيق المستخدمين</th><td><label><input type="checkbox" name="<?php echo self::OPT; ?>[identify]" value="1" <?php checked($o['identify']); ?>> إرسال اسم وبريد المستخدم المسجّل دخوله (موقّع)</label></td></tr>
                     <tr><th>صفحات مستثناة</th><td><textarea name="<?php echo self::OPT; ?>[exclude]" rows="3" class="large-text" dir="ltr" placeholder="/checkout&#10;/my-account/*"><?php echo esc_textarea($o['exclude']); ?></textarea>
                         <p class="description">مسار في كل سطر. استخدم * في النهاية لمطابقة البادئة.</p></td></tr>
-                    <tr><th>🗄️ جداول يقرأ منها البوت</th><td>
-                        <?php $all = $this->all_tables(); if (!$all) echo '<p class="description">لا توجد جداول إضافية في قاعدة بيانات الموقع.</p>';
-                        foreach ($all as $t) : ?><label style="display:block;margin:3px 0"><input type="checkbox" name="<?php echo self::OPT; ?>[tables][]" value="<?php echo esc_attr($t); ?>" <?php checked(in_array($t, (array) $o['tables'], true)); ?>> <code><?php echo esc_html($t); ?></code></label><?php endforeach; ?>
+                    <tr><th>🗄️ قاعدة بيانات خارجية</th><td>
+                        <label><input type="checkbox" name="<?php echo self::OPT; ?>[ext_on]" value="1" <?php checked($o['ext_on']); ?>> قراءة أيضاً من قاعدة بيانات منفصلة (MySQL / MariaDB) يصل إليها خادم الموقع — إضافة إلى قاعدة ووردبريس</label>
+                        <div style="margin-top:8px;padding:10px;background:#f6f7f7;border-radius:6px">
+                            <p><label>الخادم (Host) <input type="text" dir="ltr" name="<?php echo self::OPT; ?>[ext_host]" value="<?php echo esc_attr($o['ext_host']); ?>" placeholder="localhost أو 10.0.0.5 أو db.company.local"></label>
+                               <label>المنفذ <input type="number" dir="ltr" style="width:90px" name="<?php echo self::OPT; ?>[ext_port]" value="<?php echo esc_attr($o['ext_port']); ?>"></label></p>
+                            <p><label>اسم قاعدة البيانات <input type="text" dir="ltr" name="<?php echo self::OPT; ?>[ext_name]" value="<?php echo esc_attr($o['ext_name']); ?>"></label></p>
+                            <p><label>اسم المستخدم <input type="text" dir="ltr" name="<?php echo self::OPT; ?>[ext_user]" value="<?php echo esc_attr($o['ext_user']); ?>" autocomplete="off"></label>
+                               <label>كلمة المرور <input type="password" dir="ltr" name="<?php echo self::OPT; ?>[ext_pass]" value="" placeholder="<?php echo $o['ext_pass'] ? '•••••• (محفوظة — اتركها فارغة)' : ''; ?>" autocomplete="new-password"></label></p>
+                            <p class="description">يُنصح بمستخدم <b>قراءة فقط</b> (GRANT SELECT). تبقى بيانات الاتصال في موقعك ولا تُرسل إلى خادم المحادثة.</p>
+                            <?php if ($o['ext_on']) { $c = $this->ext(); echo is_wp_error($c) ? '<p style="color:#b32d2e">❌ ' . esc_html($c->get_error_message()) . '</p>' : '<p style="color:#007017">✅ متصل بقاعدة البيانات ' . esc_html($o['ext_name']) . '</p>'; } ?>
+                        </div></td></tr>
+                    <tr><th>🗄️ جداول يقرأ منها البوت</th><td><?php if ($o['ext_on'] && is_wp_error($this->ext())) echo '<p class="description">جداول القاعدة الخارجية تظهر بعد حفظ بيانات اتصال صحيحة.</p>'; ?>
+                        <?php $all = $this->all_tables(); if (!$all) echo '<p class="description">لا توجد جداول متاحة.</p>'; $grp = null;
+                        foreach ($all as $t) : $g = strpos($t, 'ext:') === 0 ? 'ext' : 'wp'; if ($g !== $grp) { $grp = $g; echo '<p style="margin:10px 0 4px"><b>' . ($g === 'ext' ? '🗄️ القاعدة الخارجية: ' . esc_html($o['ext_name']) : '🧩 قاعدة ووردبريس') . '</b></p>'; } ?><label style="display:block;margin:3px 0"><input type="checkbox" name="<?php echo self::OPT; ?>[tables][]" value="<?php echo esc_attr($t); ?>" <?php checked(in_array($t, (array) $o['tables'], true)); ?>> <code><?php echo esc_html(preg_replace('/^ext:/', '', $t)); ?></code></label><?php endforeach; ?>
                         <p class="description">اختر الجداول التي يحق للبوت قراءة بيانات المستفيدين منها (قراءة فقط، بحث بقيمة محددة مثل رقم الهوية). جداول حسابات ووردبريس وإعداداته لا تظهر هنا ولا يمكن قراءتها.</p></td></tr>
                 </table>
                 <?php submit_button('حفظ الإعدادات'); ?>
@@ -120,19 +139,52 @@ class Smart_Chat_Agent {
 
     /* ===== data bridge: the bot reads rows from tables the admin allowed — no SQL is accepted from outside ===== */
 
+    // the separate company database (MySQL / MariaDB), connected from this server only
+    private $ext_conn = null;
+    private function ext() {
+        if ($this->ext_conn !== null) return $this->ext_conn;
+        $o = $this->opts();
+        if (!$o['ext_on'] || !$o['ext_host'] || !$o['ext_name'] || !$o['ext_user'] || !class_exists('mysqli')) return $this->ext_conn = new WP_Error('sc_db', 'أكمل بيانات الاتصال');
+        mysqli_report(MYSQLI_REPORT_OFF);
+        $m = mysqli_init();
+        $m->options(MYSQLI_OPT_CONNECT_TIMEOUT, 6);
+        if (!@$m->real_connect($o['ext_host'], $o['ext_user'], $o['ext_pass'], $o['ext_name'], (int) $o['ext_port'])) return $this->ext_conn = new WP_Error('sc_db', 'تعذر الاتصال: ' . mysqli_connect_error());
+        $m->set_charset('utf8mb4');
+        return $this->ext_conn = $m;
+    }
+    // a table id is "name" (WordPress database) or "ext:name" (the separate database)
+    private function split($id) { return strpos((string) $id, 'ext:') === 0 ? ['ext', substr($id, 4)] : ['wp', (string) $id]; }
+
+    // runs a query whose values are given separately ('?' placeholders) on one of the two databases
+    private function q($src, $sql, $vals = []) {
+        global $wpdb;
+        if ($src !== 'ext') { $sql = str_replace('?', '%s', $sql); return (array) $wpdb->get_results($vals ? $wpdb->prepare($sql, $vals) : $sql, ARRAY_A); }
+        $m = $this->ext(); if (is_wp_error($m)) return $m;
+        $i = 0; $sql = preg_replace_callback('/\?/', function () use (&$i, $vals, $m) { return "'" . $m->real_escape_string((string) ($vals[$i++] ?? '')) . "'"; }, $sql);
+        $res = $m->query($sql); if (!$res) return new WP_Error('sc_db', $m->error);
+        $rows = []; while ($row = $res->fetch_assoc()) $rows[] = $row; $res->free();
+        return $rows;
+    }
+
     private function all_tables() {
         global $wpdb;
         $core = ['users', 'usermeta', 'options', 'posts', 'postmeta', 'comments', 'commentmeta', 'terms', 'termmeta', 'term_taxonomy', 'term_relationships', 'links'];
         $out = [];
-        foreach ((array) $wpdb->get_col($wpdb->prepare('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = %s ORDER BY TABLE_NAME', DB_NAME)) as $t) {
-            if (strpos($t, $wpdb->prefix) === 0 && in_array(substr($t, strlen($wpdb->prefix)), $core, true)) continue;
-            $out[] = $t;
+        $rows = $this->q('wp', 'SELECT TABLE_NAME t FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME', [DB_NAME]);
+        foreach (is_wp_error($rows) ? [] : $rows as $r) {
+            if (strpos($r['t'], $wpdb->prefix) === 0 && in_array(substr($r['t'], strlen($wpdb->prefix)), $core, true)) continue; // WordPress accounts / settings are never offered
+            $out[] = $r['t'];
+        }
+        if ($this->opts()['ext_on']) {
+            $rows = $this->q('ext', 'SELECT TABLE_NAME t FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME', [$this->opts()['ext_name']]);
+            foreach (is_wp_error($rows) ? [] : $rows as $r) $out[] = 'ext:' . $r['t'];
         }
         return $out;
     }
-    private function columns($table) {
-        global $wpdb;
-        return (array) $wpdb->get_col($wpdb->prepare('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION', DB_NAME, $table));
+    private function columns($id) {
+        list($src, $name) = $this->split($id);
+        $rows = $this->q($src, 'SELECT COLUMN_NAME c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION', [$src === 'ext' ? $this->opts()['ext_name'] : DB_NAME, $name]);
+        return is_wp_error($rows) ? [] : array_column($rows, 'c');
     }
 
     // every request is signed by the chat server (HMAC-SHA256 with the site secret), expires quickly and works once
@@ -149,22 +201,21 @@ class Smart_Chat_Agent {
 
     // {table, columns[], where{col: value}, any(bool: OR instead of AND)} → rows (max 5)
     private function read_rows($r) {
-        global $wpdb;
         $o = $this->opts();
         $table = (string) ($r['table'] ?? '');
-        if (!in_array($table, (array) $o['tables'], true)) return new WP_Error('sc_table', 'table not allowed', ['status' => 403]);
+        if (!in_array($table, (array) $o['tables'], true) || !in_array($table, $this->all_tables(), true)) return new WP_Error('sc_table', 'table not allowed', ['status' => 403]);
         $cols = $this->columns($table);
         $show = array_values(array_intersect((array) ($r['columns'] ?? []), $cols));
         $where = is_array($r['where'] ?? null) ? $r['where'] : [];
         $conds = []; $vals = [];
         foreach ($where as $c => $v) {
             if (!in_array($c, $cols, true) || $v === '' || $v === null) continue;
-            $conds[] = 'CAST(`' . str_replace('`', '', $c) . '` AS CHAR) = %s'; $vals[] = (string) $v;
+            $conds[] = 'CAST(`' . str_replace('`', '', $c) . '` AS CHAR) = ?'; $vals[] = (string) $v;
         }
         if (!$conds) return new WP_Error('sc_where', 'a search value is required', ['status' => 400]);
         $sel = $show ? implode(', ', array_map(function ($c) { return '`' . str_replace('`', '', $c) . '`'; }, $show)) : '*';
-        $sql = 'SELECT ' . $sel . ' FROM `' . str_replace('`', '', $table) . '` WHERE ' . implode(empty($r['any']) ? ' AND ' : ' OR ', $conds) . ' LIMIT 5';
-        return (array) $wpdb->get_results($wpdb->prepare($sql, $vals), ARRAY_A);
+        list($src, $name) = $this->split($table);
+        return $this->q($src, 'SELECT ' . $sel . ' FROM `' . str_replace('`', '', $name) . '` WHERE ' . implode(empty($r['any']) ? ' AND ' : ' OR ', $conds) . ' LIMIT 5', $vals);
     }
 
     public function rest() {
