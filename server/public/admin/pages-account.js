@@ -11,7 +11,7 @@
       root.innerHTML = '<div class="grid g2"><div>' +
         '<div class="card" style="margin-bottom:16px"><h3>🪪 بياناتي</h3><div class="row" style="gap:18px;margin-bottom:14px"><span id="avbox"></span><div class="col" style="gap:6px"><div class="row"><button class="btn sm soft" id="avup">📷 تغيير الصورة</button><button class="btn sm ghost" id="avrm">إزالة</button></div><span class="tiny muted">تظهر للمستفيد بجانب رسائلك</span></div></div>' +
         '<div class="grid g2">' + f.text('name', 'الاسم') + f.text('job_title', 'المسمى الوظيفي', { ph: 'مثال: أخصائي خدمة المستفيدين' }) + '</div><div class="grid g2">' + f.text('phone', 'الجوال', { ltr: true }) + '<div class="field"><label class="f">البريد</label><input class="in" dir="ltr" disabled value="' + esc(me.email) + '"></div></div>' +
-        '<div class="row between"><span class="tag gray">' + A.ROLE[me.role] + '</span><button class="btn" id="svme">حفظ البيانات</button></div></div>' +
+        '<div class="row between"><span class="tag gray">' + A.ROLE[me.role] + '</span><button class="btn" id="svme" style="display:none">حفظ البيانات</button><span class="tiny muted" id="svmes">✅ تُحفظ تلقائياً</span></div></div>' +
         '<div class="card" style="margin-bottom:16px"><h3>🔔 التنبيهات</h3>' +
         f.sw('notifications', 'تفعيل التنبيهات', 'إيقافها يوقف الرنين والأصوات وإشعارات سطح المكتب') + f.sw('sound', 'الرنين والأصوات', 'رنين متكرر عند انتظار مستفيد حتى يتم الرد') + f.sw('available', 'متاح لاستقبال المحادثات', 'يمكن تغييره أيضاً من الشريط العلوي') +
         '<div class="switch-row"><span><b>إشعارات سطح المكتب</b><small id="dnst"></small></span><button class="btn sm ghost" id="dnreq">السماح</button></div><div class="row" style="margin-top:8px"><button class="btn sm ghost" id="tst">🔊 تجربة الصوت</button></div></div>' +
@@ -23,8 +23,9 @@
         '<div class="grid g2">' + f.color('theme.accent', 'اللون الرئيسي', { clear: false }) + f.color('theme.accent2', 'لون التمييز', { clear: false }) + f.color('theme.side', 'القائمة الجانبية (أعلى)', { clear: false }) + f.color('theme.side2', 'القائمة الجانبية (أسفل)', { clear: false }) + f.color('theme.bg', 'خلفية الصفحات', { clear: false }) +
         f.select('theme.font', 'الخط', A.DASH_FONTS.map(function (x) { return [x, x]; })) + '</div>' +
         '<label class="f">الزخرفة</label><div class="patterns" id="dpat"></div>' + f.sw('theme.pattern_bg', 'إظهار الزخرفة في خلفية الصفحات أيضاً', 'تظهر دائماً في القائمة الجانبية') + f.range('theme.pattern_opacity', 'شفافية زخرفة الخلفية', 0.02, 0.15, 0.01) +
-        '<div class="row" style="margin-top:12px"><button class="btn" id="svth">حفظ المظهر</button><button class="btn ghost" id="rsth">استعادة الافتراضي</button></div></div></div></div>';
-      A.bind(root.querySelector('.grid > div:first-child .card'), v);
+        '<div class="row" style="margin-top:12px"><button class="btn" id="svth" style="display:none">حفظ المظهر</button><span class="tiny muted" id="svths">✅ يُحفظ تلقائياً</span><button class="btn ghost" id="rsth">استعادة الافتراضي</button></div></div></div></div>';
+      var meT = null;
+      A.bind(root.querySelector('.grid > div:first-child .card'), v, function () { A.$('#svmes').textContent = '● جارٍ الحفظ…'; clearTimeout(meT); meT = setTimeout(function () { A.$('#svme').onclick(); }, 1000); });
       var pwf = A.$('#pwf'); A.bind(pwf, pw);
       var notif = A.$('.grid > div:first-child .card:nth-child(2)');
       prefs.notifications = prefs.notifications !== false; prefs.sound = prefs.sound !== false; prefs.available = prefs.available !== false;
@@ -33,7 +34,7 @@
       avBox();
       A.$('#avup').onclick = function () { A.pickFile('image/*').then(function (fs) { if (fs[0]) A.readDataURL(fs[0], 256).then(function (u) { v.avatar = u; avBox(); }); }); };
       A.$('#avrm').onclick = function () { v.avatar = ''; avBox(); };
-      A.$('#svme').onclick = function () { A.api('PUT', '/api/me', v).then(function (u) { Object.assign(me, u); A.toast('تم حفظ بياناتك', 'ok'); A.$('#me-link').innerHTML = A.avatar(me, 'sm') + '<div class="grow" style="min-width:0"><b style="display:block;font-size:13.5px">' + esc(me.name) + '</b><small style="color:var(--side-muted)">' + esc(me.job_title || A.ROLE[me.role]) + '</small></div><span>⚙️</span>'; return A.GET('/api/users'); }).then(function (u) { if (u) S.users = u; }).catch(A.fail); };
+      A.$('#svme').onclick = function () { A.api('PUT', '/api/me', v).then(function (u) { Object.assign(me, u); var st = A.$('#svmes'); if (st) st.textContent = '✅ تم الحفظ تلقائياً'; A.$('#me-link').innerHTML = A.avatar(me, 'sm') + '<div class="grow" style="min-width:0"><b style="display:block;font-size:13.5px">' + esc(me.name) + '</b><small style="color:var(--side-muted)">' + esc(me.job_title || A.ROLE[me.role]) + '</small></div><span>⚙️</span>'; return A.GET('/api/users'); }).then(function (u) { if (u) S.users = u; }).catch(A.fail); };
       A.$('#svpw').onclick = function () {
         if (pw.password !== pw.confirm) return A.toast('كلمتا المرور غير متطابقتين', 'err');
         A.api('PUT', '/api/me', { current_password: pw.current_password, password: pw.password }).then(function (r) { if (r && r.token) { S.token = r.token; try { localStorage.setItem('sc_token', r.token); } catch (e) { } if (A.socket) { A.socket.auth = { token: r.token }; } } A.toast('تم تغيير كلمة المرور', 'ok'); me.weak_password = false; pw.current_password = pw.password = pw.confirm = ''; A.$$('input', pwf).forEach(function (i) { i.value = ''; }); }).catch(A.fail);
@@ -56,7 +57,12 @@
       var setInputs = function () { ['accent', 'accent2', 'side', 'side2', 'bg'].forEach(function (k) { var i = thBox.querySelector('[data-k="theme.' + k + '"]'); i.value = th[k]; var c = thBox.querySelector('[data-kc="theme.' + k + '"]'); if (c) c.value = th[k]; }); };
       A.$$('#thm .swatch').forEach(function (b) { b.onclick = function () { var t = A.THEMES[b.getAttribute('data-t')]; Object.assign(th, t, { preset: b.getAttribute('data-t') }); delete th.name; setInputs(); live(); }; });
       A.$$('#mode button').forEach(function (b) { b.onclick = function () { th.mode = b.getAttribute('data-m'); live(); }; });
-      A.$('#svth').onclick = function () { me.prefs.theme = th; A.savePrefs().then(function () { A.toast('تم حفظ المظهر', 'ok'); }); };
+      A.$('#svth').onclick = function () { me.prefs.theme = th; A.savePrefs().then(function () { var st = A.$('#svths'); if (st) st.textContent = '✅ تم الحفظ تلقائياً'; }); };
+      // the dashboard look saves itself shortly after each change
+      var thT = null;
+      thBox.addEventListener('input', function () { clearTimeout(thT); thT = setTimeout(function () { A.$('#svth').onclick(); }, 1200); }, true);
+      thBox.addEventListener('click', function (e) { if (e.target.closest('button') && !e.target.closest('#rsth')) { clearTimeout(thT); thT = setTimeout(function () { A.$('#svth').onclick(); }, 1200); } }, true);
+      thBox.addEventListener('change', function () { clearTimeout(thT); thT = setTimeout(function () { A.$('#svth').onclick(); }, 1200); }, true);
       A.$('#rsth').onclick = function () { th = prefs.theme = Object.assign({ mode: 'light', font: 'Tajawal', pattern: 'girih12', pattern_opacity: 0.05, preset: 'madinah' }, A.THEMES.madinah); delete th.name; me.prefs.theme = th; A.applyTheme(th); A.savePrefs(); A.route(); };
       paint();
       return function () { A.applyTheme(); };

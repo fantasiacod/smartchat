@@ -4,19 +4,31 @@
   var A = App, S = A.state, esc = A.esc, f = A.f;
 
   /* generic: edit a clone of some settings sections, show a sticky save bar */
+  // settings pages save themselves: a moment after the last change (no save button needed)
   function settingsPage(root, sections, build, opts) {
     opts = opts || {};
     var draft = {}; sections.forEach(function (s) { draft[s] = A.clone(S.site.settings[s]); });
-    root.innerHTML = '<div id="sp"></div><div class="savebar"><span class="dirty"></span>' + (opts.extraButtons || '') + '<button class="btn" id="save">💾 حفظ التغييرات</button></div>';
-    var onChange = function () { A.setDirty(true); opts.onChange && opts.onChange(draft); };
-    build(A.$('#sp'), draft, onChange);
-    A.$('#save').onclick = function () {
-      var b = this; b.disabled = true;
-      A.saveSite({ settings: draft }).then(function (s) {
-        sections.forEach(function (k) { draft[k] = A.clone(s.settings[k]); });
-        A.setDirty(false); A.toast('تم الحفظ ✅', 'ok'); opts.onSaved && opts.onSaved(s);
-      }).catch(A.fail).then(function () { b.disabled = false; });
+    root.innerHTML = '<div id="sp"></div><div class="savebar"><span class="dirty"></span>' + (opts.extraButtons || '') + '<button class="btn" id="save" style="display:none">💾 حفظ</button></div>';
+    var timer = null, saving = false, again = false;
+    var status = function (t) { var d = A.$('.savebar .dirty', root); if (d) d.textContent = t; };
+    function saveNow() {
+      clearTimeout(timer);
+      if (saving) { again = true; return Promise.resolve(); }
+      saving = true; status('💾 جارٍ الحفظ…');
+      return A.saveSite({ settings: draft }).then(function (s) {
+        if (!again) { A.setDirty(false); App.flushSave = null; }
+        status('✅ تم الحفظ تلقائياً'); opts.onSaved && opts.onSaved(s);
+      }, function (e) { status('⚠️ لم يُحفظ — ' + (e.message || '')); A.fail(e); })
+        .then(function () { saving = false; if (again) { again = false; saveNow(); } });
+    }
+    var onChange = function () {
+      A.setDirty(true); status('● جارٍ الحفظ تلقائياً…');
+      clearTimeout(timer); timer = setTimeout(saveNow, 900); App.flushSave = saveNow;
+      opts.onChange && opts.onChange(draft);
     };
+    build(A.$('#sp'), draft, onChange);
+    A.$('#save').onclick = saveNow;
+    status('✅ التغييرات تُحفظ تلقائياً');
     return draft;
   }
   A.settingsPage = settingsPage;
@@ -355,9 +367,10 @@
         var sec = A.clone(S.site.settings.security), el = A.$('#sec');
         el.innerHTML = f.area('allowed_domains', 'النطاقات المسموح لها', { rows: 2, ph: 'example.com, shop.example.com', hint: 'اتركه فارغاً للسماح لأي موقع' }) +
           '<label class="f">مفتاح توثيق الهوية (Identity secret)</label><div class="row"><input class="in mono" readonly value="' + esc(sec.identity_secret || '') + '" id="isec"><button class="btn sm ghost" id="regen">تجديد</button></div>' +
-          '<button class="btn sm" id="ssec" style="margin-top:10px">حفظ</button>';
-        A.bind(el, sec);
-        A.$('#ssec').onclick = function () { A.saveSite({ settings: { security: { allowed_domains: sec.allowed_domains } } }).then(function () { A.toast('تم الحفظ', 'ok'); }, A.fail); };
+          '<span class="tiny muted" id="ssecs">✅ يُحفظ تلقائياً</span><button class="btn sm" id="ssec" style="display:none">حفظ</button>';
+        var secT = null;
+        A.bind(el, sec, function () { A.$('#ssecs').textContent = '● جارٍ الحفظ…'; clearTimeout(secT); secT = setTimeout(function () { A.$('#ssec').onclick(); }, 1000); });
+        A.$('#ssec').onclick = function () { A.saveSite({ settings: { security: { allowed_domains: sec.allowed_domains } } }).then(function () { A.$('#ssecs').textContent = '✅ تم الحفظ تلقائياً'; }, A.fail); };
         A.$('#regen').onclick = function () { A.confirm('تجديد المفتاح يتطلب تحديث إضافة ووردبريس. متابعة؟').then(function (ok) { if (ok) A.api('POST', '/api/sites/' + S.site.id + '/regenerate-secret').then(function (r) { A.$('#isec').value = r.identity_secret; A.reloadSites(); }, A.fail); }); };
       }
       steps(); status();

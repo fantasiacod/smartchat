@@ -21,6 +21,7 @@
     order_status: { icon: '📦', name: 'حالة الطلب (مدمج)', desc: 'استعلام «حالة الطلب» من قاعدة البيانات' },
     customer_info: { icon: '🪪', name: 'بيانات المستفيد (مدمج)', desc: 'استعلام «بيانات المستفيد» المدمج' },
     lookup: { icon: '🔎', name: 'استعلام مخصص', desc: 'من أي قاعدة بيانات مربوطة' },
+    appointment_lookup: { icon: '🕒', name: 'متى موعدي؟', desc: 'يكتب اسمه فيظهر له موعده من صفحة المواعيد' },
     eligibility_menu: { icon: '📋', name: 'قائمة حساب الاستحقاق', desc: 'كل برامج الاستحقاق الظاهرة' },
     eligibility: { icon: '🧮', name: 'حاسبة الاستحقاق', desc: 'أسئلة ثم: مؤهل / غير مؤهل + القيمة' },
     developer: { icon: '🛠️', name: 'مطوّر البرنامج', desc: 'رابط المطوّر' },
@@ -90,7 +91,7 @@
     var a = ACTIONS[o.action] || { icon: '?', name: o.action };
     if (o.action === 'goto') { var n = tree.nodes.find(function (x) { return x.id === o.target; }); return '➡️ ' + (n ? n.title || n.id : 'غير مربوط ⚠️'); }
     if (o.action === 'org') { var f = orgFields().find(function (x) { return x[0] === o.field; }); return f ? f[1] : a.icon + ' ' + a.name; }
-    if (o.action === 'ticket') return o.field === 'suggestion' ? '💡 اقتراح' : o.field === 'inquiry' ? '❓ استفسار' : '📝 شكوى';
+    if (o.action === 'ticket') return o.field === 'suggestion' ? '💡 اقتراح' : o.field === 'inquiry' ? '❓ استفسار' : o.field === 'callback' ? '📞 طلب تواصل / موعد' : '📝 شكوى';
     return a.icon + ' ' + a.name;
   }
 
@@ -102,7 +103,7 @@
       A.GET('/api/kb?site=' + S.site.id).then(function (k) { kbList = k; });
       var DYN = [].concat(((S.site.settings.datasource || {}).lookups || []).filter(function (l) { return l.query; }).map(function (l) { return { act: 'lookup', target: l.id, icon: '🔎', label: l.title || l.id }; }),
         (((S.site.settings.eligibility || {}).programs) || []).map(function (p) { return { act: 'eligibility', target: p.id, icon: '🧮', label: p.title || p.id }; }));
-      root.innerHTML = '<div class="tree-wrap"><aside class="palette"><div class="section-title"><h2>⚡ قوائم جاهزة</h2></div><p class="tiny muted" style="margin:-8px 0 8px">اسحبها إلى المساحة (أو اضغطها) — تعمل فوراً وتُضاف للقائمة الرئيسية</p>' +
+      root.innerHTML = '<div class="tree-wrap"><aside class="palette"><button class="btn gold" id="tpl2" style="width:100%;margin-bottom:14px">📋 شجرة كاملة جاهزة لنوع جهتك<br><small style="font-weight:400">جمعية · مؤسسة · شركة · مقهى · صالون…</small></button><div class="section-title"><h2>⚡ قوائم جاهزة</h2></div><p class="tiny muted" style="margin:-8px 0 8px">اسحبها إلى المساحة (أو اضغطها) — تعمل فوراً وتُضاف للقائمة الرئيسية</p>' +
         Object.keys(READY).map(function (k) { var t = READY[k]; return '<div class="pi" draggable="true" data-ready="' + k + '" style="border-color:var(--primary)"><i>' + t.icon + '</i><div><b>' + t.name + '</b><small>' + t.desc + '</small></div></div>'; }).join('') +
         (DYN.length ? '<div class="section-title" style="margin-top:16px"><h2>استعلاماتك وبرامجك</h2></div><p class="tiny muted" style="margin:-8px 0 8px">اسحبها إلى أي عقدة</p>' + DYN.map(function (d) { return '<div class="pi" draggable="true" data-act="' + d.act + '" data-target="' + esc(d.target) + '" data-label="' + esc(d.icon + ' ' + d.label) + '" style="padding:7px 10px"><i style="font-size:16px;width:26px;height:26px">' + d.icon + '</i><div><b class="small">' + esc(d.label) + '</b></div></div>'; }).join('') : '') +
         '<div class="section-title" style="margin-top:16px"><h2>عُقد فارغة</h2></div>' +
@@ -112,9 +113,20 @@
         '</aside><div class="canvas" id="cv"><div class="help">🖱️ اسحب الخلفية للتحريك · العجلة للتكبير · اسحب ● من الزر إلى عقدة لربطهما</div><div class="world" id="wd"><svg class="links" id="lk" width="1" height="1"></svg></div>' +
         '<div class="zoom"><button class="btn ghost icon" id="zi">＋</button><button class="btn ghost icon" id="zo">－</button><button class="btn ghost sm" id="zf">⤢ ملاءمة</button><button class="btn ghost sm" id="ar">🧹 ترتيب تلقائي</button></div></div>' +
         '<aside class="inspector" id="ins"></aside></div>' +
-        '<div class="savebar" style="margin:0;position:fixed;bottom:0;inset-inline:250px 0;z-index:30"><span class="dirty"></span><button class="btn soft" id="chk">🩺 فحص الأزرار</button><button class="btn soft" id="medit">✏️ تعديل أزرار القائمة الرئيسية</button><button class="btn ghost" id="tpl">↺ تطبيق القالب الجاهز</button><button class="btn" id="sv">💾 حفظ الشجرة</button></div>';
+        '<div class="savebar" style="margin:0;position:fixed;bottom:0;inset-inline:250px 0;z-index:30"><span class="dirty"></span><button class="btn soft" id="chk">🩺 فحص الأزرار</button><button class="btn soft" id="medit">✏️ تعديل أزرار القائمة الرئيسية</button><button class="btn ghost" id="tpl">📋 شجرة جاهزة حسب نوع الجهة</button><button class="btn" id="sv" style="display:none">💾 حفظ الشجرة</button></div>';
       var cv = A.$('#cv'), wd = A.$('#wd'), lk = A.$('#lk'), ins = A.$('#ins');
-      var dirty = function () { A.setDirty(true); };
+      var tTimer = null, tSaving = false, tAgain = false;
+      function tStatus(t) { var d = A.$('.savebar .dirty'); if (d) d.textContent = t; }
+      function saveTree() {
+        clearTimeout(tTimer);
+        if (tSaving) { tAgain = true; return Promise.resolve(); }
+        tSaving = true; tStatus('💾 جارٍ الحفظ…');
+        var broken = checkTree().filter(function (x) { return x[0] === '❌'; }).length;
+        return A.saveSite({ tree: tree }).then(function () { if (!tAgain) { A.setDirty(false); App.flushSave = null; } tStatus('✅ تم الحفظ تلقائياً' + (broken ? ' — ⚠️ ' + broken + ' زر يحتاج إصلاحاً (🩺 فحص الأزرار)' : '')); },
+          function (e) { tStatus('⚠️ لم يُحفظ — ' + (e.message || '')); A.fail(e); }).then(function () { tSaving = false; if (tAgain) { tAgain = false; saveTree(); } });
+      }
+      // the tree saves itself a moment after each change
+      var dirty = function () { A.setDirty(true); tStatus('● جارٍ الحفظ تلقائياً…'); clearTimeout(tTimer); tTimer = setTimeout(saveTree, 1200); App.flushSave = saveTree; };
 
       function applyView() { wd.style.transform = 'translate(' + view.x + 'px,' + view.y + 'px) scale(' + view.k + ')'; }
       function toWorld(cx, cy) { var r = cv.getBoundingClientRect(); return { x: (cx - r.left - view.x) / view.k, y: (cy - r.top - view.y) / view.k }; }
@@ -259,7 +271,7 @@
             if (o.action === 'goto') h = '<label class="f">ينتقل إلى</label><select class="in" data-p="target">' + nodeOpts(o.target) + '<option value="__new">➕ عقدة جديدة…</option></select>';
             else if (o.action === 'answer') h = A.f.area('target', 'نص الإجابة', { rows: 4 }) + A.f.area('i18n.en.target', 'English answer', { rows: 2, ph: 'اختياري' }) + A.f.area('i18n.ur.target', 'اردو', { rows: 2, ph: 'اختياري' }) + '<label class="f">مرفقات (صورة، فيديو، PDF)</label><div data-om></div>';
             else if (o.action === 'org') h = '<label class="f">المعلومة</label><select class="in" data-p="field">' + orgFields().map(function (f) { return '<option value="' + f[0] + '"' + (o.field === f[0] ? ' selected' : '') + '>' + esc(f[1]) + '</option>'; }).join('') + '</select><div class="hint">تُعدّل هذه المعلومات من صفحة <a href="#/org">معلومات الجهة</a></div>';
-            else if (o.action === 'ticket') h = '<label class="f">النوع</label><select class="in" data-p="field"><option value="complaint">📝 شكوى</option><option value="suggestion">💡 اقتراح</option><option value="inquiry">❓ استفسار</option></select>';
+            else if (o.action === 'ticket') h = '<label class="f">النوع</label><select class="in" data-p="field"><option value="complaint">📝 شكوى</option><option value="suggestion">💡 اقتراح</option><option value="inquiry">❓ استفسار</option><option value="callback">📞 طلب تواصل / حجز موعد (اسم وجوال)</option></select>';
             else if (o.action === 'url') h = A.f.text('target', 'الرابط', { ltr: true, ph: 'https://' });
             else if (o.action === 'kb') h = '<label class="f">السؤال</label><select class="in" data-p="target"><option value="">— اختر —</option>' + kbList.map(function (k) { return '<option value="' + k.id + '"' + (String(o.target) === String(k.id) ? ' selected' : '') + '>' + esc(k.question.slice(0, 70)) + '</option>'; }).join('') + '</select>';
             else if (o.action === 'location') h = '<div class="hint">يرسل خريطة Google داخل المحادثة مع زر الاتجاهات — من رابط الموقع في <a href="#/org">بيانات الجمعية</a></div>';
@@ -338,7 +350,7 @@
         if (n.options.length <= 1) A.toast(k === 'elig' ? '⚠️ لا توجد برامج استحقاق بعد — أنشئها من «حاسبة الاستحقاق»' : '⚠️ القائمة فارغة', 'err');
         tree.nodes.push(n);
         var m = mainMenu();
-        if (m && m.id !== n.id) { m.options.push({ label: R.icon + ' ' + R.name, action: 'goto', target: n.id }); A.toast('✅ أُضيفت القائمة وزرها في القائمة الرئيسية — اضغط «حفظ الشجرة»', 'ok'); }
+        if (m && m.id !== n.id) { m.options.push({ label: R.icon + ' ' + R.name, action: 'goto', target: n.id }); A.toast('✅ أُضيفت القائمة وزرها في القائمة الرئيسية', 'ok'); }
         sel = n.id; dirty(); draw(); inspect();
       }
       function addTemplate(k, at) {
@@ -403,16 +415,21 @@
         var r = checkTree(), n = tree.nodes.reduce(function (a, x) { return a + x.options.length; }, 0), errs = r.filter(function (x) { return x[0] === '❌'; }).length;
         A.modal({ title: '🩺 فحص الأزرار', body: '<div class="alert ' + (errs ? 'err' : 'ok') + '">' + (errs ? '❌ ' + errs + ' زر يحتاج إصلاحاً من أصل ' + n : '✅ كل الأزرار (' + n + ') مربوطة وتعمل') + '</div>' + (r.length ? '<div class="tbl-wrap"><table class="t"><tbody>' + r.map(function (x) { return '<tr><td>' + x[0] + '</td><td><b>' + esc(x[1]) + '</b></td><td class="small">' + esc(x[2]) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '') });
       };
-      A.$('#sv').onclick = function () {
-        var broken = checkTree().filter(function (x) { return x[0] === '❌'; });
-        if (broken.length) A.toast('⚠️ ' + broken.length + ' زر يحتاج إصلاحاً — اضغط «🩺 فحص الأزرار»', 'err');
-        A.saveSite({ tree: tree }).then(function () { A.setDirty(false); A.toast('تم حفظ الشجرة ✅ — التغييرات تظهر فوراً للزوار', 'ok'); }).catch(A.fail);
-      };
-      A.$('#medit').onclick = function () { A.menuEditor(tree, function () { dirty(); draw(); A.toast('تم التعديل — اضغط «حفظ الشجرة» لتظهر للزوار', 'ok'); }); };
+      A.$('#sv').onclick = saveTree;
+      A.$('#medit').onclick = function () { A.menuEditor(tree, function () { dirty(); draw(); A.toast('تم التعديل ✅', 'ok'); }); };
+      A.$('#tpl2').onclick = function () { A.$('#tpl').onclick(); };
       A.$('#tpl').onclick = function () {
-        A.confirm('سيتم استبدال الشجرة الحالية بالقالب الجاهز (ترحيب ← قائمة مرقّمة: الموقع، تعرّف علينا، التواصل، الأسئلة، الشكاوى، موظف). متابعة؟').then(function (ok) {
-          if (!ok) return; A.GET('/api/tree-template').then(function (t) { tree = t; tree.nodes.forEach(function (n) { n.options = n.options || []; }); sel = null; dirty(); draw(); inspect(); fit(); });
-        });
+        A.GET('/api/tree-templates').then(function (list) {
+          var pick = null;
+          var m = A.modal({ title: '📋 اختر شجرة جاهزة حسب نوع جهتك', size: 'wide', body: '<p class="small muted">كل شجرة جاهزة للعمل فوراً، وتقدر بعدها تعدّل أي زر أو تحذفه أو تضيف قوائمك الخاصة. الأزرار الاختيارية (حساب الاستحقاق، الاستعلامات) تختفي تلقائياً إلى أن تضبطها.</p><div class="grid g3" id="tps">' +
+            list.map(function (t) { return '<button type="button" class="card flat" data-tp="' + t.id + '" style="text-align:start;cursor:pointer;padding:14px;border:2px solid var(--border)"><div style="font-size:30px">' + t.icon + '</div><b>' + esc(t.name) + '</b><p class="tiny muted" style="margin:4px 0 8px">' + esc(t.desc) + '</p><div class="tiny" style="line-height:1.9">' + t.buttons.map(function (b, i) { return (i + 1) + '. ' + esc(b); }).join('<br>') + '</div></button>'; }).join('') + '</div>' +
+            '<div class="alert warn" style="margin-top:12px">⚠️ سيتم استبدال الشجرة الحالية وحفظ الجديدة تلقائياً (خذ نسخة احتياطية أولاً إن أردت الرجوع).</div>',
+            buttons: [{ label: 'إلغاء', ghost: true }, { label: '✅ تطبيق الشجرة', onClick: function () {
+              if (!pick) { A.toast('اختر نوع الجهة', 'err'); return false; }
+              return A.GET('/api/tree-template?type=' + pick).then(function (t) { tree = t; tree.nodes.forEach(function (n) { n.options = n.options || []; }); sel = null; dirty(); draw(); inspect(); fit(); A.toast('تم تطبيق الشجرة ✅', 'ok'); });
+            } }] });
+          A.$$('[data-tp]', m.body).forEach(function (b) { b.onclick = function () { pick = b.getAttribute('data-tp'); A.$$('[data-tp]', m.body).forEach(function (x) { x.style.borderColor = x === b ? 'var(--primary)' : 'var(--border)'; }); }; });
+        }, A.fail);
       };
       applyView(); draw(); inspect(); setTimeout(fit, 30);
       return function () { };

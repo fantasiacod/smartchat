@@ -8,7 +8,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 const { db, now, getSite, getSiteByKey, createSite, getConv, audit, DATA_DIR } = require('./db');
-const { defaultSettings, defaultTree, deepMerge } = require('./defaults');
+const { defaultSettings, defaultTree, treeTemplate, TREE_TYPES, deepMerge } = require('./defaults');
 const { texts, LANGS } = require('./i18n');
 const chat = require('./chat');
 const ds = require('./datasource');
@@ -325,7 +325,7 @@ function maskSite(s, user) {
   }
   return out;
 }
-const SECTION_ROLE = { eligibility: 'supervisor', appearance: 'supervisor', texts: 'supervisor', prechat: 'supervisor', behavior: 'supervisor', org: 'supervisor', developer: 'supervisor', tickets: 'supervisor', languages: 'supervisor', datasource: 'admin', security: 'admin', notify: 'admin', integrations: 'admin' };
+const SECTION_ROLE = { ui: 'admin', appointments: 'supervisor', eligibility: 'supervisor', appearance: 'supervisor', texts: 'supervisor', prechat: 'supervisor', behavior: 'supervisor', org: 'supervisor', developer: 'supervisor', tickets: 'supervisor', languages: 'supervisor', datasource: 'admin', security: 'admin', notify: 'admin', integrations: 'admin' };
 
 app.get('/api/sites', auth(), (req, res) => res.json(db.prepare('SELECT id FROM sites ORDER BY id').all().map(r => maskSite(getSite(r.id), req.user))));
 app.post('/api/sites', auth('admin'), (req, res) => {
@@ -375,7 +375,11 @@ app.post('/api/sites/:id/regenerate-secret', auth('admin'), (req, res) => {
   audit(req.user.id, 'site.secret', { id: site.id });
   res.json({ identity_secret: site.settings.security.identity_secret });
 });
-app.get('/api/tree-template', auth(), (req, res) => res.json(defaultTree()));
+app.get('/api/tree-template', auth(), (req, res) => res.json(treeTemplate(String(req.query.type || 'charity'))));
+app.get('/api/tree-templates', auth(), (req, res) => res.json(Object.entries(TREE_TYPES).map(([id, t]) => {
+  const tr = t.build(), m = tr.nodes.find(n => n.id === 'menu');
+  return { id, icon: t.icon, name: t.name, desc: t.desc, buttons: m.options.map(o => o.label) };
+})));
 app.delete('/api/sites/:id', auth('admin'), (req, res) => {
   if (db.prepare('SELECT COUNT(*) c FROM sites').get().c <= 1) return res.status(400).json({ error: 'لا يمكن حذف الموقع الوحيد' });
   db.prepare('DELETE FROM sites WHERE id=?').run(Number(req.params.id));
@@ -648,6 +652,42 @@ app.delete('/api/tickets/:id', auth('supervisor'), (req, res) => {
 
 /* ============================== mind map (knowledge categories) ============================== */
 const cleanCat = (b) => ({ name: String(b.name || '').trim().slice(0, 80), icon: ICONS.has(b.icon) ? b.icon : 'question', color: /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '', i18n: JSON.stringify(b.i18n || {}) });
+/* ---------- appointments calendar ---------- */
+const APPT_STATUS = ['confirmed', 'pending', 'done', 'cancelled'];
+function cleanAppt(b) {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || '')) ? b.date : null, time = /^\d{2}:\d{2}$/.test(String(b.time || '')) ? b.time : '';
+  return { name: String(b.name || '').trim().slice(0, 120), phone: String(b.phone || '').replace(/[^\d+]/g, '').slice(0, 20), service: String(b.service || '').slice(0, 120), staff: String(b.staff || '').slice(0, 80),
+    date, time, duration: Math.max(5, Math.min(600, Number(b.duration) || 30)), status: APPT_STATUS.includes(b.status) ? b.status : 'confirmed', notes: String(b.notes || '').slice(0, 1000) };
+}
+app.get('/api/appointments', auth(), (req, res) => {
+  const site = Number(req.query.site), from = String(req.query.from || '0000-00-00'), to = String(req.query.to || '9999-12-31'), q = String(req.query.q || '').trim();
+  let rows = db.prepare('SELECT * FROM appointments WHERE site_id=? AND date BETWEEN ? AND ? ORDER BY date, time').all(site, from, to);
+  if (q) rows = rows.filter(r => (r.name + ' ' + (r.phone || '')).includes(q));
+  res.json(rows);
+});
+app.post('/api/appointments', auth(), (req, res) => {
+  const a = cleanAppt(req.body || {}), site = Number(req.body.site_id);
+  if (!getSite(site)) return res.status(400).json({ error: 'site' });
+  if (!a.name || !a.date) return res.status(400).json({ error: 'الاسم والتاريخ مطلوبان' });
+  const r = db.prepare('INSERT INTO appointments (site_id,name,phone,service,staff,date,time,duration,status,notes,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run(site, a.name, a.phone, a.service, a.staff, a.date, a.time, a.duration, a.status, a.notes, req.user.id, now(), now());
+  audit(req.user.id, 'appointment.create', { id: r.lastInsertRowid, date: a.date });
+  res.json(db.prepare('SELECT * FROM appointments WHERE id=?').get(r.lastInsertRowid));
+});
+app.put('/api/appointments/:id', auth(), (req, res) => {
+  const cur = db.prepare('SELECT * FROM appointments WHERE id=?').get(Number(req.params.id));
+  if (!cur) return res.status(404).json({ error: 'not found' });
+  const a = cleanAppt({ ...cur, ...req.body });
+  if (!a.name || !a.date) return res.status(400).json({ error: 'الاسم والتاريخ مطلوبان' });
+  db.prepare('UPDATE appointments SET name=?,phone=?,service=?,staff=?,date=?,time=?,duration=?,status=?,notes=?,updated_at=? WHERE id=?').run(a.name, a.phone, a.service, a.staff, a.date, a.time, a.duration, a.status, a.notes, now(), cur.id);
+  res.json(db.prepare('SELECT * FROM appointments WHERE id=?').get(cur.id));
+});
+app.delete('/api/appointments/:id', auth(), (req, res) => {
+  db.prepare('DELETE FROM appointments WHERE id=?').run(Number(req.params.id));
+  audit(req.user.id, 'appointment.delete', { id: Number(req.params.id) });
+  res.json({ ok: true });
+});
+
 /* ---------- eligibility calculator ---------- */
 const eligMod = require('./eligibility');
 app.post('/api/eligibility/test', auth('supervisor'), (req, res) => {

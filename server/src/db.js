@@ -48,6 +48,12 @@ CREATE TABLE IF NOT EXISTS kb (
   source TEXT DEFAULT 'manual', source_conversation INTEGER, hits INTEGER DEFAULT 0, active INTEGER DEFAULT 1,
   created_by INTEGER, created_at TEXT, updated_at TEXT
 );
+CREATE TABLE IF NOT EXISTS appointments (
+  id INTEGER PRIMARY KEY, site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, phone TEXT, service TEXT, staff TEXT, date TEXT NOT NULL, time TEXT, duration INTEGER DEFAULT 30,
+  status TEXT DEFAULT 'confirmed', notes TEXT, created_by INTEGER, created_at TEXT, updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_appt_site_date ON appointments(site_id, date);
 CREATE TABLE IF NOT EXISTS elig_results (
   id INTEGER PRIMARY KEY, site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
   program_id TEXT, conversation_id INTEGER, eligible INTEGER, amount REAL, reason TEXT, answers TEXT, created_at TEXT

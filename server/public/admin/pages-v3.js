@@ -380,11 +380,35 @@
   });
 
   /* ============================== settings hub ============================== */
-  var TABS = [['behavior', '⚙️ سلوك البوت', 'supervisor'], ['notify', '📨 الإشعارات', 'admin'], ['datasource', '🗄️ قواعد البيانات', 'admin'], ['integrations', '🔗 الربط مع الأنظمة', 'admin'], ['sites', '🌐 المواقع', 'admin'], ['audit', '📜 سجل العمليات', 'admin']];
+  var TABS = [['pages', '🧩 صفحات النظام', 'admin'], ['behavior', '⚙️ سلوك البوت', 'supervisor'], ['notify', '📨 الإشعارات', 'admin'], ['datasource', '🗄️ قواعد البيانات', 'admin'], ['integrations', '🔗 الربط مع الأنظمة', 'admin'], ['sites', '🌐 المواقع', 'admin'], ['audit', '📜 سجل العمليات', 'admin']];
+  /* ---------- admin: show / hide whole pages of the system ---------- */
+  A.page('pages', {
+    title: 'صفحات النظام', icon: '🧩', role: 'admin',
+    render: function (root) {
+      A.settingsPage(root, ['ui'], function (el, d, ch) {
+        var H = d.ui.hidden_pages = d.ui.hidden_pages || [];
+        var groups = A.NAV.concat([['تبويبات الإعدادات العامة', TABS.map(function (t) { return t[0]; })]]);
+        function draw() {
+          el.innerHTML = '<div class="alert info" style="margin-bottom:14px">🧩 أخفِ الصفحات التي لا تحتاجها جهتك (مثلاً: المقهى لا يحتاج «حاسبة الاستحقاق»). الصفحة المخفية تختفي من القائمة عند <b>جميع المستخدمين</b> ولا تُحذف بياناتها، ويمكنك إظهارها في أي وقت من هنا. هذه الصفحة لا يراها إلا مدير النظام.</div>' +
+            groups.map(function (g) {
+              var items = g[1].filter(function (id) { return A.pages[id] && A.LOCKED_PAGES.indexOf(id) < 0; });
+              if (!items.length) return '';
+              return '<div class="card" style="margin-bottom:12px"><h3>' + esc(g[0]) + '</h3><div class="grid g3">' + items.map(function (id) {
+                var p = A.pages[id], on = H.indexOf(id) < 0;
+                return '<label class="card flat row" style="padding:10px 12px;cursor:pointer;gap:10px;' + (on ? '' : 'opacity:.55') + '"><span class="switch"><input type="checkbox" data-pg="' + id + '"' + (on ? ' checked' : '') + '><span class="tr"></span></span><span style="font-size:20px">' + p.icon + '</span><span><b>' + esc(p.title) + '</b><br><small class="muted">' + (on ? '👁️ ظاهرة' : '🙈 مخفية') + '</small></span></label>';
+              }).join('') + '</div></div>';
+            }).join('');
+          A.$$('[data-pg]', el).forEach(function (c) { c.onchange = function () { var id = c.getAttribute('data-pg'), i = H.indexOf(id); if (c.checked && i >= 0) H.splice(i, 1); if (!c.checked && i < 0) H.push(id); ch(); draw(); }; });
+        }
+        draw();
+      }, { onSaved: function () { A.renderNav(); } });
+    }
+  });
+
   A.page('settings', {
     title: 'الإعدادات العامة', icon: '⚙️', role: 'supervisor', hint: 'سلوك البوت، الإشعارات، قواعد البيانات، الربط، المواقع',
     render: function (root, sub) {
-      var tabs = TABS.filter(function (t) { return A.can(t[2]); }), cur = tabs.some(function (t) { return t[0] === sub[0]; }) ? sub[0] : tabs[0][0], clean = null;
+      var tabs = TABS.filter(function (t) { return A.can(t[2]) && !A.isHidden(t[0]); }), cur = tabs.some(function (t) { return t[0] === sub[0]; }) ? sub[0] : (tabs.filter(function (t) { return t[0] !== 'pages'; })[0] || tabs[0])[0], clean = null;
       root.innerHTML = '<div class="tabs big" id="stabs">' + tabs.map(function (t) { return '<button data-t="' + t[0] + '">' + t[1] + '</button>'; }).join('') + '</div><div id="sinner"></div>';
       function show() {
         A.$$('#stabs button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-t') === cur); });
@@ -412,7 +436,7 @@
             card('⏰ النسخ التلقائي', f.sw('enabled', 'تفعيل النسخ الاحتياطي التلقائي') + '<div class="grid g3" style="margin-top:10px">' + f.select('frequency', 'التكرار', [['hourly', 'كل ساعة'], ['daily', 'يومياً'], ['weekly', 'أسبوعياً']]) + f.num('hour', 'الساعة (بتوقيت الرياض)', { min: 0, max: 23 }) + f.num('keep', 'عدد النسخ المحفوظة', { min: 1, max: 90 }) + '</div>' +
               f.text('folder', 'المجلد على الخادم', { ltr: true, ph: r.folder, hint: 'اتركه فارغاً لاستخدام المجلد الافتراضي: ' + esc(r.folder) }) + f.text('email', 'إرسال كل نسخة تلقائية إلى البريد', { ltr: true, ph: 'backup@example.org', hint: 'يتطلب تفعيل البريد في الإشعارات' }) +
               (r.persistent ? '' : '<div class="alert warn" style="margin-bottom:10px">⚠️ الاستضافة الحالية مؤقتة الملفات (مثل Render المجاني): مجلد الخادم يُمسح عند إعادة التشغيل. البيانات نفسها محفوظة في قاعدة البيانات، لكن للنسخ الاحتياطية استخدم «التنزيل» أو «الإرسال للبريد».</div>') +
-              '<div class="row"><button class="btn" id="bcs">حفظ الجدولة</button><span class="small muted">آخر نسخة تلقائية: ' + (r.last ? A.fmtDate(r.last) : '—') + '</span></div>') + '</div><div>' +
+              '<div class="row"><button class="btn" id="bcs" style="display:none">حفظ الجدولة</button><span class="tiny muted" id="bcss">✅ تُحفظ تلقائياً</span><span class="small muted">آخر نسخة تلقائية: ' + (r.last ? A.fmtDate(r.last) : '—') + '</span></div>') + '</div><div>' +
             card('🗂️ النسخ المحفوظة على الخادم', r.files.length ? '<div class="tbl-wrap"><table class="t"><thead><tr><th>الملف</th><th>النوع</th><th>الحجم</th><th>التاريخ</th><th></th></tr></thead><tbody>' + r.files.map(function (x) {
               return '<tr><td class="ltr tiny">' + esc(x.name) + '</td><td>' + ({ auto: '<span class="tag blue">تلقائية</span>', manual: '<span class="tag green">يدوية</span>', 'pre-reset': '<span class="tag red">قبل التصفير</span>', 'pre-restore': '<span class="tag amber">قبل الاسترجاع</span>' }[x.kind] || x.kind) + '</td><td class="small">' + (x.size / 1024 / 1024).toFixed(2) + ' MB</td><td class="small muted">' + A.fmtDate(x.created_at) + '</td>' +
                 '<td style="white-space:nowrap"><button class="btn sm ghost" data-d="' + esc(x.name) + '">⬇️</button> <button class="btn sm soft" data-r="' + esc(x.name) + '">استرجاع</button> <button class="btn sm danger ghost" data-x="' + esc(x.name) + '">✕</button></td></tr>';
@@ -420,7 +444,8 @@
             '<div class="card reset-box"><h3>🧨 تصفير البرنامج</h3><p class="sub">يحذف البيانات المختارة نهائياً. «الإعدادات والربط» تنشئ موقعاً جديداً بمفتاح جديد، فيتوقف كود التركيب القديم وإضافة ووردبريس عن العمل. تُحفظ نسخة أمان تلقائياً قبل التصفير.</p>' +
             '<div class="checks">' + [['conversations', '💬 المحادثات'], ['tickets', '📝 الشكاوى والاقتراحات'], ['knowledge', '🧠 الخريطة الذهنية'], ['media', '🖼️ الصور والملفات'], ['users', '👥 المستخدمون (عدا حسابك)'], ['settings', '⚙️ الإعدادات والشجرة والربط'], ['logs', '📜 السجلات']].map(function (x) { return '<label><input type="checkbox" data-s="' + x[0] + '" checked> ' + x[1] + '</label>'; }).join('') + '</div>' +
             '<div class="grid g2" style="margin-top:12px"><div class="field"><label class="f">كلمة مرورك</label><input class="in" type="password" id="rpw" dir="ltr"></div><div class="field"><label class="f">اكتب كلمة <b>تصفير</b> للتأكيد</label><input class="in" id="rcf"></div></div><button class="btn danger" id="rgo">🧨 تصفير الآن</button></div></div></div>';
-          A.bind(root.querySelector('.grid > div:first-child .card:nth-child(3)'), c);
+          var bcT = null;
+          A.bind(root.querySelector('.grid > div:first-child .card:nth-child(3)'), c, function () { A.$('#bcss').textContent = '● جارٍ الحفظ…'; clearTimeout(bcT); bcT = setTimeout(function () { A.api('PUT', '/api/backups/config', c).then(function () { A.$('#bcss').textContent = '✅ تم الحفظ تلقائياً'; }, A.fail); }, 1000); });
           A.$('#bdl').onclick = function () { A.download('/api/backup/download'); };
           A.$('#bmk').onclick = function () { A.api('POST', '/api/backups', {}).then(function (x) { A.toast('تم حفظ ' + x.name, 'ok'); load(); }, A.fail); };
           A.$('#bcs').onclick = function () { A.api('PUT', '/api/backups/config', c).then(function () { A.toast('تم حفظ الجدولة', 'ok'); load(); }, A.fail); };
@@ -525,14 +550,14 @@
         A.$$('#dstabs button', el).forEach(function (b) { b.onclick = function () { var t = b.getAttribute('data-t'); A.$$('#dstabs button', el).forEach(function (x) { x.classList.toggle('on', x === b); }); A.$$('[data-dsec]', el).forEach(function (x) { x.classList.toggle('hidden', x.getAttribute('data-dsec') !== t); }); }; });
         function mainConn() {
           var box = A.$('#mainconn', el), t = TT[D.type];
-          box.innerHTML = t ? connFields(D, 'datasource.') + '<div class="hint">مثال استعلام: <code class="ltr">' + esc(t[4]) + '</code></div>' : (D.type === 'demo' ? '<div class="hint" style="margin-top:28px">جداول تجريبية: demo_orders و demo_customers (طلب 1001 بجوال 0500000001)</div>' : '');
+          box.innerHTML = t ? connFields(D, 'datasource.') : (D.type === 'demo' ? '<div class="hint" style="margin-top:28px">جداول تجريبية: demo_orders و demo_customers (طلب 1001 بجوال 0500000001)</div>' : '');
           A.bind(box, d, ch); wireConn(box, D, ch);
         }
         mainConn();
         function conns() {
           A.$('#conns', el).innerHTML = D.connections.map(function (c, i) {
             return '<div class="repeat" data-i="' + i + '"><div class="row" style="margin-bottom:8px"><input class="in" data-k="name" placeholder="الاسم (مثال: نظام المستفيدين)" style="font-weight:700"><select class="in" data-k="type" style="width:auto">' + TYPES.map(function (t) { return '<option value="' + t[0] + '">' + t[1] + '</option>'; }).join('') + '</select><button class="btn sm danger ghost icon" data-rm>✕</button></div>' +
-              '<div data-cf>' + connFields(c, '') + '</div><div class="hint">مثال استعلام: <code class="ltr">' + esc((TT[c.type] || TYPES[0])[4]) + '</code></div></div>';
+              '<div data-cf>' + connFields(c, '') + '</div></div>';
           }).join('') || '<p class="small muted">لا توجد مصادر إضافية</p>';
           A.$$('.repeat', A.$('#conns', el)).forEach(function (r) { var i = Number(r.getAttribute('data-i')), c = D.connections[i]; A.bind(r, c, function (k) { ch(); if (k === 'type') { c.connection = ''; conns(); lks(); } }); wireConn(r, c, ch); r.querySelector('[data-rm]').onclick = function () { D.connections.splice(i, 1); ch(); conns(); lks(); }; });
         }

@@ -57,12 +57,19 @@
   App.emit = function (evt, data) { (App.listeners[evt] || []).slice().forEach(function (f) { try { f(data); } catch (e) { console.error(e); } }); };
 
   /* ============================== api ============================== */
-  App.api = function (method, path, body) {
+  App.api = function (method, path, body, tries) {
+    tries = tries || 0;
     return fetch(path, {
       method: method, headers: Object.assign({ 'Content-Type': 'application/json' }, S.token ? { Authorization: 'Bearer ' + S.token } : {}),
       body: body === undefined ? undefined : JSON.stringify(body)
     }).then(function (r) {
       if (r.status === 401 && S.token) { App.logout(); throw new Error('انتهت الجلسة، سجّل الدخول مجدداً'); }
+      // the hosting network (e.g. Render) may answer 429 / 502 / 503 for a moment: wait and try again
+      if ([429, 502, 503, 504].indexOf(r.status) >= 0 && tries < 3) {
+        var wait = Math.min(8000, (Number(r.headers.get('Retry-After')) || (tries + 1) * 2) * 1000);
+        return new Promise(function (res) { setTimeout(res, wait); }).then(function () { return App.api(method, path, body, tries + 1); });
+      }
+      if ([429, 502, 503, 504].indexOf(r.status) >= 0) throw new Error(r.status === 429 ? 'الخادم مشغول مؤقتاً (429) — انتظر دقيقة ثم أعد المحاولة' : 'الخادم يستيقظ أو مشغول (' + r.status + ') — أعد المحاولة بعد دقيقة');
       return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { var e = new Error(j.error || ('خطأ ' + r.status)); e.data = j; throw e; } return j; });
     });
   };
@@ -401,8 +408,11 @@
 
   /* ============================== router & shell ============================== */
   App.page = function (id, def) { def.id = id; App.pages[id] = def; App.order.push(id); };
+  // pages hidden by the admin (Settings → System pages); the settings hub and that page itself always stay
+  App.LOCKED_PAGES = ['settings', 'pages', 'account'];
+  App.isHidden = function (id) { var h = (S.site && S.site.settings.ui && S.site.settings.ui.hidden_pages) || []; return App.LOCKED_PAGES.indexOf(id) < 0 && h.indexOf(id) >= 0; };
   App.NAV = [
-    ['العمل اليومي', ['live', 'history', 'tickets']],
+    ['العمل اليومي', ['live', 'history', 'tickets', 'appointments']],
     ['عقل البوت', ['mindmap', 'tree', 'eligibility', 'org']],
     ['المتابعة', ['stats', 'reports']],
     ['الإعدادات', ['appearance', 'languages', 'install', 'settings', 'users', 'backup']]
@@ -411,7 +421,7 @@
     var nav = App.$('.nav'); if (!nav) return;
     var cnt = { live: S.counts.waiting ? [S.counts.waiting, 'red'] : S.counts.mine ? [S.counts.mine, ''] : null, tickets: S.counts.tickets ? [S.counts.tickets, ''] : null, kb: S.counts.unanswered ? [S.counts.unanswered, ''] : null };
     nav.innerHTML = App.NAV.map(function (sec) {
-      var items = sec[1].filter(function (id) { var p = App.pages[id]; return p && (!p.role || App.can(p.role)); });
+      var items = sec[1].filter(function (id) { var p = App.pages[id]; return p && (!p.role || App.can(p.role)) && !App.isHidden(id); });
       if (!items.length) return '';
       return '<div class="sec">' + sec[0] + '</div>' + items.map(function (id) {
         var p = App.pages[id], c = cnt[id];
@@ -456,14 +466,16 @@
     });
   };
   App.dirty = false;
-  App.setDirty = function (v) { App.dirty = v; var d = App.$('.savebar .dirty'); if (d) d.textContent = v ? '● تغييرات غير محفوظة' : ''; };
-  window.addEventListener('beforeunload', function (e) { if (App.dirty) { e.preventDefault(); e.returnValue = ''; } });
+  App.setDirty = function (v) { App.dirty = v; if (!v) App.flushSave = null; var d = App.$('.savebar .dirty'); if (d && !App.flushSave) d.textContent = v ? '● تغييرات غير محفوظة' : ''; };
+  window.addEventListener('beforeunload', function (e) { if (App.dirty) { if (App.flushSave) App.flushSave(); e.preventDefault(); e.returnValue = ''; } });
 
   var cleanup = null;
   function route() {
     if (!S.me) return;
     var h = location.hash.replace(/^#\/?/, '').split('/'), id = h[0] || 'live', p = App.pages[id];
-    if (!p || (p.role && !App.can(p.role))) { id = 'live'; p = App.pages.live; }
+    if (!p || (p.role && !App.can(p.role)) || App.isHidden(id)) {
+      id = [].concat.apply([], App.NAV.map(function (x) { return x[1]; })).filter(function (k) { var q = App.pages[k]; return q && (!q.role || App.can(q.role)) && !App.isHidden(k); })[0] || 'account'; p = App.pages[id];
+    }
     if (cleanup) { try { cleanup(); } catch (e) { } cleanup = null; }
     App.$$('.modal-bg').forEach(function (m) { m.remove(); });
     App.current = id; App.activeConv = null; App.dirty = false;
@@ -478,7 +490,8 @@
   window.addEventListener('hashchange', function () {
     if (skipHash) { skipHash = false; return; }
     var samePage = lastHash.split('/')[1] === location.hash.split('/')[1];
-    if (App.dirty && !samePage && !confirm('لديك تغييرات غير محفوظة. هل تريد المغادرة دون حفظ؟')) { skipHash = true; location.hash = lastHash; return; }
+    if (App.dirty && !samePage && App.flushSave) { App.flushSave(); App.flushSave = null; App.dirty = false; } // autosave: save what is pending, then leave
+    else if (App.dirty && !samePage && !confirm('لديك تغييرات غير محفوظة. هل تريد المغادرة دون حفظ؟')) { skipHash = true; location.hash = lastHash; return; }
     lastHash = location.hash;
     if (samePage && App.pages[App.current] && App.pages[App.current].onSub) return App.pages[App.current].onSub(location.hash.replace(/^#\/?/, '').split('/').slice(1));
     route();

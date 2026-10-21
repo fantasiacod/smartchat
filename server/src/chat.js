@@ -419,6 +419,7 @@ async function runAction(conv, site, opt, freeText) {
     case 'eligibility': return opt.target ? startElig(conv, site, opt.target) : sendEligHub(conv, site);
     case 'eligibility_menu': return sendEligHub(conv, site);
     case 'lookups_menu': return sendLookupsHub(conv, site);
+    case 'appointment_lookup': return startApptLookup(conv, site);
     case 'elig': {
       const a = conv.state.await;
       if (a?.kind === 'elig' && a.pid === opt.target) return answerElig(conv, site, String(Number(opt.field) + 1));
@@ -584,6 +585,50 @@ async function executeLookup(conv, site) {
     botSay(conv, site, text);
   }
   return botSay(conv, site, t.anything_else, navOptions(conv, site));
+}
+
+/* ============================== appointments (salons, clinics…) ============================== */
+
+const riyadhDate = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+function fmtApptDate(conv, date) {
+  try { return new Intl.DateTimeFormat(conv.lang === 'ar' ? 'ar-SA-u-ca-gregory-nu-latn' : conv.lang === 'ur' ? 'ur-PK-u-nu-latn' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(date + 'T12:00:00Z')); } catch { return date; }
+}
+function fmtApptTime(conv, site, time) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(time || '')); if (!m) return time || '';
+  const t = tr(conv, site), h = Number(m[1]);
+  return `${((h + 11) % 12) + 1}:${m[2]} ${h < 12 ? t.am : t.pm}`;
+}
+function apptText(conv, site, a) {
+  const t = tr(conv, site), A = site.settings.appointments || {};
+  return [fill(t.appt_date, { date: fmtApptDate(conv, a.date) }), a.time ? fill(t.appt_time, { time: fmtApptTime(conv, site, a.time) }) : '',
+    a.service ? fill(t.appt_service, { service: a.service }) : '', a.staff && A.show_staff !== false ? fill(t.appt_staff, { staff: a.staff }) : '',
+    a.status === 'pending' ? t.appt_status_pending : ''].filter(Boolean).join('\n');
+}
+function startApptLookup(conv, site) {
+  const t = tr(conv, site);
+  saveConv(conv, { state: { ...conv.state, await: { kind: 'appt', step: 'name', tries: 0 } } });
+  return botSay(conv, site, t.appt_ask_name, [{ label: t.nav_cancel, action: 'cancel' }]);
+}
+function answerAppt(conv, site, text) {
+  const st = conv.state, a = st.await, t = tr(conv, site), A = site.settings.appointments || {};
+  const notFound = () => { saveConv(conv, { state: { ...st, await: null } }); return botSay(conv, site, (conv.lang === 'ar' && A.not_found) || t.appt_not_found, [{ label: t.nav_retry, action: 'appointment_lookup' }, ...navOptions(conv, site)]); };
+  const show = (list) => {
+    saveConv(conv, { state: { ...st, await: null } });
+    return botSay(conv, site, (list.length > 1 ? t.appt_many : t.appt_found) + '\n\n' + list.slice(0, 3).map(x => apptText(conv, site, x)).join('\n\n'), navOptions(conv, site));
+  };
+  if (a.step === 'name') {
+    const q = nlp.normalize(text); if (q.length < 2) return notFound();
+    const rows = db.prepare("SELECT * FROM appointments WHERE site_id=? AND date>=? AND status NOT IN ('cancelled','done') ORDER BY date, time LIMIT 500").all(site.id, riyadhDate());
+    const hits = rows.filter(r => { const n = nlp.normalize(r.name); return n === q || (q.length >= 3 && (n.startsWith(q + ' ') || nlp.containsPhrase(r.name, text))) || nlp.similarity(n, q) >= 0.88; });
+    if (!hits.length) return notFound();
+    if (!A.verify_phone) return show(hits);
+    saveConv(conv, { state: { ...st, await: { kind: 'appt', step: 'phone', ids: hits.map(h => h.id), tries: 0 } } });
+    return botSay(conv, site, t.appt_ask_phone, [{ label: t.nav_cancel, action: 'cancel' }]);
+  }
+  const digits = nlp.toLatinDigits(text).replace(/\D/g, '').slice(-9);
+  const rows = (a.ids || []).map(id => db.prepare('SELECT * FROM appointments WHERE id=? AND site_id=?').get(id, site.id)).filter(Boolean);
+  const hits = digits.length >= 7 ? rows.filter(r => String(r.phone || '').replace(/\D/g, '').slice(-9) === digits) : [];
+  return hits.length ? show(hits) : notFound();
 }
 
 /* ============================== eligibility calculator ============================== */
@@ -833,6 +878,7 @@ async function handleVisitorText(conv, site, text) {
   if (st.await) {
     if (['الغاء', 'cancel', 'منسوخ'].includes(nlp.normalize(text))) return sendNode(conv, site, '__menu');
     if (st.await.kind === 'elig') return answerElig(conv, site, text);
+    if (st.await.kind === 'appt') return answerAppt(conv, site, text);
     if (st.await.kind === 'ticket_status') {
       if (st.await.step === 'number') {
         saveConv(conv, { state: { ...st, await: { kind: 'ticket_status', step: 'phone', number: nlp.toLatinDigits(text).trim().replace(/\s+/g, '').toUpperCase() } } });
@@ -890,6 +936,7 @@ async function handleVisitorText(conv, site, text) {
   if (intentHit(text, I.complaint)) return sendTicketForm(conv, site, 'complaint');
   if (intentHit(text, I.suggestion)) return sendTicketForm(conv, site, 'suggestion');
   if (intentHit(text, [...I.order, ...(b.order_keywords || [])]) && site.settings.datasource.type !== 'none') return startLookup(conv, site, 'order', text);
+  if (intentHit(text, INTENTS.appointment) && db.prepare('SELECT 1 FROM appointments WHERE site_id=? LIMIT 1').get(site.id)) return startApptLookup(conv, site);
   // general eligibility words open the list of programs (when there is more than one); a program's own words open it directly
   const EL = site.settings.eligibility || {}, visibleProgs = (EL.programs || []).filter(p => p.enabled !== false && p.visible !== false && (p.questions || []).length);
   const hubHit = intentHit(text, [...String(EL.hub?.keywords || '').split(/[,،\n]/).map(x => x.trim()).filter(Boolean), ...INTENTS.eligibility]);

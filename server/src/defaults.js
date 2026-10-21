@@ -92,6 +92,10 @@ function defaultSettings() {
       lookups: []       // [{ id, title, keywords, connection: 'main'|<id>, query, template, not_found }]
     },
     // eligibility calculator programs: [{ id, title, keywords, intro, enabled, questions, calcs, rules, amount, messages, after }]
+    // dashboard pages the admin chose to hide from the system (the settings page itself can never be hidden)
+    ui: { hidden_pages: [] },
+    // appointments calendar (salons, clinics…): the bot tells a visitor his appointment by name
+    appointments: { verify_phone: false, services: ['قص شعر', 'صبغة', 'سشوار', 'مكياج', 'عناية بالبشرة'], staff: [], show_staff: true, not_found: '' },
     eligibility: { hub: { label: '🧮 حساب آلية الاستحقاق', message: '', keywords: '', skip_single: false }, programs: [] },
     security: { allowed_domains: '', identity_secret: crypto.randomBytes(24).toString('hex') }
   };
@@ -131,6 +135,100 @@ function defaultTree() {
     ]
   };
 }
+
+/* ---------- ready trees by organisation type (everything stays editable; unused features hide themselves) ---------- */
+const B = (label, action, extra = {}, en) => ({ label, action, ...extra, ...(en ? { i18n: { en: { label: en } } } : {}) });
+const HOME_BTN = B('↩️ القائمة الرئيسية', 'goto', { target: 'menu' }, '↩️ Main menu');
+const EDIT = '\n\n✏️ (عدّل هذا النص من «القوائم والأزرار»)';
+function baseTree(welcome, menuMsg, options, extraNodes = []) {
+  return { root: 'root', nodes: [
+    { id: 'root', title: 'الترحيب', x: 1500, y: 80, auto_next: 'menu', message: welcome, i18n: { en: { message: 'Hello {name} 👋\nI am {bot}, happy to help you.' } }, options: [] },
+    { id: 'menu', title: 'القائمة الرئيسية', x: 1120, y: 80, numbered: true, message: menuMsg, i18n: { en: { message: 'Choose a service number or type your question:' } }, options },
+    ...extraNodes.map((n, i) => ({ x: 740, y: 80 + i * 260, numbered: true, ...n }))
+  ] };
+}
+const feedbackNode = (title = 'رأيك يهمنا') => ({ id: 'tickets', title, message: 'نسعد بسماع ملاحظاتك. ماذا تريد أن تفعل؟', i18n: { en: { message: 'We value your feedback. What would you like to do?' } }, options: [
+  B('📝 تقديم شكوى', 'ticket', { field: 'complaint' }, '📝 Complaint'), B('💡 تقديم اقتراح', 'ticket', { field: 'suggestion' }, '💡 Suggestion'), B('🔎 متابعة طلب سابق', 'ticket_status', {}, '🔎 Track a request'), HOME_BTN] });
+const contactNode = () => ({ id: 'contact', title: 'تواصل معنا', message: 'كيف تحب أن تتواصل معنا؟', i18n: { en: { message: 'How would you like to reach us?' } }, options: [
+  B('📞 أرقام التواصل', 'org', { field: 'contact' }, '📞 Phone numbers'), B('📱 حسابات التواصل الاجتماعي', 'org', { field: 'social' }, '📱 Social media'), B('🌐 الموقع الإلكتروني', 'org', { field: 'website' }, '🌐 Website'), B('👨‍💼 التحدث مع موظف', 'handoff', {}, '👨‍💼 Talk to an agent'), HOME_BTN] });
+const WELCOME = 'أهلاً {name} 👋\nأنا {bot}، يسعدني خدمتك.';
+const MENU_MSG = 'اختر رقم الخدمة أو اكتب سؤالك مباشرة:';
+
+const TREE_TYPES = {
+  charity: { icon: '🤝', name: 'جمعية خيرية', desc: 'تعريف، تبرع، تسجيل مستفيدين، حساب الاستحقاق، الاستعلام عن الطلبات، تطوع', build: () => defaultTree() },
+  foundation: { icon: '💚', name: 'مؤسسة مانحة / داعمة', desc: 'طلبات دعم، شروط وأهلية، متابعة الطلب، مجالات الدعم', build: () => baseTree(WELCOME, MENU_MSG, [
+    B('🏢 تعرّف علينا', 'about', {}, '🏢 About us'),
+    B('🎯 مجالات الدعم', 'goto', { target: 'fields' }, '🎯 What we support'),
+    B('📝 تقديم طلب دعم', 'goto', { target: 'apply' }, '📝 Apply for support'),
+    B('🧮 حساب آلية الاستحقاق', 'eligibility_menu', {}, '🧮 Eligibility check'),
+    B('🔎 متابعة طلبي', 'lookups_menu', {}, '🔎 Track my request'),
+    B('❓ الأسئلة الشائعة', 'kb_browse', {}, '❓ FAQ'),
+    B('📍 موقعنا', 'location', {}, '📍 Location'),
+    B('📞 تواصل معنا', 'goto', { target: 'contact' }, '📞 Contact us'),
+    B('📝 الشكاوى والاقتراحات', 'goto', { target: 'tickets' }, '📝 Feedback')
+  ], [
+    { id: 'fields', title: 'مجالات الدعم', message: 'نقدّم الدعم في المجالات التالية:\n• التعليم\n• الصحة\n• الإسكان\n• المشاريع التنموية' + EDIT, options: [B('📝 تقديم طلب دعم', 'goto', { target: 'apply' }), HOME_BTN] },
+    { id: 'apply', title: 'تقديم طلب دعم', message: 'خطوات تقديم طلب الدعم:\n1. تأكد من انطباق الشروط (يمكنك حساب أهليتك من هنا)\n2. جهّز المستندات المطلوبة\n3. قدّم الطلب عبر منصتنا' + EDIT, options: [B('🧮 هل أنا مؤهل؟', 'eligibility_menu'), B('📞 اطلب اتصالاً منا', 'ticket', { field: 'callback' }), HOME_BTN] },
+    contactNode(), feedbackNode()
+  ]) },
+  company: { icon: '🏢', name: 'شركة', desc: 'منتجات وخدمات، طلب عرض سعر، تتبع الطلب، الدعم الفني، الوظائف', build: () => baseTree(WELCOME, MENU_MSG, [
+    B('🏢 من نحن', 'about', {}, '🏢 About us'),
+    B('🛍️ منتجاتنا وخدماتنا', 'goto', { target: 'products' }, '🛍️ Products & services'),
+    B('💰 طلب عرض سعر', 'ticket', { field: 'callback' }, '💰 Request a quote'),
+    B('📦 تتبع طلبي', 'lookups_menu', {}, '📦 Track my order'),
+    B('🛠️ الدعم الفني', 'goto', { target: 'support' }, '🛠️ Technical support'),
+    B('💼 الوظائف', 'answer', { target: 'نرحب بانضمامك لفريقنا 💼\nأرسل سيرتك الذاتية إلى: jobs@example.com' + EDIT }, '💼 Careers'),
+    B('📍 فروعنا', 'location', {}, '📍 Branches'),
+    B('📞 تواصل معنا', 'goto', { target: 'contact' }, '📞 Contact us')
+  ], [
+    { id: 'products', title: 'منتجاتنا وخدماتنا', message: 'نقدّم لكم:\n• المنتج / الخدمة الأولى\n• المنتج / الخدمة الثانية' + EDIT, options: [B('💰 طلب عرض سعر', 'ticket', { field: 'callback' }), B('❓ أسئلة شائعة', 'kb_browse'), HOME_BTN] },
+    { id: 'support', title: 'الدعم الفني', message: 'كيف نقدر نساعدك؟', options: [B('❓ حلول المشاكل الشائعة', 'kb_browse'), B('📝 فتح بلاغ', 'ticket', { field: 'complaint' }), B('🔎 متابعة بلاغ', 'ticket_status'), B('👨‍💼 التحدث مع موظف الدعم', 'handoff'), HOME_BTN] },
+    contactNode(), feedbackNode()
+  ]) },
+  institution: { icon: '🏛️', name: 'مؤسسة / جهة خدمية', desc: 'خدمات، الاستعلام عن معاملة، حجز موعد، أوقات العمل، الفروع', build: () => baseTree(WELCOME, MENU_MSG, [
+    B('🏛️ عن المؤسسة', 'about', {}, '🏛️ About us'),
+    B('🧾 خدماتنا', 'goto', { target: 'services' }, '🧾 Our services'),
+    B('📋 الاستعلام عن معاملة', 'lookups_menu', {}, '📋 Check a transaction'),
+    B('📅 طلب موعد', 'ticket', { field: 'callback' }, '📅 Book an appointment'),
+    B('🕘 أوقات العمل', 'org', { field: 'hours' }, '🕘 Working hours'),
+    B('📍 الفروع والمواقع', 'location', {}, '📍 Branches'),
+    B('📞 تواصل معنا', 'goto', { target: 'contact' }, '📞 Contact us'),
+    B('📝 الشكاوى والاقتراحات', 'goto', { target: 'tickets' }, '📝 Feedback')
+  ], [
+    { id: 'services', title: 'خدماتنا', message: 'اختر الخدمة لمعرفة متطلباتها:', options: [B('❓ دليل الخدمات والأسئلة', 'kb_browse'), B('📋 الاستعلام عن معاملة', 'lookups_menu'), B('📅 طلب موعد', 'ticket', { field: 'callback' }), HOME_BTN] },
+    contactNode(), feedbackNode()
+  ]) },
+  cafe: { icon: '☕', name: 'مقهى / مطعم', desc: 'المنيو والأسعار، العروض، أوقات العمل، الفروع، الطلب والتوصيل، حجز طاولة', build: () => baseTree('أهلاً {name} ☕\nمرحباً بك! أنا {bot}، كيف أخدمك؟', 'اختر رقم الخدمة:', [
+    B('☕ المنيو والأسعار', 'goto', { target: 'menu_items' }, '☕ Menu & prices'),
+    B('🎉 العروض', 'answer', { target: 'عروض هذا الأسبوع 🎉\n• اكتب عرضك هنا' + EDIT }, '🎉 Offers'),
+    B('🛵 الطلب والتوصيل', 'answer', { target: 'اطلب الآن عبر تطبيقات التوصيل 🛵\n(اكتب أسماء التطبيقات أو رابط الطلب)' + EDIT }, '🛵 Order & delivery'),
+    B('📅 حجز طاولة', 'ticket', { field: 'callback' }, '📅 Book a table'),
+    B('🕘 أوقات العمل', 'org', { field: 'hours' }, '🕘 Opening hours'),
+    B('📍 فروعنا', 'location', {}, '📍 Our branches'),
+    B('📱 تابعنا', 'org', { field: 'social' }, '📱 Follow us'),
+    B('💬 رأيك يهمنا', 'goto', { target: 'tickets' }, '💬 Feedback')
+  ], [
+    { id: 'menu_items', title: 'المنيو', message: 'هذا المنيو 👇 (ارفع صورة أو PDF للمنيو من «القوائم والأزرار» ← مرفقات)', media: [], options: [B('🎉 العروض', 'answer', { target: 'عروض هذا الأسبوع 🎉' + EDIT }), B('🛵 الطلب والتوصيل', 'answer', { target: 'اطلب الآن عبر تطبيقات التوصيل 🛵' + EDIT }), HOME_BTN] },
+    feedbackNode()
+  ]) },
+  salon: { icon: '💇', name: 'صالون / مركز تجميل', desc: 'الخدمات والأسعار، حجز موعد، الاستعلام عن موعدي بالاسم، العروض، أوقات العمل', build: () => baseTree('أهلاً {name} 💇‍♀️\nمرحباً بك! أنا {bot}، كيف أخدمك؟', 'اختر رقم الخدمة:', [
+    B('💇 خدماتنا والأسعار', 'goto', { target: 'services' }, '💇 Services & prices'),
+    B('📅 حجز موعد', 'ticket', { field: 'callback' }, '📅 Book an appointment'),
+    B('🕒 متى موعدي؟', 'appointment_lookup', {}, '🕒 When is my appointment?'),
+    B('🎉 العروض', 'answer', { target: 'عروض هذا الشهر 🎉\n• اكتب عرضك هنا' + EDIT }, '🎉 Offers'),
+    B('🕘 أوقات العمل', 'org', { field: 'hours' }, '🕘 Opening hours'),
+    B('📍 موقعنا', 'location', {}, '📍 Location'),
+    B('📱 تابعينا', 'org', { field: 'social' }, '📱 Follow us'),
+    B('💬 رأيك يهمنا', 'goto', { target: 'tickets' }, '💬 Feedback')
+  ], [
+    { id: 'services', title: 'خدماتنا والأسعار', message: 'خدماتنا 👇\n• قص شعر — 100 ريال\n• صبغة — من 250 ريال\n• سشوار — 80 ريال' + EDIT + '\n(ويمكنك رفع صورة قائمة الأسعار كمرفق)', media: [], options: [B('📅 حجز موعد', 'ticket', { field: 'callback' }), B('🕒 متى موعدي؟', 'appointment_lookup'), HOME_BTN] },
+    feedbackNode()
+  ]) },
+  blank: { icon: '✨', name: 'قائمة خاصة (فارغة)', desc: 'ترحيب وقائمة رئيسية بسيطة، وتبني الباقي بنفسك', build: () => baseTree(WELCOME, MENU_MSG, [
+    B('❓ الأسئلة الشائعة', 'kb_browse', {}, '❓ FAQ'), B('📞 أرقام التواصل', 'org', { field: 'contact' }, '📞 Contact'), B('👨‍💼 التحدث مع موظف', 'handoff', {}, '👨‍💼 Talk to an agent')
+  ]) }
+};
+function treeTemplate(type) { return (TREE_TYPES[type] || TREE_TYPES.charity).build(); }
 
 function deepMerge(base, over) {
   if (Array.isArray(base) || typeof base !== 'object' || base === null) return over === undefined ? base : over;
@@ -176,4 +274,4 @@ function migrateSettings(s) {
   return s;
 }
 
-module.exports = { defaultSettings, defaultTree, deepMerge, migrateSettings };
+module.exports = { defaultSettings, defaultTree, treeTemplate, TREE_TYPES, deepMerge, migrateSettings };

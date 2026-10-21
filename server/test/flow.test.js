@@ -462,6 +462,46 @@ let pass = 0; const ok = (c, m) => { assert.ok(c, m); pass++; console.log('  ✔
   console.error = origErr;
   ok(!badBtns.length, `all ${ALL.length} kinds of buttons answer correctly` + (badBtns.length ? ' — failed: ' + badBtns.join(', ') : ''));
 
+  // ---------------- ready trees per organisation type: every main-menu button answers
+  const tpls = (await api('GET', '/api/tree-templates', null, T)).j;
+  ok(tpls.map(t => t.id).join(',') === 'charity,foundation,company,institution,cafe,salon,blank', 'ready trees: charity, foundation, company, institution, café, salon, blank');
+  const tplFail = [];
+  for (const tp of tpls) {
+    const trT = (await api('GET', '/api/tree-template?type=' + tp.id, null, T)).j;
+    await api('PUT', '/api/sites/' + siteId, { tree: trT }, T);
+    const menuT = trT.nodes.find(n => n.id === 'menu');
+    for (let i = 0; i < menuT.options.length; i++) {
+      const vt = visitor(key, 'tp_' + tp.id + i); await vt.join(); await vt.emit('start', {}); await wait(120);
+      const mm = [...vt.msgs].reverse().find(m => m.options && m.numbered);
+      const idx = mm ? mm.options.findIndex(o => o.label === menuT.options[i].label) : -1;
+      if (idx < 0) { vt.s.disconnect(); continue; } // hidden until configured (e.g. no queries)
+      const before = vt.msgs.length;
+      await vt.emit('option', { mid: mm.id, i: idx }); await wait(300);
+      const fresh = vt.msgs.slice(before).filter(m => m.sender === 'bot' || m.sender === 'system');
+      if (!(fresh.length || vt.status === 'waiting') || fresh.some(m => /غير مفعّل بعد/.test(m.body || ''))) tplFail.push(tp.id + ': ' + menuT.options[i].label);
+      vt.s.disconnect();
+    }
+  }
+  ok(!tplFail.length, 'every button of every ready tree answers' + (tplFail.length ? ' — failed: ' + tplFail.join(' | ') : ''));
+
+  // ---------------- appointments calendar: «متى موعدي؟» by name
+  const tmr = new Date(Date.now() + 86400000), tmrS = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(tmr);
+  const ap = await api('POST', '/api/appointments', { site_id: siteId, name: 'نورة القحطاني', phone: '0551112223', service: 'صبغة', staff: 'ريم', date: tmrS, time: '16:30' }, T);
+  await api('POST', '/api/appointments', { site_id: siteId, name: 'نورة القحطاني', date: '2020-01-01', time: '10:00' }, T); // past: never shown
+  ok(ap.s === 200 && ap.j.id && (await api('GET', `/api/appointments?site=${siteId}&from=${tmrS}&to=${tmrS}`, null, T)).j.length === 1, 'appointments: add & list by date range');
+  ok((await api('POST', '/api/appointments', { site_id: siteId, name: '', date: tmrS }, T)).s === 400, 'appointment needs a name and a date');
+  const va = visitor(key, 'va'); await va.join(); await va.emit('start', {}); await wait(120);
+  await va.say('متى موعدي؟'); ok(/الاسم المسجّل/.test(va.last().body), 'bot asks for the booking name');
+  await va.say('نورة القحطاني', 250);
+  ok(/موعدك القادم/.test(va.last().body) && /4:30 م/.test(va.last().body) && /صبغة/.test(va.last().body) && /ريم/.test(va.last().body) && !/2020/.test(va.last().body), 'name → date, time, service and staff (upcoming only)');
+  await api('PUT', '/api/sites/' + siteId, { settings: { appointments: { verify_phone: true } } }, T);
+  const va2 = visitor(key, 'va2'); await va2.join(); await va2.emit('start', {}); await wait(120);
+  await va2.say('موعدي'); await va2.say('نورة القحطاني'); ok(/رقم الجوال/.test(va2.last().body), 'optional phone check before showing the appointment');
+  await va2.say('0500000000', 200); ok(/لم أجد موعداً/.test(va2.last().body), 'wrong phone → not shown');
+  await api('PUT', '/api/appointments/' + ap.j.id, { status: 'cancelled' }, T);
+  const va3 = visitor(key, 'va3'); await va3.join(); await va3.emit('start', {}); await wait(120);
+  await va3.say('موعدي'); await va3.say('نورة القحطاني', 200); ok(/لم أجد موعداً/.test(va3.last().body), 'cancelled appointments are not shown');
+
   // ---------------- webhooks (extensibility)
   const got = [];
   const hookSrv = http.createServer((req, res) => { let b = ''; req.on('data', c => b += c); req.on('end', () => { got.push({ ev: req.headers['x-smartchat-event'], sig: req.headers['x-smartchat-signature'], body: b }); res.end('ok'); }); });
