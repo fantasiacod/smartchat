@@ -8,7 +8,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 const { db, now, getSite, getSiteByKey, createSite, getConv, audit, DATA_DIR } = require('./db');
-const { defaultSettings, defaultTree, treeTemplate, TREE_TYPES, deepMerge } = require('./defaults');
+const { BUSINESS, defaultSettings, defaultTree, treeTemplate, TREE_TYPES, deepMerge } = require('./defaults');
 const { texts, LANGS } = require('./i18n');
 const chat = require('./chat');
 const ds = require('./datasource');
@@ -108,19 +108,42 @@ function imagePatternSvg(a, kind, color, opacity) {
   imgPatternCache.set(ck, svg);
   return svg;
 }
-function effectivePattern(a) { return (a.occasions?.auto && patterns.occasionOf(new Date(), a.occasions)) || a.pattern; }
+// the admin's background picture: an uploaded file or a plain https link (nothing that could break out of url("…"))
+function safeBgUrl(u) { return /^(\/media\/[\w.-]+|https:\/\/[^"'()\s\\<>]+)$/.test(String(u || '')); }
+// Background and decoration are two layers:
+//  - background: nothing, the admin's own picture, or a picture theme (Ramadan, Eid, National Day…)
+//  - decoration: a pattern drawn over it (or over the plain colour); its place is chosen separately (chat / header / both / off)
+// Older settings kept the picture theme inside `pattern`: read them as a background with the default decoration on top.
+function layersOf(a) {
+  let bg = a.bg || '', pat = a.pattern || 'none';
+  if (patterns.themeOf(pat)) { if (!bg) bg = pat; pat = 'girih12'; }
+  if (bg && bg !== 'custom' && !patterns.themeOf(bg)) bg = '';
+  if (bg === 'custom' && !safeBgUrl(a.bg_image)) bg = '';
+  // an occasion (if automatic switching is on) wins for its days: a picture background or a light decoration
+  const o = a.occasions?.auto && patterns.occasionOf(new Date(), a.occasions);
+  if (o) {
+    if ((a.occasions.style || 'image') === 'image') bg = 'img_' + o;
+    else pat = { eid_fitr: 'eid', eid_adha: 'eid', founding: 'national' }[o] || o;
+  }
+  return { bg, pat };
+}
+function effectivePattern(a) { return layersOf(a).pat; }
+
 function patternCss(site, base, inline) {
-  const a = site.settings.appearance, pat = effectivePattern(a), color = a.pattern_color || a.primary_color;
+  const a = site.settings.appearance, { bg, pat } = layersOf(a), color = a.pattern_color || a.primary_color;
   const hdrOp = Math.min(0.25, (Number(a.pattern_opacity) || 0.07) * 2.2);
+  const abs = (u) => /^https:/.test(u) ? u : base + u;
+  const bgLayer = bg === 'custom' ? { bg: 'custom', bg_css: `url("${abs(a.bg_image)}")` } : bg ? { bg, bg_css: `url("${base}/themes/${patterns.themeOf(bg)}")` } : { bg: '', bg_css: '' };
+  bgLayer.bg_fade = Math.max(0, Math.min(0.9, Number(a.bg_fade ?? 0.15) || 0));
   if (pat === 'logo' || pat === 'images') {
     const one = (c, o, hdr) => {
       if (inline) { const svg = imagePatternSvg(a, pat, c, o); return svg ? `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}")` : 'none'; }
       const v = crypto.createHash('sha1').update(JSON.stringify([a.pattern_logo, a.company_logo, a.pattern_images, a.pattern_scale, a.pattern_img_tint, c, o])).digest('hex').slice(0, 10);
       return `url("${base}/pattern-img/${site.key}.svg?k=${pat}&h=${hdr ? 1 : 0}&v=${v}")`;
     };
-    return { pattern: pat, pattern_css: one(color, a.pattern_opacity, false), pattern_header_css: one('#ffffff', hdrOp, true) };
+    return { pattern: pat, pattern_css: one(color, a.pattern_opacity, false), pattern_header_css: one('#ffffff', hdrOp, true), ...bgLayer };
   }
-  return { pattern: pat, pattern_css: patterns.css(pat, color, a.pattern_opacity, a.pattern_scale, base), pattern_header_css: patterns.css(pat, '#ffffff', hdrOp, a.pattern_scale, base) };
+  return { pattern: pat, pattern_css: patterns.css(pat, color, a.pattern_opacity, a.pattern_scale, base), pattern_header_css: patterns.css(pat, '#ffffff', hdrOp, a.pattern_scale, base), ...bgLayer };
 }
 
 function widgetConfig(site, base = '', inline = false) {
@@ -128,9 +151,12 @@ function widgetConfig(site, base = '', inline = false) {
   const enabled = (L.enabled || ['ar']).filter(l => LANGS[l]);
   return {
     name: site.name,
-    appearance: { ...a, pattern_images: undefined, pattern_logo: undefined, ...patternCss(site, base, inline) },
+    appearance: { ...a, pattern_images: undefined, pattern_logo: undefined, bg_image: undefined, ...patternCss(site, base, inline) },
     prechat: site.settings.prechat,
-    org: { name: o.name || a.company_name || '', unified_number: o.unified_number || '' },
+    org: { name: o.name || a.company_name || '', unified_number: o.unified_number || '',
+      address: a.show_address ? String(a.header_address || o.address || '').trim() : '', map_url: a.show_address ? (o.map_url || '') : '',
+      email: a.show_email ? String(a.header_email || o.email || '').trim() : '' },
+    attachments: (({ enabled, only_with_agent, max_mb, images, pdf }) => ({ enabled: enabled !== false, only_with_agent: !!only_with_agent, max_mb: max_mb || 5, images: images !== false, pdf: pdf !== false }))(site.settings.behavior.attachments || {}),
     languages: { enabled, default: enabled.includes(L.default) ? L.default : enabled[0], show_switcher: L.show_switcher !== false && enabled.length > 1, meta: Object.fromEntries(enabled.map(l => [l, LANGS[l]])) },
     texts: Object.fromEntries(enabled.map(l => [l, texts(site, l)])),
     tickets: { enabled: site.settings.tickets.enabled, require_email: site.settings.tickets.require_email },
@@ -146,8 +172,10 @@ app.get('/api/widget/config', cors, limit(120, 60000), (req, res) => {
 
 app.get('/healthz', (req, res) => res.json({ ok: true, version: 2 }));
 app.get('/', (req, res) => res.redirect('/admin/'));
+app.get(['/setup', '/api/setup/info'], (req, res) => req.path === '/setup' ? res.redirect('/admin/') : res.json({ setup: false })); // the first-run wizard is already done
 app.use('/admin', express.static(path.join(PUB, 'admin')));
 app.use('/demo', express.static(path.join(PUB, 'demo')));
+app.use('/themes', cors, express.static(path.join(PUB, 'themes'), { maxAge: '30d' }));
 
 /* ============================== media ============================== */
 const MEDIA_TYPES = {
@@ -169,6 +197,25 @@ function cleanMedia(value) {
     return { url, type, name: String(m.name || '').slice(0, 120) };
   });
 }
+
+// a visitor's attachment: needs the ticket of an open conversation, then the file is checked before it is posted
+const fileScan = require('./filescan');
+app.post('/api/widget/upload', cors, limit(12, 10 * 60 * 1000), express.raw({ type: () => true, limit: '16mb' }), async (req, res) => {
+  const tk = chat.readTicket(req.query.t);
+  if (!tk) return res.status(403).json({ error: 'انتهت صلاحية الرفع، حاول مرة أخرى' });
+  const site = getSite(tk.s); if (!site) return res.status(404).json({ error: 'site' });
+  const A = site.settings.behavior.attachments || {};
+  if (A.enabled === false) return res.status(403).json({ error: 'إرسال الملفات غير مفعّل' });
+  if (db.prepare("SELECT COUNT(*) n FROM messages WHERE conversation_id=? AND sender='visitor' AND payload LIKE '%\"media\"%'").get(tk.c).n >= 20) return res.status(429).json({ error: 'تم الوصول للحد الأقصى من الملفات في هذه المحادثة' });
+  const r = await fileScan.scan(req.body, { maxBytes: Math.min(15, Number(A.max_mb) || 5) * 1048576, images: A.images !== false, pdf: A.pdf !== false, vtKey: site.settings.security.virustotal_key || process.env.VIRUSTOTAL_KEY || '' });
+  if (!r.ok) { audit(null, 'upload.rejected', { conv: tk.c, reason: r.reason }); return res.status(400).json({ error: r.reason }); }
+  const id = crypto.randomUUID(), name = String(req.query.name || 'ملف').replace(/[\r\n\0<>"]/g, '').replace(/\.[a-z0-9]{1,5}$/i, '').slice(0, 80) + '.' + r.ext;
+  db.prepare('INSERT INTO media_assets(id,extension,mime,name,data,created_at) VALUES(?,?,?,?,?,?)').run(id, r.ext, r.mime, name, r.buf, now());
+  persistence.save(db, true).catch(() => { });
+  const file = { url: `/media/${id}.${r.ext}`, type: r.kind, name, size: r.buf.length };
+  if (!chat.visitorFile(tk.c, file)) return res.status(409).json({ error: 'المحادثة مغلقة' });
+  res.json({ ok: true, file });
+});
 
 app.post('/api/media', auth(), express.raw({ type: 'application/octet-stream', limit: MAX_MEDIA }), async (req, res) => {
   const mime = String(req.query.type || '').toLowerCase();
@@ -322,10 +369,11 @@ function maskSite(s, user) {
     if (out.settings.notify.email.pass) out.settings.notify.email.pass = '••••••';
     for (const k of ['api_key', 'auth_token']) if (out.settings.notify.sms[k]) out.settings.notify.sms[k] = '••••••';
     if (out.settings.notify.whatsapp.token) out.settings.notify.whatsapp.token = '••••••';
+    if (out.settings.security.virustotal_key) out.settings.security.virustotal_key = '••••••';
   }
   return out;
 }
-const SECTION_ROLE = { ui: 'admin', appointments: 'supervisor', eligibility: 'supervisor', appearance: 'supervisor', texts: 'supervisor', prechat: 'supervisor', behavior: 'supervisor', org: 'supervisor', developer: 'supervisor', tickets: 'supervisor', languages: 'supervisor', datasource: 'admin', security: 'admin', notify: 'admin', integrations: 'admin' };
+const SECTION_ROLE = { biz: 'supervisor', ui: 'admin', appointments: 'supervisor', eligibility: 'supervisor', appearance: 'supervisor', texts: 'supervisor', prechat: 'supervisor', behavior: 'supervisor', org: 'supervisor', developer: 'supervisor', tickets: 'supervisor', languages: 'supervisor', datasource: 'admin', security: 'admin', notify: 'admin', integrations: 'admin' };
 
 app.get('/api/sites', auth(), (req, res) => res.json(db.prepare('SELECT id FROM sites ORDER BY id').all().map(r => maskSite(getSite(r.id), req.user))));
 app.post('/api/sites', auth('admin'), (req, res) => {
@@ -376,6 +424,7 @@ app.post('/api/sites/:id/regenerate-secret', auth('admin'), (req, res) => {
   res.json({ identity_secret: site.settings.security.identity_secret });
 });
 app.get('/api/tree-template', auth(), (req, res) => res.json(treeTemplate(String(req.query.type || 'charity'))));
+app.get('/api/business-types', auth(), (req, res) => res.json(BUSINESS));
 app.get('/api/tree-templates', auth(), (req, res) => res.json(Object.entries(TREE_TYPES).map(([id, t]) => {
   const tr = t.build(), m = tr.nodes.find(n => n.id === 'menu');
   return { id, icon: t.icon, name: t.name, desc: t.desc, buttons: m.options.map(o => o.label) };

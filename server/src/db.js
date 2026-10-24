@@ -117,7 +117,7 @@ function seed() {
     const email = process.env.ADMIN_EMAIL || 'admin@example.com';
     const pass = process.env.ADMIN_PASSWORD || 'admin123';
     db.prepare('INSERT INTO users(name,email,password,role,job_title,created_at) VALUES(?,?,?,?,?,?)')
-      .run('المدير العام', email.toLowerCase(), bcrypt.hashSync(pass, 10), 'admin', 'مدير النظام', now());
+      .run(process.env.ADMIN_NAME || 'المدير العام', email.toLowerCase(), bcrypt.hashSync(pass, 10), 'admin', 'مدير النظام', now());
     console.log(`[seed] admin user created: ${email}`);
   }
   if (!db.prepare('SELECT COUNT(*) c FROM sites').get().c) createSite('موقعي', process.env.DEFAULT_SITE_KEY);

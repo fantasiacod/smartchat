@@ -89,6 +89,12 @@
           '<g fill="' + c + '">' + star5(74, 22, 5) + star4(86, 56, 3.5) + star4(56, 50, 2.5) + star8(70, 74, 5) + '</g>';
       }
     },
+    // picture backgrounds for occasions (the whole chat area)
+    img_ramadan: { name: '🌙 رمضان كريم (صورة)', theme: 'ramadan.jpg', occasion: true },
+    img_eid_fitr: { name: '🎉 عيد الفطر (صورة)', theme: 'eid_fitr.jpg', occasion: true },
+    img_eid_adha: { name: '🐑 عيد الأضحى (صورة)', theme: 'eid_adha.jpg', occasion: true },
+    img_national: { name: '🇸🇦 اليوم الوطني (صورة)', theme: 'national.jpg', occasion: true },
+    img_founding: { name: '🏰 يوم التأسيس (صورة)', theme: 'founding.jpg', occasion: true },
     logo: { name: '🏷️ شعار الجهة', img: 'logo' },
     images: { name: '🖼️ صوري', img: 'images' },
     dots: {
@@ -123,10 +129,11 @@
     on = on || {}; date = date || new Date();
     var hj = {}; try { new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { month: 'numeric', day: 'numeric', timeZone: 'Asia/Riyadh' }).formatToParts(date).forEach(function (p) { hj[p.type] = Number(p.value); }); } catch (e) { /* no ICU */ }
     var g = {}; new Intl.DateTimeFormat('en', { month: 'numeric', day: 'numeric', timeZone: 'Asia/Riyadh' }).formatToParts(date).forEach(function (p) { g[p.type] = Number(p.value); });
-    if (on.eid !== false && ((hj.month === 10 && hj.day <= 4) || (hj.month === 12 && hj.day >= 9 && hj.day <= 13))) return 'eid';
+    if (on.eid !== false && hj.month === 10 && hj.day <= 4) return 'eid_fitr';
+    if (on.eid !== false && hj.month === 12 && hj.day >= 9 && hj.day <= 13) return 'eid_adha';
     if (on.ramadan !== false && hj.month === 9) return 'ramadan';
     if (on.national !== false && g.month === 9 && g.day >= 20 && g.day <= 26) return 'national';
-    if (on.founding !== false && g.month === 2 && g.day >= 20 && g.day <= 23) return 'national';
+    if (on.founding !== false && g.month === 2 && g.day >= 20 && g.day <= 23) return 'founding';
     return null;
   }
 
@@ -152,13 +159,15 @@
   }
 
   function css(style, color, opacity, scale, base) {
+    if (P[style] && P[style].theme) return 'url("' + (base == null ? api.base : base) + '/themes/' + P[style].theme + '")';
     if (P[style] && P[style].asset) return 'url("' + assetUrl(style, color, opacity, scale, base) + '")';
     var s = svg(style, color, opacity, scale);
     return s ? 'url("data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s) + '")' : 'none';
   }
 
-  var list = Object.keys(P).map(function (k) { return { id: k, name: P[k].name, img: P[k].img || null, occasion: !!P[k].occasion }; });
-  var api = { list: list, svg: svg, css: css, rgba: rgba, imagesSvg: imagesSvg, occasionOf: occasionOf, base: '' };
+  var list = Object.keys(P).map(function (k) { return { id: k, name: P[k].name, img: P[k].img || null, theme: P[k].theme || null, occasion: !!P[k].occasion }; });
+  function themeOf(id) { return (P[id] && P[id].theme) || null; }
+  var api = { list: list, themeOf: themeOf, svg: svg, css: css, rgba: rgba, imagesSvg: imagesSvg, occasionOf: occasionOf, base: '' };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.SCPatterns = api;
 })(this);

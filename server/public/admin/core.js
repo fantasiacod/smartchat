@@ -413,7 +413,7 @@
   App.isHidden = function (id) { var h = (S.site && S.site.settings.ui && S.site.settings.ui.hidden_pages) || []; return App.LOCKED_PAGES.indexOf(id) < 0 && h.indexOf(id) >= 0; };
   App.NAV = [
     ['العمل اليومي', ['live', 'history', 'tickets', 'appointments']],
-    ['عقل البوت', ['mindmap', 'tree', 'eligibility', 'org']],
+    ['عقل البوت', ['mindmap', 'tree', 'business', 'eligibility', 'org']],
     ['المتابعة', ['stats', 'reports']],
     ['الإعدادات', ['appearance', 'languages', 'install', 'settings', 'users', 'backup']]
   ];

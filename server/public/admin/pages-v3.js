@@ -47,7 +47,7 @@
   var QUICK = [['نبذة عن الجمعية', 'building', 'history'], ['رؤيتنا', 'eye', 'vision'], ['رسالتنا', 'flag', 'mission'], ['أهدافنا', 'target', 'goals'], ['قيمنا', 'heart', ''], ['خدماتنا وبرامجنا', 'hands', ''],
     ['طريقة التسجيل', 'document', ''], ['شروط الاستفادة', 'shield', ''], ['مجلس الإدارة', 'users', ''], ['شركاؤنا', 'award', ''], ['التطوع معنا', 'volunteer', ''], ['إنجازاتنا', 'chart', '']];
   A.page('org', {
-    title: 'بيانات الجمعية', icon: '🏢', role: 'supervisor', hint: 'كل ما يحتاج البوت معرفته عنكم: التعريف، التواصل والموقع، الحسابات البنكية',
+    title: 'بيانات الجهة', icon: '🏢', role: 'supervisor', hint: 'كل ما يحتاج البوت معرفته عنكم: التعريف، التواصل والموقع، الحسابات البنكية',
     render: function (root, sub) {
       var tab = sub[0] || 'about';
       A.settingsPage(root, ['org', 'developer'], function (el, d, ch) {

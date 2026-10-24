@@ -21,6 +21,7 @@
     order_status: { icon: '📦', name: 'حالة الطلب (مدمج)', desc: 'استعلام «حالة الطلب» من قاعدة البيانات' },
     customer_info: { icon: '🪪', name: 'بيانات المستفيد (مدمج)', desc: 'استعلام «بيانات المستفيد» المدمج' },
     lookup: { icon: '🔎', name: 'استعلام مخصص', desc: 'من أي قاعدة بيانات مربوطة' },
+    catalog: { icon: '📋', name: 'قائمة (منيو، خدمات، أطباء…)', desc: 'من صفحة «نشاطك وقوائمه»' },
     appointment_lookup: { icon: '🕒', name: 'متى موعدي؟', desc: 'يكتب اسمه فيظهر له موعده من صفحة المواعيد' },
     eligibility_menu: { icon: '📋', name: 'قائمة حساب الاستحقاق', desc: 'كل برامج الاستحقاق الظاهرة' },
     eligibility: { icon: '🧮', name: 'حاسبة الاستحقاق', desc: 'أسئلة ثم: مؤهل / غير مؤهل + القيمة' },
@@ -102,7 +103,8 @@
       tree.nodes.forEach(function (n) { n.options = n.options || []; });
       A.GET('/api/kb?site=' + S.site.id).then(function (k) { kbList = k; });
       var DYN = [].concat(((S.site.settings.datasource || {}).lookups || []).filter(function (l) { return l.query; }).map(function (l) { return { act: 'lookup', target: l.id, icon: '🔎', label: l.title || l.id }; }),
-        (((S.site.settings.eligibility || {}).programs) || []).map(function (p) { return { act: 'eligibility', target: p.id, icon: '🧮', label: p.title || p.id }; }));
+        (((S.site.settings.eligibility || {}).programs) || []).map(function (p) { return { act: 'eligibility', target: p.id, icon: '🧮', label: p.title || p.id }; }),
+        (((S.site.settings.biz || {}).catalogs) || []).map(function (c) { return { act: 'catalog', target: c.id, icon: c.icon || '📋', label: c.title || c.id }; }));
       root.innerHTML = '<div class="tree-wrap"><aside class="palette"><button class="btn gold" id="tpl2" style="width:100%;margin-bottom:14px">📋 شجرة كاملة جاهزة لنوع جهتك<br><small style="font-weight:400">جمعية · مؤسسة · شركة · مقهى · صالون…</small></button><div class="section-title"><h2>⚡ قوائم جاهزة</h2></div><p class="tiny muted" style="margin:-8px 0 8px">اسحبها إلى المساحة (أو اضغطها) — تعمل فوراً وتُضاف للقائمة الرئيسية</p>' +
         Object.keys(READY).map(function (k) { var t = READY[k]; return '<div class="pi" draggable="true" data-ready="' + k + '" style="border-color:var(--primary)"><i>' + t.icon + '</i><div><b>' + t.name + '</b><small>' + t.desc + '</small></div></div>'; }).join('') +
         (DYN.length ? '<div class="section-title" style="margin-top:16px"><h2>استعلاماتك وبرامجك</h2></div><p class="tiny muted" style="margin:-8px 0 8px">اسحبها إلى أي عقدة</p>' + DYN.map(function (d) { return '<div class="pi" draggable="true" data-act="' + d.act + '" data-target="' + esc(d.target) + '" data-label="' + esc(d.icon + ' ' + d.label) + '" style="padding:7px 10px"><i style="font-size:16px;width:26px;height:26px">' + d.icon + '</i><div><b class="small">' + esc(d.label) + '</b></div></div>'; }).join('') : '') +
@@ -280,6 +282,7 @@
             else if (o.action === 'banks') h = '<label class="f">التصنيف</label><select class="in" data-p="target"><option value="">كل التصنيفات (يختار المستفيد)</option>' + ((S.site.settings.org.banks) || []).map(function (g) { return '<option value="' + esc(g.id) + '"' + (o.target === g.id ? ' selected' : '') + '>' + esc(g.name) + '</option>'; }).join('') + '</select>';
             else if (o.action === 'kb_browse') h = '<div class="hint">يعرض تصنيفات <a href="#/mindmap">الخريطة الذهنية</a> ثم أسئلتها</div>';
             else if (o.action === 'handoff') h = '<div class="hint">يرن عند الموظفين المتصلين حتى يرد أحدهم، وما يكتبه المستفيد يُحفظ ليتعلّم منه البوت.</div>';
+            else if (o.action === 'catalog') h = '<label class="f">القائمة</label><select class="in" data-p="target"><option value="">— اختر —</option>' + ((((S.site.settings.biz || {}).catalogs) || [])).map(function (c) { return '<option value="' + esc(c.id) + '"' + (o.target === c.id ? ' selected' : '') + '>' + esc((c.icon || '') + ' ' + c.title) + '</option>'; }).join('') + '</select><div class="hint">تُدار القوائم من صفحة <a href="#/business">نشاطك وقوائمه</a></div>';
             else if (o.action === 'lookups_menu') h = '<div class="hint">يعرض كل استعلامات <a href="#/datasource">قواعد البيانات</a> (بياناتي، حالة الطلب، موعد الصرف…) ويُخفى تلقائياً إن لم توجد استعلامات</div>';
             else if (o.action === 'eligibility_menu') h = '<div class="hint">يعرض البرامج الظاهرة من صفحة <a href="#/eligibility">حاسبة الاستحقاق</a></div>';
             else if (o.action === 'eligibility') h = '<label class="f">البرنامج</label><select class="in" data-p="target"><option value="">— اختر —</option>' + (((S.site.settings.eligibility || {}).programs) || []).map(function (p) { return '<option value="' + esc(p.id) + '"' + (o.target === p.id ? ' selected' : '') + '>' + esc(p.title || p.id) + '</option>'; }).join('') + '</select><div class="hint">تُنشأ البرامج من صفحة <a href="#/eligibility">حاسبة الاستحقاق</a></div>';
@@ -403,6 +406,7 @@
             else if (o.action === 'url' && !/^https?:\/\//.test(o.target || '')) bad = 'الرابط فارغ أو غير صحيح';
             else if (o.action === 'answer' && !String(o.target || '').trim()) bad = 'الإجابة فارغة';
             else if ((o.action === 'order_status' || o.action === 'customer_info') && (ds.type === 'none' || !(o.action === 'order_status' ? ds.order_query : ds.customer_query))) bad = 'لم يُضبط الاستعلام المدمج — استخدم «قائمة الاستعلامات» أو استعلاماً مخصصاً';
+            else if (o.action === 'catalog') { var cc = (((st.biz || {}).catalogs) || []).find(function (x) { return x.id === o.target; }); if (!cc) bad = 'القائمة غير موجودة — اختر نوع نشاطك من «نشاطك وقوائمه»'; else if (!(cc.items || []).some(function (i) { return i.name; })) out.push(['ℹ️', w, 'مخفي حتى تضيف عناصر للقائمة']); }
             else if (o.action === 'branch' && o.target && !((st.org || {}).branches || []).some(function (b) { return b.id === o.target; })) bad = 'الفرع غير موجود';
             else if (o.action === 'lookups_menu' && !L.some(function (x) { return x.query; })) out.push(['ℹ️', w, 'مخفي حتى تضيف استعلاماً في قواعد البيانات']);
             else if (o.action === 'eligibility_menu' && !P.some(function (x) { return x.enabled !== false && x.visible !== false && (x.questions || []).length; })) out.push(['ℹ️', w, 'مخفي حتى تضيف برنامج استحقاق']);
@@ -426,7 +430,12 @@
             '<div class="alert warn" style="margin-top:12px">⚠️ سيتم استبدال الشجرة الحالية وحفظ الجديدة تلقائياً (خذ نسخة احتياطية أولاً إن أردت الرجوع).</div>',
             buttons: [{ label: 'إلغاء', ghost: true }, { label: '✅ تطبيق الشجرة', onClick: function () {
               if (!pick) { A.toast('اختر نوع الجهة', 'err'); return false; }
-              return A.GET('/api/tree-template?type=' + pick).then(function (t) { tree = t; tree.nodes.forEach(function (n) { n.options = n.options || []; }); sel = null; dirty(); draw(); inspect(); fit(); A.toast('تم تطبيق الشجرة ✅', 'ok'); });
+              return A.GET('/api/business-types').then(function (BT) {
+                var bt = BT[pick], biz = A.clone(S.site.settings.biz || {}); biz.catalogs = biz.catalogs || [];
+                var add = bt ? bt.catalogs.filter(function (c) { return !biz.catalogs.some(function (x) { return x.id === c.id; }); }) : [];
+                if (!bt) return null; biz.type = pick; add.forEach(function (c) { biz.catalogs.push(c); });
+                return A.saveSite({ settings: { biz: biz } });
+              }).then(function () { return A.GET('/api/tree-template?type=' + pick); }).then(function (t) { tree = t; tree.nodes.forEach(function (n) { n.options = n.options || []; }); sel = null; dirty(); draw(); inspect(); fit(); A.toast('تم تطبيق الشجرة ✅', 'ok'); });
             } }] });
           A.$$('[data-tp]', m.body).forEach(function (b) { b.onclick = function () { pick = b.getAttribute('data-tp'); A.$$('[data-tp]', m.body).forEach(function (x) { x.style.borderColor = x === b ? 'var(--primary)' : 'var(--border)'; }); }; });
         }, A.fail);

@@ -464,7 +464,7 @@ let pass = 0; const ok = (c, m) => { assert.ok(c, m); pass++; console.log('  ✔
 
   // ---------------- ready trees per organisation type: every main-menu button answers
   const tpls = (await api('GET', '/api/tree-templates', null, T)).j;
-  ok(tpls.map(t => t.id).join(',') === 'charity,foundation,company,institution,cafe,salon,blank', 'ready trees: charity, foundation, company, institution, café, salon, blank');
+  ok(tpls.map(t => t.id).join(',') === 'charity,foundation,company,institution,cafe,salon,clinic,vet,finance,blank', 'ready trees: charity, foundation, company, institution, café, salon, clinic, vet, finance, blank');
   const tplFail = [];
   for (const tp of tpls) {
     const trT = (await api('GET', '/api/tree-template?type=' + tp.id, null, T)).j;
@@ -501,6 +501,58 @@ let pass = 0; const ok = (c, m) => { assert.ok(c, m); pass++; console.log('  ✔
   await api('PUT', '/api/appointments/' + ap.j.id, { status: 'cancelled' }, T);
   const va3 = visitor(key, 'va3'); await va3.join(); await va3.emit('start', {}); await wait(120);
   await va3.say('موعدي'); await va3.say('نورة القحطاني', 200); ok(/لم أجد موعداً/.test(va3.last().body), 'cancelled appointments are not shown');
+
+  // ---------------- business lists (menu, services & prices…) + picture themes
+  const bTypes = (await api('GET', '/api/business-types', null, T)).j;
+  ok(['charity', 'foundation', 'company', 'finance', 'institution', 'cafe', 'salon', 'clinic', 'vet'].every(k => bTypes[k]) && bTypes.clinic.catalogs.some(c => c.id === 'insurance'), 'business types with their lists (clinic → doctors, services, insurance…)');
+  await api('PUT', '/api/sites/' + siteId, { settings: { biz: { type: 'salon', currency: 'ريال', catalogs: JSON.parse(JSON.stringify(bTypes.salon.catalogs)) } }, tree: (await api('GET', '/api/tree-template?type=salon', null, T)).j }, T);
+  const vSal = visitor(key, 'vSal'); await vSal.join(); await vSal.emit('start', {}); await wait(150);
+  const smM = [...vSal.msgs].reverse().find(m => m.options && m.numbered);
+  await vSal.emit('option', { mid: smM.id, i: smM.options.findIndex(o => /خدماتنا والأسعار/.test(o.label)) }); await wait(250);
+  ok(/خدماتنا والأسعار/.test(vSal.last().body) && /صبغة — 250 ريال/.test(vSal.last().body) && /▫️ الشعر/.test(vSal.last().body), 'list button shows items with prices, grouped');
+  await vSal.say('كم سعر الصبغة؟', 250);
+  ok(/صبغة/.test(vSal.last().body) && /250 ريال/.test(vSal.last().body) && /ساعتان/.test(vSal.last().body), '«كم سعر الصبغة؟» answers from the list');
+  await api('PUT', '/api/sites/' + siteId, { settings: { appearance: { pattern: 'img_ramadan' } } }, T);
+  const wcTh = (await api('GET', '/api/widget/config?site=' + key)).j.appearance;
+  const imgTh = await fetch(URL + '/themes/ramadan.jpg');
+  ok(wcTh.bg === 'img_ramadan' && /\/themes\/ramadan\.jpg/.test(wcTh.bg_css) && wcTh.pattern === 'girih12' && /^url\(/.test(wcTh.pattern_css) && imgTh.status === 200 && /image\/jpeg/.test(imgTh.headers.get('content-type')), 'older setting (picture theme as the pattern) → Ramadan background with the decoration still on top');
+  // own background design + decoration over it + its place (header only) + address & email in the top bar
+  await api('PUT', '/api/sites/' + siteId, { settings: { appearance: { pattern: 'girih12', bg: 'custom', bg_image: '/media/abc-123.jpg', bg_fade: 0.3, pattern_chat: false, pattern_header: true, show_address: true, header_address: 'المدينة المنورة – شارع الملك فهد', show_email: true }, org: { email: 'info@charity.sa' } } }, T);
+  const wcBg = (await api('GET', '/api/widget/config?site=' + key)).j;
+  ok(wcBg.appearance.bg === 'custom' && /\/media\/abc-123\.jpg/.test(wcBg.appearance.bg_css) && wcBg.appearance.bg_fade === 0.3 && wcBg.appearance.pattern === 'girih12' && wcBg.appearance.pattern_chat === false && wcBg.appearance.pattern_header === true && /^url\(/.test(wcBg.appearance.pattern_header_css), 'own background picture, decoration kept and placed in the top bar only');
+  ok(wcBg.org.address === 'المدينة المنورة – شارع الملك فهد' && wcBg.org.email === 'info@charity.sa' && wcBg.appearance.bg_image === undefined, 'address and email shown in the top bar when switched on');
+  await api('PUT', '/api/sites/' + siteId, { settings: { appearance: { bg: 'custom', bg_image: 'javascript:alert(1)")' } } }, T);
+  ok(!(await api('GET', '/api/widget/config?site=' + key)).j.appearance.bg_css, 'an unsafe background link is ignored');
+  await api('PUT', '/api/sites/' + siteId, { settings: { appearance: { bg: 'img_eid_fitr', bg_image: '', show_address: false, show_email: false, pattern_chat: true } } }, T);
+  const wcOff = (await api('GET', '/api/widget/config?site=' + key)).j;
+  ok(/eid_fitr\.jpg/.test(wcOff.appearance.bg_css) && wcOff.appearance.pattern_chat === true && !wcOff.org.address && !wcOff.org.email, 'picture background + decoration on it; address/email hidden when switched off');
+  await api('PUT', '/api/sites/' + siteId, { settings: { appearance: { pattern: 'girih12', bg: '' } } }, T);
+
+  // ---------------- visitor attachments: checked before they enter the conversation
+  const FSc = require('../src/filescan');
+  const pngOne = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  ok((await FSc.scan(pngOne)).ok, 'a clean image passes the check');
+  ok(!(await FSc.scan(Buffer.concat([pngOne, Buffer.from('<?php system($_GET[1]); ?>')]))).ok, 'an image hiding PHP code is rejected');
+  ok(!(await FSc.scan(Buffer.from('MZ\x90\x00 This program cannot be run in DOS mode ........'))).ok, 'a program (exe) is rejected');
+  const pdfBad = Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog /OpenAction << /S /J#61vaScript /JS (app.alert(1)) >> >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n', 'latin1');
+  ok(!(await FSc.scan(pdfBad)).ok, 'a PDF with (hidden) JavaScript is rejected');
+  const zlB = require('zlib').deflateSync(Buffer.from('<< /S /Launch /F (cmd.exe) >>'));
+  const pdfHidden = Buffer.concat([Buffer.from('%PDF-1.5\n2 0 obj << /Length ' + zlB.length + ' /Filter /FlateDecode >>\nstream\n', 'latin1'), zlB, Buffer.from('\nendstream\nendobj\n%%EOF\n', 'latin1')]);
+  ok(!(await FSc.scan(pdfHidden)).ok, 'a PDF hiding a launch command inside a compressed stream is rejected');
+  const pdfGood = Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n', 'latin1');
+  ok((await FSc.scan(pdfGood)).ok, 'a normal PDF passes');
+  const jpgEx = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x11]), Buffer.from('Exif\0\0GPSdata!!'), Buffer.from([0xff, 0xda, 0x00, 0x02, 1, 2, 3, 0xff, 0xd9])]);
+  const cleanJ = await FSc.scan(jpgEx);
+  ok(cleanJ.ok && !cleanJ.buf.toString('latin1').includes('GPSdata'), 'photo location / camera data removed');
+  const vUp = visitor(key, 'vUp'); await vUp.join(); await vUp.emit('start', {}); await wait(120);
+  const upTk = await vUp.emit('upload_ticket', {});
+  ok(upTk.ticket, 'visitor gets a short-lived upload ticket');
+  const upOk1 = await fetch(URL + '/api/widget/upload?t=' + encodeURIComponent(upTk.ticket) + '&name=' + encodeURIComponent('هويتي.png'), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: pngOne });
+  const upJ1 = await upOk1.json(); await wait(250);
+  ok(upOk1.status === 200 && upJ1.file.url && vUp.msgs.some(m => m.sender === 'visitor' && m.media && m.media[0].url === upJ1.file.url) && /استلمنا الملف/.test(vUp.last().body), 'checked file appears in the conversation (bot confirms)');
+  const upBad1 = await fetch(URL + '/api/widget/upload?t=' + encodeURIComponent(upTk.ticket) + '&name=x.png', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: Buffer.concat([pngOne, Buffer.from('<script>alert(1)</script>')]) });
+  ok(upBad1.status === 400 && /مخفي/.test((await upBad1.json()).error), 'unsafe file refused with the reason');
+  ok((await fetch(URL + '/api/widget/upload?t=bad', { method: 'POST', body: pngOne })).status === 403, 'upload without a valid ticket is refused');
 
   // ---------------- webhooks (extensibility)
   const got = [];

@@ -5,7 +5,7 @@ function defaultSettings() {
     languages: { enabled: ['ar'], default: 'ar', show_switcher: true },
     appearance: {
       // identity
-      company_name: '', company_logo: '', show_unified_number: true, footer_text: 'بدعم من', show_footer: true,
+      company_name: '', company_logo: '', show_unified_number: true, show_address: false, header_address: '', show_email: false, header_email: '', footer_text: 'بدعم من', show_footer: true,
       // core palette (simple mode)
       primary_color: '#1a6739', secondary_color: '#bc9525', header_bg: '', header_text: '', header_style: 'gradient',
       // advanced palette
@@ -25,7 +25,8 @@ function defaultSettings() {
       // decoration
       pattern: 'girih12', pattern_color: '', pattern_opacity: 0.07, pattern_scale: 1, pattern_header: true, pattern_chat: true,
       pattern_logo: '', pattern_images: [], pattern_img_tint: false, // image patterns: small copies of the logo / admin's pictures
-      occasions: { auto: false, ramadan: true, eid: true, national: true, founding: true }, // switch the decoration automatically on occasions
+      bg: '', bg_image: '', bg_fade: 0.15, // background under the decoration: '' | 'custom' (the admin's picture) | a picture theme id
+      occasions: { auto: false, style: 'image', ramadan: true, eid: true, national: true, founding: true }, // switch the decoration automatically on occasions
       // legacy text fields (Arabic defaults, kept for compatibility — the per-language texts take priority)
       title: '', subtitle: '', bot_name: '', placeholder: '', teaser: '', start_label: '', end_label: '', new_chat_label: '',
       rating_max: 5, rating_title: '', rating_comment_placeholder: '', rating_thanks: ''
@@ -49,6 +50,8 @@ function defaultSettings() {
     },
     developer: { show: true, name: '', description: 'تم تطوير هذا المساعد الذكي بواسطة', url: '', logo: '' },
     behavior: {
+      // visitors may send files; each file is checked before it enters the conversation
+      attachments: { enabled: true, max_mb: 5, images: true, pdf: true, only_with_agent: false },
       auto_learn: true, kb_threshold: 0.6, suggest_threshold: 0.38,
       no_answer_action: 'handoff',      // always: no answer -> immediate hand-off to a human
       numbered_menus: true, inactivity_minutes: 30, retention_days: 90,
@@ -94,10 +97,12 @@ function defaultSettings() {
     // eligibility calculator programs: [{ id, title, keywords, intro, enabled, questions, calcs, rules, amount, messages, after }]
     // dashboard pages the admin chose to hide from the system (the settings page itself can never be hidden)
     ui: { hidden_pages: [] },
+    // business type and its lists (menu, services & prices, doctors, insurance…)
+    biz: { type: '', currency: 'ريال', catalogs: [] },
     // appointments calendar (salons, clinics…): the bot tells a visitor his appointment by name
     appointments: { verify_phone: false, services: ['قص شعر', 'صبغة', 'سشوار', 'مكياج', 'عناية بالبشرة'], staff: [], show_staff: true, not_found: '' },
     eligibility: { hub: { label: '🧮 حساب آلية الاستحقاق', message: '', keywords: '', skip_single: false }, programs: [] },
-    security: { allowed_domains: '', identity_secret: crypto.randomBytes(24).toString('hex') }
+    security: { virustotal_key: '', allowed_domains: '', identity_secret: crypto.randomBytes(24).toString('hex') }
   };
 }
 
@@ -136,6 +141,43 @@ function defaultTree() {
   };
 }
 
+/* ---------- business types: each brings the lists it needs (menu, services & prices, doctors…) ---------- */
+// a list ("catalog") = { id, title, icon, cols: { group, name, price, note, link } (column titles), keywords, intro, items: [...] }
+const C = (id, icon, title, cols, keywords, items) => ({ id, icon, title, cols, keywords, intro: '', items: items.map(x => ({ group: '', name: '', price: '', note: '', link: '', ...x })) });
+const BUSINESS = {
+  charity: { icon: '🤝', name: 'جمعية خيرية', catalogs: [
+    C('programs', '🎯', 'برامجنا ومساعداتنا', { name: 'البرنامج', note: 'الوصف' }, 'البرامج, المساعدات, خدمات الجمعية', [{ name: 'السلة الغذائية', note: 'سلال غذائية شهرية للأسر المسجلة' }, { name: 'كفالة الأيتام', note: 'دعم شهري للأيتام وأسرهم' }]),
+    C('volunteer', '🙋', 'فرص التطوع', { name: 'الفرصة', note: 'التفاصيل', link: 'رابط التسجيل' }, 'تطوع, التطوع, متطوع', [{ name: 'توزيع السلال', note: 'كل سبت — 4 ساعات' }])] },
+  foundation: { icon: '💚', name: 'مؤسسة مانحة / داعمة', catalogs: [
+    C('support_fields', '🎯', 'مجالات الدعم', { name: 'المجال', note: 'الوصف' }, 'مجالات الدعم, ماذا تدعمون', [{ name: 'التعليم', note: 'منح ورسوم دراسية' }, { name: 'الصحة', note: 'علاج وأجهزة طبية' }, { name: 'الإسكان', note: 'ترميم وإيجار' }]),
+    C('requirements', '📄', 'شروط ومستندات التقديم', { name: 'الشرط / المستند' }, 'الشروط, المستندات, متطلبات التقديم', [{ name: 'صورة الهوية الوطنية' }, { name: 'تعريف بالدخل' }])] },
+  company: { icon: '🏢', name: 'شركة', catalogs: [
+    C('products', '🛍️', 'منتجاتنا وخدماتنا', { group: 'القسم', name: 'المنتج / الخدمة', price: 'السعر', note: 'الوصف' }, 'المنتجات, الخدمات, الأسعار', [{ name: 'الباقة الأساسية', price: '500', note: 'وصف مختصر' }]),
+    C('jobs', '💼', 'الوظائف المتاحة', { name: 'الوظيفة', note: 'التفاصيل', link: 'رابط التقديم' }, 'وظائف, الوظائف, توظيف', [{ name: 'أخصائي مبيعات', note: 'دوام كامل — الرياض' }])] },
+  finance: { icon: '💳', name: 'شركة مالية / تمويل', catalogs: [
+    C('products', '💳', 'منتجاتنا التمويلية', { name: 'المنتج', price: 'نسبة الربح / الرسوم', note: 'الوصف' }, 'التمويل, منتجات التمويل, قرض, تمويل شخصي', [{ name: 'التمويل الشخصي', price: 'تبدأ من 3%', note: 'حتى 60 شهراً' }, { name: 'تمويل السيارات', price: 'تبدأ من 2.5%', note: 'جديدة ومستعملة' }]),
+    C('requirements', '📄', 'شروط ومستندات التمويل', { name: 'الشرط / المستند' }, 'شروط التمويل, المستندات المطلوبة', [{ name: 'ألا يقل العمر عن 21 سنة' }, { name: 'تعريف بالراتب' }]),
+    C('fees', '🧾', 'الرسوم والعمولات', { name: 'البند', price: 'المبلغ' }, 'الرسوم, العمولات', [{ name: 'رسوم إدارية', price: '1% بحد أقصى 5000' }])] },
+  institution: { icon: '🏛️', name: 'مؤسسة / جهة خدمية', catalogs: [
+    C('services', '🧾', 'دليل خدماتنا', { name: 'الخدمة', note: 'المتطلبات', link: 'رابط الخدمة' }, 'الخدمات, دليل الخدمات', [{ name: 'إصدار شهادة', note: 'صورة الهوية + طلب' }])] },
+  cafe: { icon: '☕', name: 'مقهى / مطعم', catalogs: [
+    C('menu', '☕', 'المنيو والأسعار', { group: 'القسم', name: 'الصنف', price: 'السعر', note: 'الوصف' }, 'المنيو, المنيو والأسعار, الأسعار, قائمة الطعام, menu', [
+      { group: 'مشروبات ساخنة', name: 'قهوة سعودية', price: '12' }, { group: 'مشروبات ساخنة', name: 'لاتيه', price: '18' }, { group: 'مشروبات باردة', name: 'آيس لاتيه', price: '20' }, { group: 'حلويات', name: 'كيكة التمر', price: '22' }]),
+    C('delivery', '🛵', 'اطلب عبر تطبيقات التوصيل', { name: 'التطبيق', link: 'رابط المطعم في التطبيق' }, 'توصيل, التوصيل, اطلب', [{ name: 'هنقرستيشن' }, { name: 'جاهز' }, { name: 'مرسول' }])] },
+  salon: { icon: '💇', name: 'صالون / مركز تجميل', catalogs: [
+    C('services', '💇', 'خدماتنا والأسعار', { group: 'القسم', name: 'الخدمة', price: 'السعر', note: 'المدة' }, 'الخدمات, الأسعار, خدماتكم, كم سعر', [
+      { group: 'الشعر', name: 'قص شعر', price: '100', note: '45 دقيقة' }, { group: 'الشعر', name: 'صبغة', price: '250', note: 'ساعتان' }, { group: 'الشعر', name: 'سشوار', price: '80', note: '30 دقيقة' }, { group: 'التجميل', name: 'مكياج سهرة', price: '350' }]),
+    C('team', '👩', 'فريق العمل', { name: 'الاسم', note: 'التخصص' }, 'فريق العمل, الموظفات, المختصات', [{ name: 'ريم', note: 'صبغات وقص' }])] },
+  clinic: { icon: '🩺', name: 'عيادة / مجمع طبي', catalogs: [
+    C('doctors', '👨‍⚕️', 'أطباؤنا', { group: 'التخصص', name: 'الطبيب', note: 'أيام الدوام' }, 'الأطباء, الدكاترة, دكتور, طبيب', [{ group: 'الأسنان', name: 'د. أحمد', note: 'الأحد – الأربعاء' }, { group: 'الجلدية', name: 'د. سارة', note: 'السبت – الثلاثاء' }]),
+    C('services', '🩺', 'خدماتنا والأسعار', { group: 'القسم', name: 'الخدمة', price: 'السعر' }, 'الخدمات, الأسعار, كشفية, كم سعر', [{ group: 'الأسنان', name: 'كشف', price: '150' }, { group: 'الأسنان', name: 'تنظيف', price: '250' }]),
+    C('insurance', '🛡️', 'شركات التأمين المعتمدة', { name: 'شركة التأمين', note: 'ملاحظات' }, 'التأمين, تأمين, شركات التأمين', [{ name: 'بوبا' }, { name: 'التعاونية' }])] },
+  vet: { icon: '🐾', name: 'عيادة بيطرية', catalogs: [
+    C('services', '💉', 'خدماتنا والأسعار', { group: 'القسم', name: 'الخدمة', price: 'السعر', note: 'ملاحظات' }, 'الخدمات, الأسعار, تطعيم, كشف, كم سعر', [{ group: 'العلاج', name: 'كشف', price: '100' }, { group: 'الوقاية', name: 'تطعيم سنوي', price: '150' }, { group: 'العناية', name: 'حلاقة وتنظيف', price: '120' }]),
+    C('animals', '🐾', 'الحيوانات التي نعالجها', { name: 'النوع', note: 'ملاحظات' }, 'الحيوانات, قطط, كلاب, طيور', [{ name: 'القطط' }, { name: 'الكلاب' }, { name: 'الطيور' }])] },
+  blank: { icon: '✨', name: 'أخرى', catalogs: [] }
+};
+
 /* ---------- ready trees by organisation type (everything stays editable; unused features hide themselves) ---------- */
 const B = (label, action, extra = {}, en) => ({ label, action, ...extra, ...(en ? { i18n: { en: { label: en } } } : {}) });
 const HOME_BTN = B('↩️ القائمة الرئيسية', 'goto', { target: 'menu' }, '↩️ Main menu');
@@ -155,10 +197,16 @@ const WELCOME = 'أهلاً {name} 👋\nأنا {bot}، يسعدني خدمتك.
 const MENU_MSG = 'اختر رقم الخدمة أو اكتب سؤالك مباشرة:';
 
 const TREE_TYPES = {
-  charity: { icon: '🤝', name: 'جمعية خيرية', desc: 'تعريف، تبرع، تسجيل مستفيدين، حساب الاستحقاق، الاستعلام عن الطلبات، تطوع', build: () => defaultTree() },
+  charity: { icon: '🤝', name: 'جمعية خيرية', desc: 'تعريف، برامجنا، تبرع، حساب الاستحقاق، الاستعلام عن الطلبات، تطوع', build: () => {
+    const t = defaultTree(), m = t.nodes.find(n => n.id === 'menu');
+    m.options.splice(1, 0, B('🎯 برامجنا ومساعداتنا', 'catalog', { target: 'programs' }, '🎯 Our programs'));
+    m.options.splice(m.options.length - 2, 0, B('🙋 التطوع معنا', 'catalog', { target: 'volunteer' }, '🙋 Volunteer'));
+    return t;
+  } },
   foundation: { icon: '💚', name: 'مؤسسة مانحة / داعمة', desc: 'طلبات دعم، شروط وأهلية، متابعة الطلب، مجالات الدعم', build: () => baseTree(WELCOME, MENU_MSG, [
     B('🏢 تعرّف علينا', 'about', {}, '🏢 About us'),
-    B('🎯 مجالات الدعم', 'goto', { target: 'fields' }, '🎯 What we support'),
+    B('🎯 مجالات الدعم', 'catalog', { target: 'support_fields' }, '🎯 What we support'),
+    B('📄 الشروط والمستندات', 'catalog', { target: 'requirements' }, '📄 Requirements'),
     B('📝 تقديم طلب دعم', 'goto', { target: 'apply' }, '📝 Apply for support'),
     B('🧮 حساب آلية الاستحقاق', 'eligibility_menu', {}, '🧮 Eligibility check'),
     B('🔎 متابعة طلبي', 'lookups_menu', {}, '🔎 Track my request'),
@@ -167,21 +215,19 @@ const TREE_TYPES = {
     B('📞 تواصل معنا', 'goto', { target: 'contact' }, '📞 Contact us'),
     B('📝 الشكاوى والاقتراحات', 'goto', { target: 'tickets' }, '📝 Feedback')
   ], [
-    { id: 'fields', title: 'مجالات الدعم', message: 'نقدّم الدعم في المجالات التالية:\n• التعليم\n• الصحة\n• الإسكان\n• المشاريع التنموية' + EDIT, options: [B('📝 تقديم طلب دعم', 'goto', { target: 'apply' }), HOME_BTN] },
-    { id: 'apply', title: 'تقديم طلب دعم', message: 'خطوات تقديم طلب الدعم:\n1. تأكد من انطباق الشروط (يمكنك حساب أهليتك من هنا)\n2. جهّز المستندات المطلوبة\n3. قدّم الطلب عبر منصتنا' + EDIT, options: [B('🧮 هل أنا مؤهل؟', 'eligibility_menu'), B('📞 اطلب اتصالاً منا', 'ticket', { field: 'callback' }), HOME_BTN] },
+    { id: 'apply', title: 'تقديم طلب دعم', message: 'خطوات تقديم طلب الدعم:\n1. تأكد من انطباق الشروط (يمكنك حساب أهليتك من هنا)\n2. جهّز المستندات المطلوبة\n3. قدّم الطلب عبر منصتنا' + EDIT, options: [B('📄 الشروط والمستندات', 'catalog', { target: 'requirements' }), B('🧮 هل أنا مؤهل؟', 'eligibility_menu'), B('📞 اطلب اتصالاً منا', 'ticket', { field: 'callback' }), HOME_BTN] },
     contactNode(), feedbackNode()
   ]) },
   company: { icon: '🏢', name: 'شركة', desc: 'منتجات وخدمات، طلب عرض سعر، تتبع الطلب، الدعم الفني، الوظائف', build: () => baseTree(WELCOME, MENU_MSG, [
     B('🏢 من نحن', 'about', {}, '🏢 About us'),
-    B('🛍️ منتجاتنا وخدماتنا', 'goto', { target: 'products' }, '🛍️ Products & services'),
+    B('🛍️ منتجاتنا وخدماتنا', 'catalog', { target: 'products' }, '🛍️ Products & services'),
     B('💰 طلب عرض سعر', 'ticket', { field: 'callback' }, '💰 Request a quote'),
     B('📦 تتبع طلبي', 'lookups_menu', {}, '📦 Track my order'),
     B('🛠️ الدعم الفني', 'goto', { target: 'support' }, '🛠️ Technical support'),
-    B('💼 الوظائف', 'answer', { target: 'نرحب بانضمامك لفريقنا 💼\nأرسل سيرتك الذاتية إلى: jobs@example.com' + EDIT }, '💼 Careers'),
+    B('💼 الوظائف', 'catalog', { target: 'jobs' }, '💼 Careers'),
     B('📍 فروعنا', 'location', {}, '📍 Branches'),
     B('📞 تواصل معنا', 'goto', { target: 'contact' }, '📞 Contact us')
   ], [
-    { id: 'products', title: 'منتجاتنا وخدماتنا', message: 'نقدّم لكم:\n• المنتج / الخدمة الأولى\n• المنتج / الخدمة الثانية' + EDIT, options: [B('💰 طلب عرض سعر', 'ticket', { field: 'callback' }), B('❓ أسئلة شائعة', 'kb_browse'), HOME_BTN] },
     { id: 'support', title: 'الدعم الفني', message: 'كيف نقدر نساعدك؟', options: [B('❓ حلول المشاكل الشائعة', 'kb_browse'), B('📝 فتح بلاغ', 'ticket', { field: 'complaint' }), B('🔎 متابعة بلاغ', 'ticket_status'), B('👨‍💼 التحدث مع موظف الدعم', 'handoff'), HOME_BTN] },
     contactNode(), feedbackNode()
   ]) },
@@ -195,24 +241,24 @@ const TREE_TYPES = {
     B('📞 تواصل معنا', 'goto', { target: 'contact' }, '📞 Contact us'),
     B('📝 الشكاوى والاقتراحات', 'goto', { target: 'tickets' }, '📝 Feedback')
   ], [
-    { id: 'services', title: 'خدماتنا', message: 'اختر الخدمة لمعرفة متطلباتها:', options: [B('❓ دليل الخدمات والأسئلة', 'kb_browse'), B('📋 الاستعلام عن معاملة', 'lookups_menu'), B('📅 طلب موعد', 'ticket', { field: 'callback' }), HOME_BTN] },
+    { id: 'services', title: 'خدماتنا', message: 'اختر الخدمة لمعرفة متطلباتها:', options: [B('🧾 دليل خدماتنا', 'catalog', { target: 'services' }), B('❓ الأسئلة الشائعة', 'kb_browse'), B('📋 الاستعلام عن معاملة', 'lookups_menu'), B('📅 طلب موعد', 'ticket', { field: 'callback' }), HOME_BTN] },
     contactNode(), feedbackNode()
   ]) },
   cafe: { icon: '☕', name: 'مقهى / مطعم', desc: 'المنيو والأسعار، العروض، أوقات العمل، الفروع، الطلب والتوصيل، حجز طاولة', build: () => baseTree('أهلاً {name} ☕\nمرحباً بك! أنا {bot}، كيف أخدمك؟', 'اختر رقم الخدمة:', [
-    B('☕ المنيو والأسعار', 'goto', { target: 'menu_items' }, '☕ Menu & prices'),
+    B('☕ المنيو والأسعار', 'catalog', { target: 'menu' }, '☕ Menu & prices'),
     B('🎉 العروض', 'answer', { target: 'عروض هذا الأسبوع 🎉\n• اكتب عرضك هنا' + EDIT }, '🎉 Offers'),
-    B('🛵 الطلب والتوصيل', 'answer', { target: 'اطلب الآن عبر تطبيقات التوصيل 🛵\n(اكتب أسماء التطبيقات أو رابط الطلب)' + EDIT }, '🛵 Order & delivery'),
+    B('🛵 الطلب والتوصيل', 'catalog', { target: 'delivery' }, '🛵 Order & delivery'),
     B('📅 حجز طاولة', 'ticket', { field: 'callback' }, '📅 Book a table'),
     B('🕘 أوقات العمل', 'org', { field: 'hours' }, '🕘 Opening hours'),
     B('📍 فروعنا', 'location', {}, '📍 Our branches'),
     B('📱 تابعنا', 'org', { field: 'social' }, '📱 Follow us'),
     B('💬 رأيك يهمنا', 'goto', { target: 'tickets' }, '💬 Feedback')
   ], [
-    { id: 'menu_items', title: 'المنيو', message: 'هذا المنيو 👇 (ارفع صورة أو PDF للمنيو من «القوائم والأزرار» ← مرفقات)', media: [], options: [B('🎉 العروض', 'answer', { target: 'عروض هذا الأسبوع 🎉' + EDIT }), B('🛵 الطلب والتوصيل', 'answer', { target: 'اطلب الآن عبر تطبيقات التوصيل 🛵' + EDIT }), HOME_BTN] },
     feedbackNode()
   ]) },
   salon: { icon: '💇', name: 'صالون / مركز تجميل', desc: 'الخدمات والأسعار، حجز موعد، الاستعلام عن موعدي بالاسم، العروض، أوقات العمل', build: () => baseTree('أهلاً {name} 💇‍♀️\nمرحباً بك! أنا {bot}، كيف أخدمك؟', 'اختر رقم الخدمة:', [
-    B('💇 خدماتنا والأسعار', 'goto', { target: 'services' }, '💇 Services & prices'),
+    B('💇 خدماتنا والأسعار', 'catalog', { target: 'services' }, '💇 Services & prices'),
+    B('👩 فريق العمل', 'catalog', { target: 'team' }, '👩 Our team'),
     B('📅 حجز موعد', 'ticket', { field: 'callback' }, '📅 Book an appointment'),
     B('🕒 متى موعدي؟', 'appointment_lookup', {}, '🕒 When is my appointment?'),
     B('🎉 العروض', 'answer', { target: 'عروض هذا الشهر 🎉\n• اكتب عرضك هنا' + EDIT }, '🎉 Offers'),
@@ -221,9 +267,39 @@ const TREE_TYPES = {
     B('📱 تابعينا', 'org', { field: 'social' }, '📱 Follow us'),
     B('💬 رأيك يهمنا', 'goto', { target: 'tickets' }, '💬 Feedback')
   ], [
-    { id: 'services', title: 'خدماتنا والأسعار', message: 'خدماتنا 👇\n• قص شعر — 100 ريال\n• صبغة — من 250 ريال\n• سشوار — 80 ريال' + EDIT + '\n(ويمكنك رفع صورة قائمة الأسعار كمرفق)', media: [], options: [B('📅 حجز موعد', 'ticket', { field: 'callback' }), B('🕒 متى موعدي؟', 'appointment_lookup'), HOME_BTN] },
     feedbackNode()
   ]) },
+  clinic: { icon: '🩺', name: 'عيادة / مجمع طبي', desc: 'الأطباء والتخصصات، الخدمات والأسعار، التأمين، حجز موعد، متى موعدي', build: () => baseTree(WELCOME, MENU_MSG, [
+    B('👨‍⚕️ أطباؤنا', 'catalog', { target: 'doctors' }, '👨‍⚕️ Our doctors'),
+    B('🩺 الخدمات والأسعار', 'catalog', { target: 'services' }, '🩺 Services & prices'),
+    B('🛡️ التأمين الطبي', 'catalog', { target: 'insurance' }, '🛡️ Insurance'),
+    B('📅 حجز موعد', 'ticket', { field: 'callback' }, '📅 Book an appointment'),
+    B('🕒 متى موعدي؟', 'appointment_lookup', {}, '🕒 My appointment'),
+    B('🕘 أوقات العمل', 'org', { field: 'hours' }, '🕘 Working hours'),
+    B('📍 موقعنا', 'location', {}, '📍 Location'),
+    B('📞 تواصل معنا', 'goto', { target: 'contact' }, '📞 Contact us'),
+    B('📝 الشكاوى والاقتراحات', 'goto', { target: 'tickets' }, '📝 Feedback')
+  ], [contactNode(), feedbackNode()]) },
+  vet: { icon: '🐾', name: 'عيادة بيطرية', desc: 'الخدمات والأسعار، الحيوانات التي نعالجها، حجز موعد، الطوارئ', build: () => baseTree('أهلاً {name} 🐾\nأنا {bot}، كيف أخدمك وأخدم أليفك؟', MENU_MSG, [
+    B('💉 خدماتنا والأسعار', 'catalog', { target: 'services' }, '💉 Services & prices'),
+    B('🐾 الحيوانات التي نعالجها', 'catalog', { target: 'animals' }, '🐾 Animals we treat'),
+    B('📅 حجز موعد', 'ticket', { field: 'callback' }, '📅 Book an appointment'),
+    B('🕒 متى موعدي؟', 'appointment_lookup', {}, '🕒 My appointment'),
+    B('🚨 حالة طارئة', 'answer', { target: 'للحالات الطارئة اتصل فوراً على: 05xxxxxxxx 🚨' + EDIT }, '🚨 Emergency'),
+    B('🕘 أوقات العمل', 'org', { field: 'hours' }, '🕘 Working hours'),
+    B('📍 موقعنا', 'location', {}, '📍 Location'),
+    B('💬 رأيك يهمنا', 'goto', { target: 'tickets' }, '💬 Feedback')
+  ], [feedbackNode()]) },
+  finance: { icon: '💳', name: 'شركة مالية / تمويل', desc: 'المنتجات التمويلية، الشروط، الرسوم، احسب تمويلك، تتبع الطلب، الشكاوى', build: () => baseTree(WELCOME, MENU_MSG, [
+    B('💳 منتجاتنا التمويلية', 'catalog', { target: 'products' }, '💳 Financing products'),
+    B('📄 الشروط والمستندات', 'catalog', { target: 'requirements' }, '📄 Requirements'),
+    B('🧾 الرسوم والعمولات', 'catalog', { target: 'fees' }, '🧾 Fees'),
+    B('🧮 احسب أهليتك للتمويل', 'eligibility_menu', {}, '🧮 Check your eligibility'),
+    B('🔎 تتبع طلبي', 'lookups_menu', {}, '🔎 Track my application'),
+    B('📞 اطلب اتصالاً من مستشار', 'ticket', { field: 'callback' }, '📞 Request a call'),
+    B('📍 فروعنا', 'location', {}, '📍 Branches'),
+    B('📝 الشكاوى والاقتراحات', 'goto', { target: 'tickets' }, '📝 Complaints')
+  ], [feedbackNode('الشكاوى والاقتراحات')]) },
   blank: { icon: '✨', name: 'قائمة خاصة (فارغة)', desc: 'ترحيب وقائمة رئيسية بسيطة، وتبني الباقي بنفسك', build: () => baseTree(WELCOME, MENU_MSG, [
     B('❓ الأسئلة الشائعة', 'kb_browse', {}, '❓ FAQ'), B('📞 أرقام التواصل', 'org', { field: 'contact' }, '📞 Contact'), B('👨‍💼 التحدث مع موظف', 'handoff', {}, '👨‍💼 Talk to an agent')
   ]) }
@@ -274,4 +350,4 @@ function migrateSettings(s) {
   return s;
 }
 
-module.exports = { defaultSettings, defaultTree, treeTemplate, TREE_TYPES, deepMerge, migrateSettings };
+module.exports = { BUSINESS, defaultSettings, defaultTree, treeTemplate, TREE_TYPES, deepMerge, migrateSettings };

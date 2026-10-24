@@ -135,6 +135,7 @@ function findNode(site, id) {
 function visibleOpts(site, node) {
   return (node?.options || []).filter(o => !o.hidden
     && !(o.action === 'lookups_menu' && !listedLookups(site).length)
+    && !(o.action === 'catalog' && !usableCatalog(catalogOf(site, o.target)))
     && !(o.action === 'eligibility_menu' && !(site.settings.eligibility?.programs || []).some(p => p.enabled !== false && p.visible !== false && (p.questions || []).length)));
 }
 
@@ -420,6 +421,7 @@ async function runAction(conv, site, opt, freeText) {
     case 'eligibility_menu': return sendEligHub(conv, site);
     case 'lookups_menu': return sendLookupsHub(conv, site);
     case 'appointment_lookup': return startApptLookup(conv, site);
+    case 'catalog': return sendCatalog(conv, site, opt.target, opt.field || null);
     case 'elig': {
       const a = conv.state.await;
       if (a?.kind === 'elig' && a.pid === opt.target) return answerElig(conv, site, String(Number(opt.field) + 1));
@@ -585,6 +587,49 @@ async function executeLookup(conv, site) {
     botSay(conv, site, text);
   }
   return botSay(conv, site, t.anything_else, navOptions(conv, site));
+}
+
+/* ============================== business lists (menu, services & prices, doctors…) ============================== */
+
+const catalogOf = (site, id) => (site.settings.biz?.catalogs || []).find(c => c.id === id && c.enabled !== false);
+const usableCatalog = (c) => c && c.enabled !== false && (c.items || []).some(i => i.name);
+function fmtPrice(site, p) { const v = String(p ?? '').trim(); if (!v) return ''; return /^\d+([.,]\d+)?$/.test(nlp.toLatinDigits(v)) ? `${v} ${site.settings.biz?.currency || 'ريال'}` : v; }
+function itemLine(site, c, i) {
+  return '• ' + i.name + (i.price ? ' — ' + fmtPrice(site, i.price) : '') + (i.note ? '\n   ' + i.note : '');
+}
+function sendCatalog(conv, site, id, group) {
+  const t = tr(conv, site), c = catalogOf(site, id);
+  if (!usableCatalog(c)) return botSay(conv, site, t.unlinked, navOptions(conv, site));
+  const items = c.items.filter(i => i.name);
+  const groups = [...new Set(items.map(i => i.group).filter(Boolean))];
+  // long lists with sections: choose the section first
+  if (!group && groups.length > 1 && items.length > 12)
+    return botSay(conv, site, `${c.icon || '📋'} ${c.title}${c.intro ? '\n' + c.intro : ''}`, [...groups.map(g => ({ label: g, action: 'catalog', target: c.id, field: g })), ...navOptions(conv, site)], { numbered: true });
+  const list = group ? items.filter(i => i.group === group) : items;
+  let body = `${c.icon || '📋'} ${group ? group : c.title}`;
+  if (c.intro && !group) body += '\n' + c.intro;
+  const gs = group ? [] : [...new Set(list.map(i => i.group || ''))];
+  if (gs.length > 1) for (const g of gs) body += `\n\n${g ? '▫️ ' + g : ''}\n` + list.filter(i => (i.group || '') === g).map(i => itemLine(site, c, i)).join('\n');
+  else body += '\n\n' + list.map(i => itemLine(site, c, i)).join('\n');
+  const links = list.filter(i => /^https?:\/\//.test(i.link || '')).slice(0, 8).map(i => ({ label: '🔗 ' + i.name, action: 'url', target: i.link }));
+  return botSay(conv, site, body.trim(), [...links, ...navOptions(conv, site)]);
+}
+// «كم سعر الصبغة؟» → the item itself
+const PRICE_WORDS = ['سعر', 'بكم', 'كم', 'تكلفة', 'التكلفة', 'متوفر', 'عندكم', 'يوجد', 'price', 'cost', 'how much'];
+function catalogAnswer(conv, site, text) {
+  const cats = (site.settings.biz?.catalogs || []).filter(usableCatalog);
+  for (const c of cats) {
+    const kws = String(c.keywords || '').split(/[,،\n]/).map(x => x.trim()).filter(Boolean);
+    const item = c.items.find(i => i.name && nlp.normalize(i.name).length >= 3 && nlp.containsPhrase(text, i.name));
+    if (item && (intentHit(text, PRICE_WORDS) || nlp.normalize(text) === nlp.normalize(item.name))) {
+      const extra = [item.price && (c.cols?.price || 'السعر') + ': ' + fmtPrice(site, item.price), item.note && (c.cols?.note || '') + (c.cols?.note ? ': ' : '') + item.note, item.group && (c.cols?.group || '') + (c.cols?.group ? ': ' : '') + item.group].filter(Boolean);
+      const opts = [/^https?:\/\//.test(item.link || '') ? { label: '🔗 ' + (c.cols?.link || 'الرابط'), action: 'url', target: item.link } : null, { label: `${c.icon || '📋'} ${c.title}`, action: 'catalog', target: c.id }, ...navOptions(conv, site)].filter(Boolean);
+      botSay(conv, site, `${c.icon || '📋'} ${item.name}\n` + extra.join('\n'), opts);
+      return true;
+    }
+    if (kws.some(k => nlp.containsPhrase(text, k)) || (c.title && nlp.normalize(text) === nlp.normalize(c.title))) { sendCatalog(conv, site, c.id); return true; }
+  }
+  return false;
 }
 
 /* ============================== appointments (salons, clinics…) ============================== */
@@ -949,6 +994,9 @@ async function handleVisitorText(conv, site, text) {
   for (const l of site.settings.datasource.lookups || [])
     if (l.query && intentHit(text, String(l.keywords || '').split(/[,،\n]/).map(x => x.trim()).filter(Boolean))) return startLookup(conv, site, 'lookup:' + l.id, text);
 
+  // business lists: menu / services & prices / doctors… (and «كم سعر …؟»)
+  if (catalogAnswer(conv, site, text)) return;
+
   // 4) organisation information: about menu, bank accounts, sections (by keyword/title), departments
   if (intentHit(text, I.social) && sendOrg(conv, site, 'social', { silent: true })) return;
   if (intentHit(text, I.banks) && sendBanks(conv, site, null, { silent: true })) return;
@@ -1160,6 +1208,13 @@ function setup(io, secret) {
     socket.on('typing', (p) => { if (conv) aio.emit('visitor:typing', { conversation_id: conv.id, typing: !!p?.typing, text: String(p?.text || '').slice(0, 200) }); });
     socket.on('close', (_, ack) => { reloadConv(); if (conv) closeConversation(conv, 'visitor'); ack?.({ ok: true }); });
 
+    socket.on('upload_ticket', (_, ack) => {
+      reloadConv();
+      const A = getSite(site.id).settings.behavior.attachments || {};
+      if (!conv || conv.status === 'closed' || A.enabled === false) return ack?.({ error: 'off' });
+      if (A.only_with_agent && conv.status === 'bot') return ack?.({ error: 'agent_only' });
+      ack?.({ ticket: uploadTicket(conv), max_mb: A.max_mb || 5 });
+    });
     socket.on('bridge_result', (p) => {
       const w = bridgeWaits.get(String(p?.id || ''));
       if (w && conv && w.conv === conv.id) w.done({ rows: p.rows, error: p.error ? String(p.error).slice(0, 200) : null });
@@ -1293,8 +1348,19 @@ function maintenance() {
   }
 }
 
+/* ---------- visitor attachments: a short-lived ticket (socket) → upload (HTTP) → checked → posted ---------- */
+function uploadTicket(conv) { return jwt.sign({ c: conv.id, s: conv.site_id, k: 'up' }, JWT_SECRET, { expiresIn: '10m' }); }
+function readTicket(t) { try { const p = jwt.verify(String(t || ''), JWT_SECRET); return p.k === 'up' ? p : null; } catch { return null; } }
+function visitorFile(convId, file) {
+  const conv = getConv(convId); if (!conv || conv.status === 'closed') return null;
+  const site = getSite(conv.site_id), t = tr(conv, site);
+  const m = addMessage(conv, 'visitor', '📎 ' + file.name, { media: [file] });
+  if (conv.status === 'bot') botSay(conv, site, t.file_received, navOptions(conv, site));
+  return m;
+}
+
 module.exports = {
-  isOpen,
+  isOpen, uploadTicket, readTicket, visitorFile,
   setup, maintenance, convSummary, publicMsg, closeConversation, learn, locationPayload, resolveMapLink,
   getAio: () => aio, getVio: () => vio, onlineAgents: () => [...online.values()]
 };

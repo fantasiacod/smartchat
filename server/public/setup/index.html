@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>الإعداد الأول — المساعد الذكي</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--g:#1a6739;--g2:#145430;--gold:#bc9525;--bg:#f3f4f0;--card:#fff;--b:#e3e6df;--t:#17201b;--m:#6b7570;--soft:#f4f6f2;--err:#b42318;--ok:#157f3c}
+*{box-sizing:border-box}
+body{margin:0;font-family:Tajawal,system-ui,sans-serif;background:var(--bg);color:var(--t);min-height:100vh}
+.wrap{max-width:760px;margin:0 auto;padding:28px 16px 60px}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.brand .lg{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,var(--g),var(--g2));display:grid;place-items:center;font-size:24px;color:#fff;box-shadow:0 6px 18px rgba(26,103,57,.25)}
+.brand h1{margin:0;font-size:22px}.brand p{margin:2px 0 0;color:var(--m);font-size:14px}
+.steps{display:flex;gap:6px;margin:0 0 16px;flex-wrap:wrap}
+.steps span{flex:1;min-width:110px;text-align:center;font-size:13px;font-weight:700;color:var(--m);background:#fff;border:1px solid var(--b);border-radius:999px;padding:7px 10px}
+.steps span.on{background:var(--g);color:#fff;border-color:var(--g)}.steps span.done{color:var(--g);border-color:var(--g)}
+.card{background:var(--card);border:1px solid var(--b);border-radius:20px;padding:26px;box-shadow:0 10px 30px rgba(0,0,0,.05)}
+h2{margin:0 0 6px;font-size:21px}.sub{margin:0 0 18px;color:var(--m);font-size:14.5px;line-height:1.7}
+.types{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.type{border:2px solid var(--b);background:#fff;border-radius:14px;padding:14px 10px;text-align:center;cursor:pointer;font:inherit;color:inherit;transition:.15s}
+.type:hover{border-color:#b9cdbf}.type.on{border-color:var(--g);background:#f1f8f3;box-shadow:0 0 0 3px rgba(26,103,57,.12)}
+.type .ic{font-size:26px;display:block;margin-bottom:4px}.type b{display:block;font-size:14.5px}.type small{display:block;color:var(--m);font-size:12px;margin-top:2px;line-height:1.5}
+label{display:block;font-weight:700;font-size:14px;margin:12px 0 6px}
+input,textarea,select{width:100%;font:inherit;font-size:15px;padding:12px 14px;border:1.5px solid var(--b);border-radius:12px;background:#fff;color:var(--t);outline:none}
+input:focus,textarea:focus{border-color:var(--g);box-shadow:0 0 0 3px rgba(26,103,57,.12)}
+textarea{min-height:120px;direction:ltr;font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+.ltr{direction:ltr;text-align:left}
+.g2{display:grid;grid-template-columns:2fr 1fr;gap:10px}.g3{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:560px){.g2,.g3{grid-template-columns:1fr}.card{padding:18px}}
+.help{background:var(--soft);border:1px solid var(--b);border-radius:12px;padding:12px 14px;font-size:13.5px;line-height:1.8;color:#34403a;margin-top:6px}
+.help ol{margin:4px 0 0;padding-inline-start:20px}.help code{direction:ltr;unicode-bidi:embed;background:#fff;border:1px solid var(--b);border-radius:6px;padding:1px 6px;font-size:12.5px}
+.warn{background:#fff8e6;border:1px solid #f0d58a;color:#6b4e00;border-radius:12px;padding:12px 14px;font-size:13.5px;line-height:1.8;margin-top:10px}
+.msg{border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.7;margin-top:12px;display:none}
+.msg.ok{display:block;background:#ecf8f0;border:1px solid #b6e2c4;color:var(--ok)}.msg.err{display:block;background:#fdf0ef;border:1px solid #f3c1bc;color:var(--err)}
+.row{display:flex;gap:10px;align-items:center;margin-top:20px;flex-wrap:wrap}
+.btn{font:inherit;font-weight:800;font-size:15.5px;border:0;border-radius:12px;padding:13px 22px;cursor:pointer;background:var(--g);color:#fff}
+.btn:hover{background:var(--g2)}.btn.ghost{background:#fff;color:var(--g);border:1.5px solid var(--g)}.btn.ghost:hover{background:#f1f8f3}
+.btn[disabled]{opacity:.55;cursor:wait}.grow{flex:1}
+.link{background:none;border:0;color:var(--g);font:inherit;font-weight:700;cursor:pointer;padding:0;text-decoration:underline}
+.env{direction:ltr;text-align:left;background:#0f1a14;color:#d7f5df;border-radius:12px;padding:12px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;margin-top:8px}
+.env div{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)}.env div:last-child{border:0}
+.env b{color:#8fe0a9;flex:none}.env span{word-break:break-all;flex:1}
+.env button{flex:none;font:inherit;font-size:11px;border:1px solid rgba(255,255,255,.25);background:transparent;color:#fff;border-radius:8px;padding:2px 8px;cursor:pointer}
+.big{font-size:54px;text-align:center;margin:6px 0}.center{text-align:center}
+.eye{position:relative}.eye button{position:absolute;inset-inline-end:8px;top:50%;transform:translateY(-50%);border:0;background:none;cursor:pointer;font-size:16px}
+.hidden{display:none!important}
+.fileup{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><div class="lg">💬</div><div><h1>المساعد الذكي لخدمة العملاء</h1><p>الإعداد الأول — خطوات بسيطة وتبدأ</p></div></div>
+  <div class="steps" id="steps"></div>
+  <div class="card" id="card"><p class="center">⏳ جارٍ التحميل…</p></div>
+</div>
+<script>
+(function () {
+  var INFO = {}, CODE = '', STEP = '', ST = { type: '' }, TESTED = null, ADMIN = {};
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var TYPES = [
+    { id: 'sqlite', ic: '💾', name: 'SQLite', d: 'على نفس السيرفر — بدون إعداد' },
+    { id: 'supabase', ic: '⚡', name: 'Supabase / PostgreSQL', d: 'مجاني وسحابي — ننصح به' },
+    { id: 'mysql', ic: '🐬', name: 'MySQL / MariaDB', d: 'قاعدة بيانات الاستضافة' },
+    { id: 'mongodb', ic: '🍃', name: 'MongoDB', d: 'Atlas السحابي' },
+    { id: 'firebase', ic: '🔥', name: 'Firebase', d: 'Cloud Firestore من Google' },
+    { id: 'mssql', ic: '🟦', name: 'SQL Server', d: 'Microsoft / Azure SQL' }
+  ];
+  var NAMES = {}; TYPES.forEach(function (t) { NAMES[t.id] = t.name; });
+
+  function api(path, body) {
+    var b = Object.assign({ code: CODE }, body || {});
+    return fetch(path, { method: body === undefined ? 'GET' : 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(b) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { var e = new Error(j.error || ('خطأ ' + r.status)); e.code = j.code; throw e; } return j; }); });
+  }
+  function steps() {
+    var list = [];
+    if (INFO.need_code) list.push(['code', 'رمز الإعداد']);
+    if (INFO.need_storage) list.push(['db', 'قاعدة البيانات']);
+    list.push(['admin', 'حساب المدير'], ['done', 'تم']);
+    var idx = list.findIndex(function (x) { return x[0] === STEP; });
+    $('#steps').innerHTML = list.map(function (x, i) { return '<span class="' + (i === idx ? 'on' : i < idx ? 'done' : '') + '">' + (i < idx ? '✓ ' : (i + 1) + '. ') + x[1] + '</span>'; }).join('');
+  }
+  function go(s) { STEP = s; steps(); ({ code: codeView, db: dbView, admin: adminView, done: doneView })[s](); window.scrollTo(0, 0); }
+  function msg(el, kind, text) { el.className = 'msg ' + kind; el.innerHTML = text; }
+  function busy(btn, on, label) { btn.disabled = on; if (label) btn.textContent = label; }
+  function next() { go(STEP === 'code' ? (INFO.need_storage ? 'db' : 'admin') : STEP === 'db' ? 'admin' : 'done'); }
+
+  /* ---------- 1. setup code ---------- */
+  function codeView() {
+    $('#card').innerHTML = '<h2>🔐 رمز الإعداد</h2><p class="sub">لحماية البوت، لا يكمل الإعداد إلا من رفعه. الرمز مكتوب في <b>سجلات الاستضافة (Logs)</b> بجانب عبارة <b>Setup code</b>.<br>في Render: افتح خدمتك ← <b>Logs</b>.</p>' +
+      '<label>رمز الإعداد</label><input id="code" class="ltr" placeholder="1234-5678" autocomplete="off" inputmode="numeric"><div class="msg" id="m"></div>' +
+      '<div class="row"><button class="btn grow" id="go">متابعة ←</button></div>';
+    var go1 = function () {
+      CODE = $('#code').value.trim(); var b = $('#go'); busy(b, true);
+      api('/api/setup/code', {}).then(next, function (e) { msg($('#m'), 'err', esc(e.message)); busy(b, false); });
+    };
+    $('#go').onclick = go1; $('#code').onkeydown = function (e) { if (e.key === 'Enter') go1(); }; $('#code').focus();
+  }
+
+  /* ---------- 2. database ---------- */
+  function fieldsFor(t) {
+    var srv = function (port, dbph, userph) {
+      return '<div id="sep"><div class="g2"><div><label>عنوان الخادم (Host)</label><input data-f="host" class="ltr" placeholder="sql123.example.com"></div><div><label>المنفذ (Port)</label><input data-f="port" class="ltr" placeholder="' + port + '"></div></div>' +
+        '<div class="g3"><div><label>اسم قاعدة البيانات</label><input data-f="database" class="ltr" placeholder="' + dbph + '"></div><div><label>اسم المستخدم</label><input data-f="user" class="ltr" placeholder="' + userph + '"></div></div>' +
+        '<label>كلمة مرور قاعدة البيانات</label><div class="eye"><input data-f="password" type="password" class="ltr" autocomplete="new-password"><button type="button" data-eye>👁️</button></div></div>' +
+        '<div id="one" class="hidden"><label>رابط الاتصال الكامل</label><input data-f="url" class="ltr" placeholder="' + (t === 'mysql' ? 'mysql://user:pass@host:3306/dbname' : 'mssql://user:pass@host:1433/dbname') + '"></div>' +
+        '<p style="margin:10px 0 0"><button type="button" class="link" id="mode">عندي رابط اتصال كامل بدلاً من الخانات</button></p>';
+    };
+    switch (t) {
+      case 'sqlite': return '<div class="help">✅ لا يحتاج أي إعداد: البيانات تُحفظ في ملف على نفس السيرفر.<br>مناسب لـ: جهازك، أو سيرفر خاص (VPS)، أو استضافة فيها قرص دائم.</div>' +
+        (INFO.ephemeral ? '<div class="warn">⚠️ هذه الاستضافة <b>تمسح ملفاتها عند كل إعادة تشغيل</b> (مثل Render المجاني)، فستضيع بيانات البوت. اختر Supabase أو MongoDB أو Firebase بدلاً منها.</div>' : '');
+      case 'supabase': return '<label>رابط الاتصال (Connection string)</label><input data-f="url" class="ltr" placeholder="postgresql://postgres.xxxx:PASSWORD@aws-0-eu-central-1.pooler.supabase.com:5432/postgres">' +
+        '<div class="help">من أين أحصل عليه؟<ol><li>ادخل <b>supabase.com</b> وافتح مشروعك (أو أنشئ مشروعاً مجانياً).</li><li>اضغط زر <b>Connect</b> أعلى الصفحة.</li><li>اختر <b>Session pooler</b> وانسخ الرابط (URI).</li><li>استبدل <code>[YOUR-PASSWORD]</code> بكلمة مرور قاعدة البيانات.</li></ol>يعمل أيضاً مع أي PostgreSQL آخر (Neon، Railway…).</div>';
+      case 'mysql': return srv('3306', 'my_database', 'db_user') + '<div class="help">تجد هذه البيانات في لوحة استضافتك ← <b>MySQL Databases</b>.</div>' +
+        '<div class="warn">⚠️ يجب أن تسمح الاستضافة بالاتصال بقاعدة البيانات <b>من خارجها (Remote MySQL)</b>. بعض الاستضافات المجانية مثل InfinityFree لا تسمح بذلك — استخدم Supabase بدلاً منها.</div>';
+      case 'mssql': return srv('1433', 'smartchat', 'sa') + '<div class="help">في Azure SQL: قاعدة البيانات ← <b>Connection strings</b>، وأضف عنوان السيرفر في <b>Networking ← Firewall</b>.</div>';
+      case 'mongodb': return '<label>رابط الاتصال (Connection string)</label><input data-f="url" class="ltr" placeholder="mongodb+srv://user:PASSWORD@cluster0.xxxxx.mongodb.net/smartchat">' +
+        '<div class="help">من أين أحصل عليه؟<ol><li>ادخل <b>mongodb.com/atlas</b> وأنشئ Cluster مجاني (M0).</li><li><b>Database Access</b>: أنشئ مستخدماً بكلمة مرور.</li><li><b>Network Access</b>: أضف <code>0.0.0.0/0</code> (السماح من أي مكان).</li><li><b>Connect ← Drivers</b> وانسخ الرابط، وضع كلمة المرور مكان <code>&lt;password&gt;</code>.</li></ol></div>';
+      case 'firebase': return '<label>ملف حساب الخدمة (Service account JSON)</label><div class="fileup"><button type="button" class="btn ghost" id="pick">📄 اختيار ملف JSON</button><span id="fname" style="color:var(--m);font-size:13px"></span></div>' +
+        '<textarea data-f="firebase" placeholder=\'{ "type": "service_account", "project_id": "…", … }\'></textarea>' +
+        '<div class="help">من أين أحصل عليه؟<ol><li>ادخل <b>console.firebase.google.com</b> وافتح مشروعك.</li><li>من القائمة: <b>Firestore Database ← Create database</b> (مرة واحدة).</li><li>⚙️ <b>Project settings ← Service accounts ← Generate new private key</b>.</li><li>ارفع الملف الذي نزل هنا.</li></ol></div>';
+    }
+    return '';
+  }
+  function dbView() {
+    $('#card').innerHTML = '<h2>🗄️ أين يحفظ البوت بياناته؟</h2><p class="sub">المحادثات والإعدادات والحسابات تُحفظ في قاعدة البيانات التي تختارها. يمكنك تغييرها لاحقاً.</p>' +
+      '<div class="types">' + TYPES.map(function (t) { return '<button type="button" class="type' + (ST.type === t.id ? ' on' : '') + '" data-t="' + t.id + '"><span class="ic">' + t.ic + '</span><b>' + t.name + '</b><small>' + t.d + '</small></button>'; }).join('') + '</div>' +
+      '<div id="fields"></div><div class="msg" id="m"></div>' +
+      '<div class="row"><button class="btn ghost" id="test">🔌 اختبار الاتصال</button><button class="btn grow" id="go">متابعة ←</button></div>';
+    document.querySelectorAll('.type').forEach(function (b) { b.onclick = function () { ST = { type: b.getAttribute('data-t') }; TESTED = null; dbView(); }; });
+    var F = $('#fields'); F.innerHTML = ST.type ? fieldsFor(ST.type) : '<p class="sub center">👆 اختر نوع قاعدة البيانات</p>';
+    F.querySelectorAll('[data-f]').forEach(function (i) { var k = i.getAttribute('data-f'); if (ST[k]) i.value = ST[k]; i.oninput = function () { ST[k] = i.value; TESTED = null; }; });
+    var eye = F.querySelector('[data-eye]'); if (eye) eye.onclick = function () { var p = F.querySelector('[data-f=password]'); p.type = p.type === 'password' ? 'text' : 'password'; };
+    var mode = $('#mode'); if (mode) mode.onclick = function () { var one = $('#one').classList.toggle('hidden'); $('#sep').classList.toggle('hidden', !one); mode.textContent = one ? 'عندي رابط اتصال كامل بدلاً من الخانات' : 'إدخال البيانات في خانات منفصلة'; if (one) ST.url = ''; };
+    if (ST.url && $('#one')) { $('#one').classList.remove('hidden'); $('#sep').classList.add('hidden'); }
+    var pick = $('#pick'); if (pick) pick.onclick = function () {
+      var inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
+      inp.onchange = function () { var f = inp.files[0]; if (!f) return; f.text().then(function (t) { ST.firebase = t; F.querySelector('[data-f=firebase]').value = t; $('#fname').textContent = '✓ ' + f.name; TESTED = null; }); };
+      inp.click();
+    };
+    $('#test').classList.toggle('hidden', !ST.type || ST.type === 'sqlite');
+    $('#test').onclick = function () { test(true); };
+    $('#go').onclick = function () {
+      if (!ST.type) return msg($('#m'), 'err', 'اختر نوع قاعدة البيانات أولاً');
+      if (ST.type === 'sqlite') { TESTED = { existing: null }; return next(); }
+      if (TESTED) return next();
+      test(false).then(function (ok) { if (ok) setTimeout(next, 900); });
+    };
+  }
+  function test(show) {
+    var b = $('#test'), m = $('#m'); busy(b, true, '⏳ جارٍ الاتصال…'); $('#go').disabled = true;
+    msg(m, 'ok', '⏳ جارٍ الاتصال بقاعدة البيانات…');
+    return api('/api/setup/test', ST).then(function (r) {
+      TESTED = r;
+      msg(m, 'ok', r.existing ? '✅ تم الاتصال بنجاح — <b>وُجدت بيانات بوت سابقة</b> (' + Math.round(r.existing.size / 1024) + ' KB، آخر حفظ ' + new Date(r.existing.updated_at).toLocaleString('ar-SA') + ') وستُستعاد كما هي.' : '✅ تم الاتصال بنجاح — قاعدة بيانات جديدة جاهزة.');
+      return true;
+    }, function (e) { if (e.code) { CODE = ''; return go('code'); } msg(m, 'err', '❌ ' + esc(e.message)); return false; })
+      .then(function (ok) { busy(b, false, '🔌 اختبار الاتصال'); $('#go').disabled = false; return ok; });
+  }
+
+  /* ---------- 3. administrator ---------- */
+  function adminView() {
+    var existing = (TESTED && TESTED.existing) || (!INFO.need_storage && INFO.existing_data);
+    $('#card').innerHTML = '<h2>👤 حساب مدير النظام</h2><p class="sub">' + (existing ? 'وُجدت حسابات سابقة في قاعدة البيانات، ويمكنك الدخول بها. <b>اترك الخانات فارغة</b>، أو أدخل بيانات مدير جديد (إن كان البريد موجوداً تُحدَّث كلمة مروره).' : 'بهذا الحساب تدخل لوحة التحكم وتضيف موظفيك لاحقاً.') + '</p>' +
+      (!INFO.need_storage && INFO.env_type ? '<div class="help" style="margin-bottom:6px">🗄️ قاعدة البيانات محددة من إعدادات الاستضافة: <b>' + esc(NAMES[INFO.env_type] || INFO.env_type) + '</b></div>' : '') +
+      '<label>الاسم</label><input id="an" placeholder="مثال: عبدالله الحربي" autocomplete="name">' +
+      '<label>البريد الإلكتروني</label><input id="ae" type="email" class="ltr" placeholder="admin@example.com" autocomplete="email">' +
+      '<div class="g3"><div><label>كلمة المرور</label><div class="eye"><input id="ap" type="password" class="ltr" autocomplete="new-password" placeholder="8 أحرف على الأقل"><button type="button" data-eye="ap">👁️</button></div></div>' +
+      '<div><label>تأكيد كلمة المرور</label><input id="ap2" type="password" class="ltr" autocomplete="new-password"></div></div>' +
+      '<div class="msg" id="m"></div><div class="row">' + (INFO.need_storage ? '<button class="btn ghost" id="back">→ رجوع</button>' : '') + '<button class="btn grow" id="go">✅ إنهاء الإعداد</button></div>';
+    ['an', 'ae', 'ap', 'ap2'].forEach(function (k) { if (ADMIN[k]) $('#' + k).value = ADMIN[k]; $('#' + k).oninput = function () { ADMIN[k] = this.value; }; });
+    document.querySelectorAll('[data-eye]').forEach(function (b) { b.onclick = function () { var p = $('#' + b.getAttribute('data-eye')); p.type = p.type === 'password' ? 'text' : 'password'; $('#ap2').type = p.type; }; });
+    if ($('#back')) $('#back').onclick = function () { go('db'); };
+    $('#go').onclick = function () {
+      var b = $('#go'), m = $('#m'); busy(b, true, '⏳ جارٍ الإعداد…');
+      var body = Object.assign({}, INFO.need_storage ? ST : {}, { admin_name: $('#an').value, admin_email: $('#ae').value, admin_password: $('#ap').value, admin_password2: $('#ap2').value });
+      api('/api/setup/finish', body).then(function (r) { DONE = r; go('done'); }, function (e) { if (e.code) { CODE = ''; return go('code'); } msg(m, 'err', '❌ ' + esc(e.message)); busy(b, false, '✅ إنهاء الإعداد'); });
+    };
+  }
+
+  /* ---------- 4. done ---------- */
+  var DONE = null;
+  function doneView() {
+    var env = (DONE && DONE.env) || [];
+    $('#card').innerHTML = '<div class="big">🎉</div><h2 class="center">تم الإعداد بنجاح</h2><p class="sub center">قاعدة البيانات: <b>' + esc(NAMES[DONE && DONE.type] || '') + '</b></p>' +
+      (env.length ? '<div class="warn"><b>📌 خطوة مهمة' + (INFO.ephemeral ? ' (ضرورية في هذه الاستضافة)' : ' إن كانت استضافتك تمسح ملفاتها عند إعادة التشغيل') + ':</b><br>أضف هذه القيم في <b>متغيرات البيئة (Environment)</b> في استضافتك حتى يتذكر البوت قاعدة البيانات دائماً. في Render: الخدمة ← <b>Environment</b> ← Add Environment Variable.' +
+        '<div class="env">' + env.map(function (e, i) { return '<div><b>' + esc(e[0]) + '</b><span>' + esc(e[1].length > 120 ? e[1].slice(0, 120) + '…' : e[1]) + '</span><button data-cp="' + i + '">نسخ</button></div>'; }).join('') + '</div>' +
+        '<p style="margin:8px 0 0;font-size:12.5px">🔒 هذه القيم سرية (فيها كلمة مرور قاعدة البيانات) — لا ترسلها لأحد.</p></div>' : '') +
+      '<div class="msg ok" id="m">⏳ جارٍ تشغيل لوحة التحكم…</div><div class="row"><a class="btn grow center hidden" id="open" href="/admin/" style="text-decoration:none">🚀 فتح لوحة التحكم</a></div>';
+    document.querySelectorAll('[data-cp]').forEach(function (b) { b.onclick = function () { var v = env[Number(b.getAttribute('data-cp'))][1]; (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(function () { b.textContent = '✓ تم'; }, function () { prompt('انسخ القيمة:', v); }); }; });
+    var tries = 0;
+    (function poll() {
+      fetch('/healthz', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+        if (!j.setup) { $('#m').innerHTML = '✅ لوحة التحكم جاهزة — ادخل بالبريد وكلمة المرور التي اخترتها.'; $('#open').classList.remove('hidden'); }
+        else throw 0;
+      }).catch(function () { if (++tries < 90) setTimeout(poll, 1500); else $('#m').innerHTML = 'أعد تحميل الصفحة بعد قليل.'; });
+    })();
+  }
+
+  fetch('/api/setup/info', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+    if (!j.setup) { location.href = '/admin/'; return; }
+    INFO = j; go(j.need_code ? 'code' : j.need_storage ? 'db' : 'admin');
+  }).catch(function () { location.href = '/admin/'; });
+})();
+</script>
+</body>
+</html>

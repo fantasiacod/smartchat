@@ -101,17 +101,24 @@
         }).catch(function () { });
       }, 350);
       settingsPage(root, ['appearance', 'prechat'], function (el, d, ch) {
-        var a = d.appearance;
+        var a = d.appearance, P0 = window.SCPatterns;
+        // older settings kept a picture theme as the "pattern": it is now a background, with the decoration on top
+        if (P0.themeOf(a.pattern)) { if (!a.bg) a.bg = a.pattern; a.pattern = 'girih12'; }
         el.innerHTML = '<div class="appear"><div>' +
           card('🎨 ألوان المحادثة (الأساسية)', '<div class="swatches" id="pal">' + PALETTES.map(function (p, i) { return '<button class="swatch" data-p="' + i + '"><div class="sw"><i style="background:' + p[1] + '"></i><i style="background:' + p[2] + '"></i></div><span>' + p[0] + '</span></button>'; }).join('') + '</div>' +
             '<div class="grid g3" style="margin-top:14px">' + f.color('appearance.primary_color', 'اللون الرئيسي', { clear: false }) + f.color('appearance.secondary_color', 'اللون الثانوي', { clear: false }) + f.select('appearance.header_style', 'خلفية الرأس', [['gradient', 'متدرّج بين اللونين'], ['solid', 'لون واحد']]) + '</div>', 'مجموعة صغيرة تكفي لتلوين المحادثة بالكامل. ألوان لوحة التحكم نفسها تُغيَّر من «حسابي ← مظهر اللوحة».') +
           card('🏷️ الشعار والاسم', '<div class="grid g2"><div><label class="f">شعار الجهة</label><div id="logo"></div></div><div><label class="f">صورة البوت <small>(اختياري)</small></label><div id="botav"></div></div></div>' +
             '<div class="grid g2" style="margin-top:12px">' + f.text('appearance.company_name', 'الاسم الظاهر أعلى المحادثة', { hint: 'إن تُرك فارغاً يُستخدم اسم الجهة من صفحة معلومات الجهة' }) + f.text('appearance.footer_text', 'نص التذييل', { ph: 'بدعم من' }) + '</div>' +
-            f.sw('appearance.show_unified_number', '📞 إظهار الرقم الموحّد تحت الاسم', 'يُضبط الرقم من صفحة معلومات الجهة') + f.sw('appearance.show_footer', 'إظهار التذييل أسفل النافذة')) +
+            f.sw('appearance.show_footer', 'إظهار التذييل أسفل النافذة')) +
+          card('📌 معلومات في الشريط العلوي', f.sw('appearance.show_unified_number', '📞 الرقم الموحّد', 'يُضبط الرقم من صفحة «بيانات الجهة»') +
+            f.sw('appearance.show_address', '📍 الموقع / العنوان', 'يظهر تحت الاسم، وعند الضغط يفتح الموقع في الخرائط إن وُضع رابطه في «بيانات الجهة»') + '<div id="haddr"></div>' +
+            f.sw('appearance.show_email', '✉️ البريد الإلكتروني') + '<div id="hmail"></div>', 'كلها اختيارية — فعّل ما تريد ظهوره في أعلى نافذة المحادثة.') +
           card('🔤 الخط', '<div class="grid g2">' + f.select('appearance.font', 'نوع الخط', FONTS) + f.range('appearance.font_size', 'حجم خط الرسائل', 12, 18, 0.5, 'px') + '</div><div id="fontprev" style="padding:12px;border-radius:12px;background:var(--soft);font-size:18px"></div>') +
+          card('🖼️ خلفية المحادثة', '<div class="patterns" id="bgs"></div><div id="bgcustom"></div><div id="bgfade"></div>', 'صورة كاملة خلف المحادثة: تصميمك الخاص أو إحدى الخلفيات الجاهزة. الزخرفة المختارة أدناه تبقى ظاهرة فوقها (ويمكنك إخفاؤها أو جعلها في الشريط العلوي فقط).') +
           card('🕌 الزخرفة', '<div class="patterns" id="pats"></div><div class="grid g3" style="margin-top:14px">' + f.color('appearance.pattern_color', 'لون الزخرفة', { ph: 'نفس اللون الرئيسي' }) + f.range('appearance.pattern_opacity', 'الشفافية', 0.02, 0.3, 0.01) + f.range('appearance.pattern_scale', 'الحجم', 0.5, 2.5, 0.1, '×') + '</div>' +
-            '<div class="row wrap" style="gap:20px">' + f.swi('appearance.pattern_chat', 'في خلفية المحادثة') + f.swi('appearance.pattern_header', 'في رأس النافذة') + '</div><div id="patimg"></div>', 'زخارف إسلامية وعربية وسعودية، ومناسبات، أو شعار الجهة وصورك الخاصة — تُطبّق على نافذة المحادثة. ولتطبيقها على لوحة التحكم: حسابي ← مظهر اللوحة.') +
+            '<label class="f">مكان الزخرفة</label><div class="seg" id="patplace"><button type="button" data-pl="both">في المحادثة والشريط العلوي</button><button type="button" data-pl="header">الشريط العلوي فقط</button><button type="button" data-pl="chat">المحادثة فقط</button><button type="button" data-pl="off">إخفاء الزخرفة</button></div><div id="patimg"></div>', 'زخارف إسلامية وعربية وسعودية، ومناسبات، أو شعار الجهة وصورك الخاصة — تُطبّق على نافذة المحادثة. ولتطبيقها على لوحة التحكم: حسابي ← مظهر اللوحة.') +
           card('🎉 زخرفة المناسبات التلقائية', f.sw('appearance.occasions.auto', 'تبديل الزخرفة تلقائياً في المناسبات', 'يرجع للزخرفة المختارة أعلاه بعد انتهاء المناسبة. التواريخ الهجرية حسب تقويم أم القرى') +
+            '<label class="f" style="margin-top:8px">شكل المناسبة</label><div class="seg" id="occst" style="margin-bottom:8px"><button type="button" data-st="image">🖼️ خلفية مصوّرة كاملة</button><button type="button" data-st="pattern">🕌 زخرفة خفيفة</button></div>' +
             '<div class="checks" style="margin-top:8px"><label><input type="checkbox" data-k="appearance.occasions.ramadan"> 🌙 شهر رمضان كاملاً</label><label><input type="checkbox" data-k="appearance.occasions.eid"> 🎉 عيد الفطر (1–4 شوال) وعيد الأضحى (9–13 ذو الحجة)</label><label><input type="checkbox" data-k="appearance.occasions.national"> 🇸🇦 اليوم الوطني (20–26 سبتمبر)</label><label><input type="checkbox" data-k="appearance.occasions.founding"> 🏰 يوم التأسيس (20–23 فبراير)</label></div><div id="occnow" class="hint"></div>') +
           card('🔘 زر المحادثة', '<label class="f">الشكل</label><div class="choices" id="shapes">' + [['circle', 'دائري', '50%'], ['rounded', 'مربع منحني', '30%'], ['square', 'مربع', '8px'], ['pill', 'كبسولة بنص', '999px']].map(function (s) { return '<button class="choice" data-s="' + s[0] + '"><span class="shp" style="border-radius:' + s[2] + ';' + (s[0] === 'pill' ? 'width:64px' : '') + '">💬</span>' + s[1] + '</button>'; }).join('') + '</div>' +
             '<label class="f" style="margin-top:12px">الأيقونة</label><div class="choices" id="icons"></div><div style="margin-top:10px"><label class="f">أو صورة مخصصة</label><div id="licon"></div></div>' +
@@ -137,13 +144,13 @@
         var P = window.SCPatterns;
         function syncRange() { var r = el.querySelector('[data-k="appearance.pattern_opacity"]'); if (r) { r.value = a.pattern_opacity; r.dispatchEvent(new Event('input')); } }
         // pictures used as decoration are shrunk first, so the pattern stays light
-        function shrinkUpload(src, max) {
+        function shrinkUpload(src, max, jpeg) {
           return (typeof src === 'string' ? fetch(src).then(function (r) { return r.blob(); }) : Promise.resolve(src)).then(function (blob) { return createImageBitmap(blob); }).then(function (bmp) {
             var k = Math.min(1, max / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
             c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
             c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-            return new Promise(function (res) { c.toBlob(res, 'image/png'); });
-          }).then(function (b) { return A.upload(new File([b], 'pattern.png', { type: 'image/png' })); }).then(function (r) { return r.url; });
+            return new Promise(function (res) { c.toBlob(res, jpeg ? 'image/jpeg' : 'image/png', 0.86); });
+          }).then(function (b) { return A.upload(new File([b], jpeg ? 'background.jpg' : 'pattern.png', { type: jpeg ? 'image/jpeg' : 'image/png' })); }).then(function (r) { return r.url; });
         }
         function patImg() {
           var box = A.$('#patimg', el), id = a.pattern;
@@ -165,14 +172,48 @@
             }).catch(A.fail);
           };
         }
+        function bgUpload() {
+          A.pickFile('image/png,image/jpeg,image/webp', false).then(function (fs) {
+            if (!fs || !fs[0]) return;
+            A.toast('⏳ جارٍ رفع الخلفية…');
+            return shrinkUpload(fs[0], 1400, true).then(function (u) { a.bg_image = u; a.bg = 'custom'; refresh(); A.toast('تم وضع خلفيتك ✅', 'ok'); });
+          }).catch(A.fail);
+        }
+        function paintBg() {
+          var cur = a.bg || '';
+          var tiles = [{ id: '', name: 'بدون صورة', css: 'none' }, { id: 'custom', name: a.bg_image ? 'تصميمي' : '＋ ارفع تصميمك', css: a.bg_image ? "url('" + esc(a.bg_image) + "');background-size:cover;background-position:center" : 'none' }]
+            .concat(P.list.filter(function (p) { return p.theme; }).map(function (p) { return { id: p.id, name: p.name, css: "url('/themes/" + p.theme + "');background-size:cover;background-position:center" }; }));
+          A.$('#bgs', el).innerHTML = tiles.map(function (t) {
+            return '<button class="pat' + (cur === t.id ? ' on' : '') + '" data-bg="' + t.id + '"><div class="pv" style="background-color:' + (a.chat_bg || '#f6f7f4') + ';background-image:' + t.css + '">' + (t.id === 'custom' && !a.bg_image ? '<span style="font-size:22px;line-height:56px">🖼️</span>' : '') + '</div><span>' + esc(t.name) + '</span></button>';
+          }).join('');
+          A.$$('#bgs .pat', el).forEach(function (b) { b.onclick = function () { var id = b.getAttribute('data-bg'); if (id === 'custom' && !a.bg_image) return bgUpload(); a.bg = id; refresh(); }; });
+          A.$('#bgcustom', el).innerHTML = a.bg_image ? '<div class="row wrap" style="gap:8px;margin-top:10px"><button class="btn sm soft" id="bgchg">🔄 تغيير تصميمي</button><button class="btn sm danger ghost" id="bgdel">🗑️ حذف تصميمي</button><span class="tiny muted">يفضّل صورة طولية (مثل 720×1280). تُصغَّر تلقائياً.</span></div>' : '<p class="tiny muted" style="margin-top:8px">يفضّل صورة طولية (مثل 720×1280) بألوان هادئة. تُصغَّر تلقائياً.</p>';
+          var chg = A.$('#bgchg', el), del = A.$('#bgdel', el);
+          if (chg) chg.onclick = bgUpload;
+          if (del) del.onclick = function () { a.bg_image = ''; if (a.bg === 'custom') a.bg = ''; refresh(); };
+          var fb = A.$('#bgfade', el);
+          if (a.bg && !fb.firstChild) { fb.innerHTML = '<div style="margin-top:12px">' + f.range('appearance.bg_fade', 'تفتيح الخلفية (لوضوح الرسائل)', 0, 0.8, 0.05) + '</div>'; A.bind(fb, d, refresh); }
+          else if (!a.bg) fb.innerHTML = '';
+        }
+        function paintHeadInfo() {
+          var O = (S.site.settings && S.site.settings.org) || {};
+          var ha = A.$('#haddr', el), hm = A.$('#hmail', el);
+          if (a.show_address && !ha.firstChild) { ha.innerHTML = f.text('appearance.header_address', 'نص الموقع', { ph: O.address || 'مثال: المدينة المنورة – شارع الملك فهد', hint: O.address ? 'اتركه فارغاً لاستخدام العنوان من «بيانات الجهة»' : '' }); A.bind(ha, d, refresh); }
+          else if (!a.show_address) ha.innerHTML = '';
+          if (a.show_email && !hm.firstChild) { hm.innerHTML = f.text('appearance.header_email', 'البريد', { ltr: true, ph: O.email || 'info@example.com', hint: O.email ? 'اتركه فارغاً لاستخدام البريد من «بيانات الجهة»' : '' }); A.bind(hm, d, refresh); }
+          else if (!a.show_email) hm.innerHTML = '';
+        }
         function paintChoices() {
           A.$$('#shapes .choice', el).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-s') === (a.launcher_shape || 'circle')); b.querySelector('.shp').style.background = a.primary_color; });
           A.$$('#ostyle .choice', el).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-o') === (a.option_style || 'pill')); });
           A.$$('#pal .swatch', el).forEach(function (b) { var p = PALETTES[Number(b.getAttribute('data-p'))]; b.classList.toggle('on', p[1].toLowerCase() === String(a.primary_color).toLowerCase() && p[2].toLowerCase() === String(a.secondary_color).toLowerCase()); });
           A.$('#icons', el).innerHTML = ICON_PRESETS.map(function (k) { return '<button class="choice' + ((a.launcher_icon_preset || 'chat') === k && !a.launcher_icon ? ' on' : '') + '" data-i="' + k + '"><span class="shp" style="border-radius:50%;background:' + a.primary_color + '">' + iconSvg(k) + '</span></button>'; }).join('');
           A.$$('#icons .choice', el).forEach(function (b) { b.onclick = function () { a.launcher_icon_preset = b.getAttribute('data-i'); a.launcher_icon = ''; A.imageField(A.$('#licon', el), function () { return a.launcher_icon; }, function (v) { a.launcher_icon = v; refresh(); }); refresh(); }; });
-          A.$('#pats', el).innerHTML = P.list.map(function (p) {
-            var bg = p.img ? (function () { var u = p.img === 'logo' ? (a.pattern_logo || a.company_logo) : (a.pattern_images || [])[0]; return u ? 'url(\'' + esc(u) + '\');background-size:40%;background-repeat:space' : 'none'; })() : P.css(p.id, a.pattern_color || a.primary_color, Math.max(0.12, a.pattern_opacity * 2), 1).replace(/"/g, "'");
+          paintBg(); paintHeadInfo();
+          var pl = a.pattern_chat === false ? (a.pattern_header === false ? 'off' : 'header') : (a.pattern_header === false ? 'chat' : 'both');
+          A.$$('#patplace button', el).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-pl') === pl); b.onclick = function () { var v = b.getAttribute('data-pl'); a.pattern_chat = v === 'both' || v === 'chat'; a.pattern_header = v === 'both' || v === 'header'; refresh(); }; });
+          A.$('#pats', el).innerHTML = P.list.filter(function (p) { return !p.theme; }).map(function (p) {
+            var bg = p.theme ? "url('/themes/" + p.theme + "');background-size:cover;background-position:center" : p.img ? (function () { var u = p.img === 'logo' ? (a.pattern_logo || a.company_logo) : (a.pattern_images || [])[0]; return u ? 'url(\'' + esc(u) + '\');background-size:40%;background-repeat:space' : 'none'; })() : P.css(p.id, a.pattern_color || a.primary_color, Math.max(0.12, a.pattern_opacity * 2), 1).replace(/"/g, "'");
             return '<button class="pat' + ((a.pattern || 'none') === p.id ? ' on' : '') + '" data-p="' + p.id + '"><div class="pv" style="background-color:' + (a.chat_bg || '#f6f7f4') + ';background-image:' + bg + '">' + (p.img && bg === 'none' ? '<span style="font-size:22px;line-height:56px">' + (p.img === 'logo' ? '🏷️' : '🖼️') + '</span>' : '') + '</div><span>' + esc(p.name) + '</span></button>';
           }).join('');
           A.$$('#pats .pat', el).forEach(function (b) { b.onclick = function () {
@@ -185,7 +226,8 @@
             a.pattern = id; if (id === 'images' && a.pattern_opacity < 0.1) { a.pattern_opacity = 0.12; syncRange(); } refresh();
           }; });
           patImg();
-          var occ = P.occasionOf(new Date(), a.occasions), NM = { ramadan: '🌙 رمضان', eid: '🎉 العيد', national: '🇸🇦 اليوم الوطني / يوم التأسيس' };
+          var occ = P.occasionOf(new Date(), a.occasions), NM = { ramadan: '🌙 رمضان', eid_fitr: '🎉 عيد الفطر', eid_adha: '🐑 عيد الأضحى', national: '🇸🇦 اليوم الوطني', founding: '🏰 يوم التأسيس' };
+          A.$$('#occst button', el).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-st') === ((a.occasions || {}).style || 'image')); b.onclick = function () { a.occasions = a.occasions || {}; a.occasions.style = b.getAttribute('data-st'); refresh(); }; });
           A.$('#occnow', el).innerHTML = a.occasions && a.occasions.auto ? (occ ? '✅ الآن: زخرفة ' + NM[occ] + ' مفعّلة تلقائياً' : 'لا توجد مناسبة اليوم — تظهر الزخرفة المختارة أعلاه') : '';
           A.$('#fontprev', el).style.fontFamily = '"' + a.font + '"'; A.$('#fontprev', el).textContent = 'مرحباً بك 👋 كيف يمكننا خدمتك اليوم؟ ١٢٣ — Hello';
           loadFont(a.font);
@@ -253,6 +295,9 @@
             }).join('') + '</tbody></table></div>' +
             f.sw('behavior.work_hours.allow_handoff', '📞 السماح بالتحويل لموظف خارج أوقات العمل', 'إذا فعّلته يتصرف البوت كأنه وقت عمل (يحوّل لموظف ويرن). وإذا عطّلته يطلب الاسم والجوال فقط') +
             f.area('behavior.work_hours.message', 'رسالة خارج أوقات العمل (اختياري)', { rows: 3, ph: 'نعتذر، نحن الآن خارج أوقات العمل 🌙\nأوقات العمل:\n{hours}\n\nاترك اسمك ورقم جوالك وسنتواصل معك في أقرب يوم عمل.', hint: '{hours} = جدول أوقات العمل أعلاه تلقائياً. اتركه فارغاً للنص الافتراضي (بالعربي والإنجليزي والأردو)' })) +
+          card('📎 الملفات من الزوار', f.sw('behavior.attachments.enabled', 'السماح للزوار بإرسال ملفات (صور أو PDF)', 'كل ملف يُفحص قبل وصوله: نوعه الحقيقي، حجمه، خلوّه من الأكواد المخفية، وأوامر PDF الخطرة، وتُحذف بيانات الموقع والكاميرا من الصور') +
+            '<div class="grid g3">' + f.num('behavior.attachments.max_mb', 'الحجم الأقصى (ميجابايت)', { min: 1, max: 15 }) + '<div style="padding-top:26px">' + f.swi('behavior.attachments.images', '🖼️ الصور') + '</div><div style="padding-top:26px">' + f.swi('behavior.attachments.pdf', '📄 ملفات PDF') + '</div></div>' +
+            f.sw('behavior.attachments.only_with_agent', 'أثناء التحدث مع موظف فقط', 'إذا فعّلته لا يظهر زر الإرفاق للبوت، ويُقبل الملف بعد التحويل لموظف')) +
           '<div class="grid g2"><div>' + card('🤔 عندما لا يعرف البوت الإجابة', '<div class="alert ok" style="margin-bottom:10px">👨‍💼 يحوّل المستفيد إلى موظف فوراً، ويُسجَّل السؤال، وردّ الموظف يُضاف تلقائياً إلى الخريطة الذهنية ليجيب البوت عنه مستقبلاً.</div>' +
             f.sw('behavior.auto_learn', '🧠 التعلّم التلقائي', 'حفظ سؤال المستفيد ورد الموظف في قاعدة المعرفة ليجيب البوت مستقبلاً') +
             f.sw('behavior.numbered_menus', '🔢 قبول الأرقام في القوائم', 'يستطيع المستفيد كتابة 1، 2، ١، ٢ لاختيار الخدمة') +
@@ -366,11 +411,12 @@
       if (A.can('admin')) {
         var sec = A.clone(S.site.settings.security), el = A.$('#sec');
         el.innerHTML = f.area('allowed_domains', 'النطاقات المسموح لها', { rows: 2, ph: 'example.com, shop.example.com', hint: 'اتركه فارغاً للسماح لأي موقع' }) +
+          f.text('virustotal_key', '🛡️ مفتاح VirusTotal لفحص الملفات (اختياري)', { ltr: true, ph: 'اتركه فارغاً — الفحص الأساسي يعمل بدونه', hint: 'يُرسل بصمة الملف فقط (SHA-256) وليس الملف نفسه. مفتاح مجاني من virustotal.com' }) +
           '<label class="f">مفتاح توثيق الهوية (Identity secret)</label><div class="row"><input class="in mono" readonly value="' + esc(sec.identity_secret || '') + '" id="isec"><button class="btn sm ghost" id="regen">تجديد</button></div>' +
           '<span class="tiny muted" id="ssecs">✅ يُحفظ تلقائياً</span><button class="btn sm" id="ssec" style="display:none">حفظ</button>';
         var secT = null;
         A.bind(el, sec, function () { A.$('#ssecs').textContent = '● جارٍ الحفظ…'; clearTimeout(secT); secT = setTimeout(function () { A.$('#ssec').onclick(); }, 1000); });
-        A.$('#ssec').onclick = function () { A.saveSite({ settings: { security: { allowed_domains: sec.allowed_domains } } }).then(function () { A.$('#ssecs').textContent = '✅ تم الحفظ تلقائياً'; }, A.fail); };
+        A.$('#ssec').onclick = function () { A.saveSite({ settings: { security: { allowed_domains: sec.allowed_domains, virustotal_key: sec.virustotal_key || '' } } }).then(function () { A.$('#ssecs').textContent = '✅ تم الحفظ تلقائياً'; }, A.fail); };
         A.$('#regen').onclick = function () { A.confirm('تجديد المفتاح يتطلب تحديث إضافة ووردبريس. متابعة؟').then(function (ok) { if (ok) A.api('POST', '/api/sites/' + S.site.id + '/regenerate-secret').then(function (r) { A.$('#isec').value = r.identity_secret; A.reloadSites(); }, A.fail); }); };
       }
       steps(); status();

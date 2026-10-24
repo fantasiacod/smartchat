@@ -58,6 +58,8 @@
     close: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     send: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M3.4 20.4l17.4-7.5c.8-.4.8-1.5 0-1.8L3.4 3.6c-.7-.3-1.4.3-1.3 1l.9 5.6c.1.5.5.8 1 .9l8 .9-8 .9c-.5.1-.9.4-1 .9l-.9 5.6c-.1.7.6 1.3 1.3 1z"/></svg>',
     menu: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
+    pin: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2a7 7 0 00-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 00-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z"/></svg>',
+    mail: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4.2l-8 5-8-5V6l8 5 8-5z"/></svg>',
     phone: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6.6 10.8a15.1 15.1 0 006.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 013 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z"/></svg>',
     pin: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2a7 7 0 00-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 00-7-7zm0 9.5A2.5 2.5 0 1112 6a2.5 2.5 0 010 5.5z"/></svg>',
     pdf: '<svg viewBox="0 0 24 24" width="26" height="26"><path fill="#e11d48" d="M6 2h9l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"/><path fill="#fff" opacity=".5" d="M15 2v5h5z"/><text x="12" y="17" font-size="5.5" font-weight="700" fill="#fff" text-anchor="middle" font-family="Arial">PDF</text></svg>',
@@ -124,6 +126,15 @@
     var pattern = A.pattern_chat !== false ? (A.pattern_css || 'none') : 'none';
     var headPattern = A.pattern_header !== false ? (A.pattern_header_css || 'none') : 'none';
     var optStyle = A.option_style || 'pill';
+    // background picture (own design / picture theme) under the decoration, with a light veil so messages stay readable
+    var veil = function (hex, a) { var h = String(hex || '#ffffff').replace('#', ''); if (h.length === 3) h = h.replace(/./g, '$&$&'); if (!/^[0-9a-f]{6}$/i.test(h)) return 'rgba(255,255,255,' + a + ')'; return 'rgba(' + parseInt(h.slice(0, 2), 16) + ',' + parseInt(h.slice(2, 4), 16) + ',' + parseInt(h.slice(4, 6), 16) + ',' + a + ')'; };
+    var layers = function (base) {
+      if (!A.bg_css) return 'background-color:' + base + ';background-image:' + pattern;
+      var v = veil(base, Number(A.bg_fade) || 0), p = pattern !== 'none';
+      return 'background-color:' + base + ';background-image:' + (p ? pattern + ',' : '') + 'linear-gradient(' + v + ',' + v + '),' + A.bg_css +
+        ';background-size:' + (p ? 'auto,' : '') + 'cover,cover;background-position:' + (p ? '0 0,' : '') + 'center,center;background-repeat:' + (p ? 'repeat,' : '') + 'no-repeat,no-repeat';
+    };
+    var addr = cfg.org && cfg.org.address, mail = cfg.org && cfg.org.email;
 
     var host = document.createElement('div');
     host.id = 'smart-chat-root';
@@ -153,13 +164,14 @@
       '.ttl{display:block;font-size:16px;font-weight:700;line-height:1.35}' +
       '.sub{font-size:12px;opacity:.92;display:flex;align-items:center;gap:6px;margin-top:2px}' +
       '.dot{width:8px;height:8px;border-radius:50%;background:#86efac;display:inline-block;box-shadow:0 0 0 3px rgba(134,239,172,.25)}.dot.wait{background:#fde68a;animation:blink 1s infinite}.dot.off{background:#cbd5e1;box-shadow:none}' +
+      '.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;position:relative}.chips .uni{margin-top:0}.hinfo{display:inline-flex;align-items:center;gap:5px;max-width:100%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:inherit;text-decoration:none;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600}.hinfo span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hinfo svg{flex:none}' +
       '.uni{display:inline-flex;align-items:center;gap:5px;margin-top:8px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.25);color:inherit;text-decoration:none;border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:700;direction:ltr;position:relative}' +
       '.hb{border:0;background:rgba(255,255,255,.18);color:inherit;width:34px;height:34px;border-radius:10px;cursor:pointer;display:grid;place-items:center;flex:none}' +
       '.langs{display:flex;gap:4px;position:relative;margin-top:8px;flex-wrap:wrap}.langs button{border:1px solid rgba(255,255,255,.35);background:transparent;color:inherit;border-radius:999px;padding:2px 10px;font-size:12px;cursor:pointer}.langs button.on{background:rgba(255,255,255,.95);color:' + c1 + ';font-weight:700}' +
       '.menu{position:absolute;top:56px;inset-inline-end:14px;background:' + V.panel + ';color:' + V.panelTxt + ';border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);display:none;z-index:5;min-width:180px;overflow:hidden}' +
       '.menu.open{display:block}.menu button{display:block;width:100%;border:0;background:none;padding:12px 16px;text-align:start;font-size:14px;cursor:pointer;color:inherit}.menu button:hover{background:rgba(0,0,0,.05)}.menu .danger{color:#b91c1c}' +
       '.view{flex:1;display:flex;flex-direction:column;min-height:0}' +
-      '.body{flex:1;overflow-y:auto;padding:16px 12px;background-color:' + V.chat + ';background-image:' + pattern + ';display:flex;flex-direction:column;gap:8px}' +
+      '.body{flex:1;overflow-y:auto;padding:16px 12px;' + layers(V.chat) + ';display:flex;flex-direction:column;gap:8px}' +
       '.row{display:flex;gap:8px;align-items:flex-end;max-width:90%}.row.me{align-self:flex-end;flex-direction:row-reverse}' +
       '.mav{width:30px;height:30px;border-radius:50%;background:' + V.av + ';color:' + contrast(V.av) + ';display:grid;place-items:center;font-size:12px;font-weight:700;flex:none;overflow:hidden}.mav img{width:100%;height:100%;object-fit:cover}.mav.clear{background:none;border-radius:0}' +
       '.bub{padding:10px 13px;border-radius:' + V.bubR + ';font-size:' + V.fs + ';line-height:1.65;overflow-wrap:anywhere;box-shadow:0 1px 2px rgba(0,0,0,.07)}' +
@@ -202,8 +214,10 @@
       '.typing i{width:7px;height:7px;border-radius:50%;background:#9ca3af;animation:bl 1.2s infinite}.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}@keyframes bl{0%,60%,100%{opacity:.3}30%{opacity:1}}' +
       '.foot{border-top:1px solid rgba(127,127,127,.15);padding:10px;display:flex;gap:8px;background:' + V.panel + ';flex:none}' +
       '.foot textarea{flex:1;border:1px solid #e5e7eb;border-radius:12px;padding:10px 12px;font-size:14.5px;resize:none;height:44px;max-height:110px;outline:none;color:' + V.inputTxt + ';background:' + V.input + '}.foot textarea:focus{border-color:' + c1 + '}' +
+      '.clip{width:40px;height:44px;border:0;border-radius:12px;background:transparent;color:' + V.panelTxt + ';opacity:.6;cursor:pointer;display:grid;place-items:center;flex:none}.clip:hover{opacity:1;color:' + c1 + '}' +
+      '.upst{padding:7px 12px;font-size:12.5px;background:' + V.panel + ';border-top:1px solid rgba(127,127,127,.15)}.upst.bad{color:#b91c1c}' +
       '.send{width:44px;height:44px;border:0;border-radius:12px;background:' + c1 + ';color:' + V.on1 + ';cursor:pointer;display:grid;place-items:center;flex:none}' +
-      '.screen{flex:1;overflow-y:auto;padding:22px 20px;display:flex;flex-direction:column;gap:12px;background-color:' + V.panel + ';background-image:' + pattern + '}' +
+      '.screen{flex:1;overflow-y:auto;padding:22px 20px;display:flex;flex-direction:column;gap:12px;' + layers(V.panel) + '}' +
       '.screen h3{margin:0 0 2px;font-size:18px;text-align:center}.screen p{margin:0;color:#6b7280;font-size:13.5px;text-align:center;line-height:1.7}' +
       '.screen input,.screen textarea{width:100%;border:1px solid #e5e7eb;border-radius:10px;padding:11px 12px;font-size:14.5px;outline:none;color:' + V.inputTxt + ';background:' + V.input + '}.screen input:focus,.screen textarea:focus{border-color:' + c1 + '}' +
       '.btn{border:0;border-radius:12px;background:' + c1 + ';color:' + V.on1 + ';padding:12px;font-size:15px;font-weight:700;cursor:pointer;width:100%}.btn.ghost{background:rgba(127,127,127,.12);color:inherit}' +
@@ -244,7 +258,10 @@
       head.innerHTML = '<div class="hrow">' + avatar + '<div class="ht">' + (orgName ? '<span class="org">' + esc(orgName) + '</span>' : '') +
         '<span class="ttl">' + esc(T('title')) + '</span><span class="sub"><i class="dot' + (state.status === 'waiting' ? ' wait' : off ? ' off' : '') + '"></i>' + esc(sub) + '</span></div>' +
         '<button class="hb mbtn" title="menu">' + I.menu + '</button><button class="hb xbtn" title="close">' + I.close + '</button></div>' +
-        (unified ? '<a class="uni" href="tel:' + esc(String(cfg.org.unified_number).replace(/\s/g, '')) + '">' + I.phone + esc(cfg.org.unified_number) + '</a>' : '') +
+        (unified || addr || mail ? '<div class="chips">' +
+          (unified ? '<a class="uni" href="tel:' + esc(String(cfg.org.unified_number).replace(/\s/g, '')) + '">' + I.phone + esc(cfg.org.unified_number) + '</a>' : '') +
+          (addr ? (/^https:\/\//.test(cfg.org.map_url || '') ? '<a class="hinfo" target="_blank" rel="noopener" href="' + esc(cfg.org.map_url) + '">' : '<span class="hinfo">') + I.pin + '<span>' + esc(addr) + '</span>' + (/^https:\/\//.test(cfg.org.map_url || '') ? '</a>' : '</span>') : '') +
+          (mail ? '<a class="hinfo" href="mailto:' + esc(mail) + '" dir="ltr">' + I.mail + '<span>' + esc(mail) + '</span></a>' : '') + '</div>' : '') +
         (LG.show_switcher ? '<div class="langs">' + LG.enabled.map(function (l) { return '<button data-l="' + l + '" class="' + (l === lang ? 'on' : '') + '">' + esc((LG.meta[l] || {}).name || l) + '</button>'; }).join('') + '</div>' : '') +
         '<div class="menu">' + (state.hasConv && !state.closed ? '<button class="endc danger">' + esc(T('end_chat')) + '</button>' : '') + '<button class="newc">' + esc(T('new_chat')) + '</button></div>';
       head.querySelector('.xbtn').onclick = function () { toggle(false); };
@@ -363,7 +380,27 @@
 
     function renderChat() {
       if (!view.querySelector('.body')) {
-        view.innerHTML = '<div class="body"></div><div class="foot"><textarea rows="1"></textarea><button class="send" aria-label="send">' + I.send + '</button></div>';
+        var AT = cfg.attachments || {};
+        view.innerHTML = '<div class="body"></div><div class="upst" hidden></div><div class="foot">' + (AT.enabled ? '<button class="clip" type="button" aria-label="attach" title="' + esc(T('file_attach')) + '"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button><input type="file" hidden accept="' + [AT.images ? 'image/jpeg,image/png,image/webp,image/gif' : '', AT.pdf ? 'application/pdf' : ''].filter(Boolean).join(',') + '">' : '') + '<textarea rows="1"></textarea><button class="send" aria-label="send">' + I.send + '</button></div>';
+        if (AT.enabled) {
+          var fin = view.querySelector('input[type=file]'), upst = view.querySelector('.upst');
+          var note = function (txt, bad) { upst.hidden = !txt; upst.textContent = txt || ''; upst.className = 'upst' + (bad ? ' bad' : ''); if (bad) setTimeout(function () { if (upst.textContent === txt) note(''); }, 6000); };
+          view.querySelector('.clip').onclick = function () { if (state.closed) return; fin.value = ''; fin.click(); };
+          fin.onchange = function () {
+            var file = fin.files && fin.files[0]; if (!file) return;
+            // first check here (type and size), then the server checks the content itself
+            var okType = (AT.images && /^image\/(jpeg|png|webp|gif)$/.test(file.type)) || (AT.pdf && file.type === 'application/pdf');
+            if (!okType) return note('⚠️ ' + T('file_bad') + ': ' + (lang === 'ar' ? 'المسموح صور أو PDF فقط' : 'images or PDF only'), true);
+            if (file.size > (AT.max_mb || 5) * 1048576) return note('⚠️ ' + T('file_bad') + ': ' + (lang === 'ar' ? 'الحجم الأقصى ' : 'max ') + (AT.max_mb || 5) + ' MB', true);
+            note(T('file_checking'));
+            socket.emit('upload_ticket', {}, function (r) {
+              if (!r || !r.ticket) return note('⚠️ ' + (r && r.error === 'agent_only' ? T('file_agent_only') : T('file_bad')), true);
+              fetch(BASE + '/api/widget/upload?t=' + encodeURIComponent(r.ticket) + '&name=' + encodeURIComponent(file.name), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: file })
+                .then(function (x) { return x.json().then(function (j) { if (!x.ok) throw new Error(j.error || x.status); return j; }); })
+                .then(function () { note(''); state.pinned = true; }, function (e) { note('⚠️ ' + T('file_bad') + ': ' + e.message, true); });
+            });
+          };
+        }
         var ta = view.querySelector('textarea'), typingT;
         var send = function () {
           var t = ta.value.trim(); if (!t) return;

@@ -24,7 +24,7 @@ server/
   public/icons.js     مكتبة الأيقونات والبنوك (مشتركة بين الخادم والواجهة)
   public/patterns.js  الزخارف
   public/admin/       لوحة التحكم (core.js + صفحات pages-*.js)
-  test/flow.test.js   131 فحصاً لكل التدفقات
+  test/flow.test.js   150 فحصاً لكل التدفقات
   test/load.js        اختبار التحمّل
 ```
 
@@ -82,6 +82,14 @@ server/
 
 ```bash
 cd server && npm install
-npm test                                              # 131 فحصاً
+npm test                                              # 150 فحصاً
 node test/load.js http://localhost:3000 SITE_KEY 600  # اختبار التحمّل
 ```
+
+
+## First-run setup wizard (`src/setup.js`, `public/setup/index.html`)
+- `src/start.js` decides storage: environment variables (`DB_TYPE`, `DATABASE_URL`, `FIREBASE_SERVICE_ACCOUNT`) win, else `data/storage.json` (written by the wizard, mode 600).
+- The wizard runs (before the main server is loaded) when nothing is chosen yet and there is no `data/chat.db`, or when there is no administrator. `ADMIN_EMAIL` in the environment or `SETUP=off` skip it (old behaviour).
+- Protected by a one-time code printed in the log (`SETUP_CODE` to fix it). Requests from localhost without proxy headers don't need it. 8 wrong codes → 10-minute lock.
+- Storage adapters in `src/persist.js`: PostgreSQL, MySQL, SQL Server (one row), MongoDB and Firestore (gzip, split into parts, written under a new generation and switched last). Firestore uses the REST API with a service-account JWT (no extra package); `FIRESTORE_EMULATOR_HOST` is honoured.
+- Tests: `node test/setup.test.js` (47 checks). Optional real databases: `SETUP_PG_URL`, `SETUP_MYSQL_URL`. `npm test` runs both suites.
