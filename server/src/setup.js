@@ -118,7 +118,7 @@ function run({ dataDir, port, needStorage, needAdmin, envType = null, existingDa
         const c = storageFrom(req.body);
         const r = await persist.test(c);
         res.json({ ok: true, existing: r.existing });
-      } catch (e) { res.status(400).json({ error: friendly(e) }); }
+      } catch (e) { res.status(400).json({ error: friendly(e, req.body) }); }
     });
     app.post('/api/setup/finish', guard, async (req, res) => {
       try {
@@ -134,7 +134,7 @@ function run({ dataDir, port, needStorage, needAdmin, envType = null, existingDa
           server.close(); if (server.closeAllConnections) server.closeAllConnections();
           resolve({ storage, admin });
         }, 300);
-      } catch (e) { res.status(400).json({ error: friendly(e) }); }
+      } catch (e) { res.status(400).json({ error: friendly(e, req.body) }); }
     });
     // everything else leads to the wizard (the dashboard opens after it is completed)
     app.use((req, res) => {
@@ -148,8 +148,18 @@ function run({ dataDir, port, needStorage, needAdmin, envType = null, existingDa
 }
 
 // connection errors in plain words
-function friendly(e) {
+// the usual ports tell which database is really listening there
+const PORT_OF = { 3306: 'mysql', 1433: 'mssql', 5432: 'supabase', 6543: 'supabase', 27017: 'mongodb' };
+const NAME_OF = { mysql: 'MySQL / MariaDB', mssql: 'SQL Server', supabase: 'Supabase / PostgreSQL', mongodb: 'MongoDB' };
+function portOf(body) {
+  if (body.port) return Number(body.port);
+  const m = /:\/\/[^/]*:(\d+)(\/|$)/.exec(String(body.url || '')); return m ? Number(m[1]) : null;
+}
+function friendly(e, body = {}) {
   const m = String((e && e.message) || e);
+  const t = persist.normType(body.type), real = PORT_OF[portOf(body)];
+  if (real && t && real !== t && NAME_OF[real]) return `المنفذ ${portOf(body)} خاص بـ ${NAME_OF[real]} — يبدو أنك اخترت النوع الخطأ. اختر «${NAME_OF[real]}» من الأعلى (في XAMPP قاعدة البيانات هي MySQL)`;
+  if (/Unable to process incoming packet|Connection lost|unexpected packet|ECONNRESET|Packets out of order/i.test(m)) return 'انقطع الاتصال — غالباً نوع قاعدة البيانات المختار لا يطابق الخادم (مثلاً اخترت SQL Server والخادم MySQL). تأكد من النوع والمنفذ';
   if (/ENOTFOUND|getaddrinfo/i.test(m)) return 'لم يتم العثور على الخادم — تأكد من العنوان (Host) في الرابط';
   if (/ECONNREFUSED/i.test(m)) return 'الخادم رفض الاتصال — تأكد من المنفذ (Port) ومن السماح بالاتصال الخارجي';
   if (/ETIMEDOUT|timeout|timed out/i.test(m)) return 'انتهت مهلة الاتصال — الخادم لا يسمح بالاتصال من خارج الاستضافة أو العنوان غير صحيح';
