@@ -9,6 +9,8 @@ const { texts, INTENTS, LANGS } = require('./i18n');
 const tickets = require('./tickets');
 const ICONS = require('../public/icons');
 const hooks = require('./webhooks');
+const { canSee } = require('./tenant');
+const edition = require('./edition');
 const elig = require('./eligibility');
 
 let vio, aio, JWT_SECRET;
@@ -77,7 +79,10 @@ function convSummary(c) {
   };
 }
 
-const broadcastConv = (conv) => aio.emit('conv:update', convSummary(getConv(conv.id)));
+// employees only hear about their own site (a user tied to one store never receives another store's events)
+const toSite = (siteId) => aio.to(['site:' + Number(siteId), 'site:all']);
+const onlineFor = (siteId) => [...online.values()].filter(a => a.site_id == null || Number(a.site_id) === Number(siteId));
+const broadcastConv = (conv) => toSite(conv.site_id).emit('conv:update', convSummary(getConv(conv.id)));
 
 function queuePosition(conv) {
   if (conv.status !== 'waiting') return 0;
@@ -86,7 +91,7 @@ function queuePosition(conv) {
 
 function visitorStatus(conv) {
   const a = agentInfo(conv.assigned_to);
-  vio.to('c' + conv.id).emit('status', { status: conv.status, agent_name: a?.name, agent_title: a?.title, agent_avatar: a?.avatar, queue: queuePosition(conv), agents_online: online.size });
+  vio.to('c' + conv.id).emit('status', { status: conv.status, agent_name: a?.name, agent_title: a?.title, agent_avatar: a?.avatar, queue: queuePosition(conv), agents_online: onlineFor(conv.site_id).length });
 }
 
 function addMessage(conv, sender, body, payload = null, agentId = null) {
@@ -97,7 +102,7 @@ function addMessage(conv, sender, body, payload = null, agentId = null) {
   conv.updated_at = t;
   const m = { id: info.lastInsertRowid, sender, agent_id: agentId, body, payload, created_at: t, conversation_id: conv.id };
   vio.to('c' + conv.id).emit('message', publicMsg(m));
-  aio.emit('conv:message', { conversation_id: conv.id, ...publicMsg(m), agent_id: agentId });
+  toSite(conv.site_id).emit('conv:message', { conversation_id: conv.id, ...publicMsg(m), agent_id: agentId });
   broadcastConv(conv);
   return m;
 }
@@ -429,7 +434,11 @@ async function runAction(conv, site, opt, freeText) {
     }
     case 'end': return closeConversation(conv, 'visitor');
     case 'cancel': return sendNode(conv, site, '__menu');
-    default: return sendNode(conv, site, '__menu');
+    default: {
+      const h = edition.botAction && await edition.botAction(conv, site, opt, freeText, botApi(conv, site)); // an edition's own buttons
+      if (h) return h;
+      return sendNode(conv, site, '__menu');
+    }
   }
 }
 
@@ -864,8 +873,19 @@ function sendAfterHours(conv, site, question) {
   });
 }
 
+// what an edition may use to talk to the visitor
+function botApi(conv, site) {
+  return { botSay: (text, opts, extra) => botSay(conv, site, text, opts, extra), nav: () => navOptions(conv, site), save: (patch) => saveConv(conv, patch),
+    t: tr(conv, site), fill, nlp, menu: () => sendNode(conv, site, '__menu'), handoff: (q) => handoff(conv, site, q || null, tr(conv, site).handoff),
+    ticket: (type) => sendTicketForm(conv, site, type) };
+}
+
 function handoff(conv, site, question, message) {
   if (conv.status !== 'bot') return;
+  if (!edition.allows(site.id, 'live')) { // the plan has no live chat: leave contact details instead
+    const t = tr(conv, site);
+    return botSay(conv, site, t.live_unavailable, null, { form: { kind: 'ticket', type: 'callback', title: t.ticket_form_callback, name: conv.visitor_name || '', phone: conv.visitor_phone || '', email: '', question: question || '' } });
+  }
   const w = site.settings.behavior.work_hours;
   if (w?.enabled && !w.allow_handoff && !isOpen(site)) {
     if (question && isQuestion(question)) saveConv(conv, { state: { ...conv.state, pending: [...(conv.state.pending || []), question].slice(-5) } });
@@ -875,12 +895,12 @@ function handoff(conv, site, question, message) {
   if (question && isQuestion(question)) state.pending = [...(state.pending || []), question].slice(-5);
   saveConv(conv, { status: 'waiting', handoff_at: now(), state });
   addMessage(conv, 'system', message || tr(conv, site).handoff);
-  if (!online.size) {
+  if (!onlineFor(conv.site_id).length) {
     const t = tr(conv, site);
     botSay(conv, site, t.no_agents, site.settings.tickets.enabled ? [{ label: t.nav_ticket, action: 'ticket', field: 'inquiry' }] : null);
   }
   visitorStatus(conv);
-  aio.emit('notify', { type: 'waiting', conversation: convSummary(conv) });
+  toSite(conv.site_id).emit('notify', { type: 'waiting', conversation: convSummary(conv) });
   hooks.emit(site, 'conversation.handoff', convSummary(conv));
 }
 
@@ -901,7 +921,7 @@ function learn(conv, question, answer, userId, media) {
   const n = nlp.normalize(question);
   for (const u of db.prepare("SELECT id, question FROM unanswered WHERE site_id=? AND status='open'").all(conv.site_id))
     if (nlp.normalize(u.question) === n || nlp.similarity(u.question, question) > 0.8) db.prepare("UPDATE unanswered SET status='answered', kb_id=?, updated_at=? WHERE id=?").run(id, now(), u.id);
-  aio.emit('kb:learned', { site_id: conv.site_id, id, question, updated: !!existing });
+  toSite(conv.site_id).emit('kb:learned', { site_id: conv.site_id, id, question, updated: !!existing });
   hooks.emit(site, 'kb.learned', { id, question, answer });
   return id;
 }
@@ -922,6 +942,7 @@ async function handleVisitorText(conv, site, text) {
   // 1) waiting for a value
   if (st.await) {
     if (['الغاء', 'cancel', 'منسوخ'].includes(nlp.normalize(text))) return sendNode(conv, site, '__menu');
+    if (String(st.await.kind || '').startsWith('ed:') && edition.botAwait) return edition.botAwait(conv, site, text, botApi(conv, site));
     if (st.await.kind === 'elig') return answerElig(conv, site, text);
     if (st.await.kind === 'appt') return answerAppt(conv, site, text);
     if (st.await.kind === 'ticket_status') {
@@ -977,6 +998,7 @@ async function handleVisitorText(conv, site, text) {
   // 3) explicit intents
   const I = INTENTS;
   if (intentHit(text, [...I.handoff, ...(b.handoff_keywords || [])])) return handoff(conv, site, null, t.handoff);
+  if (edition.botText && await edition.botText(conv, site, text, botApi(conv, site))) return; // an edition's own intents
   if (intentHit(text, I.ticket_status)) return runAction(conv, site, { action: 'ticket_status' });
   if (intentHit(text, I.complaint)) return sendTicketForm(conv, site, 'complaint');
   if (intentHit(text, I.suggestion)) return sendTicketForm(conv, site, 'suggestion');
@@ -1043,7 +1065,7 @@ function closeConversation(conv, by, userId = null) {
   addMessage(conv, 'system', `${t.closed} — ${who}`);
   vio.to('c' + conv.id).emit('closed', { by, rating_max: site.settings.appearance.rating_max });
   visitorStatus(conv);
-  aio.emit('notify', { type: 'closed', by, conversation: convSummary(conv) });
+  toSite(conv.site_id).emit('notify', { type: 'closed', by, conversation: convSummary(conv) });
   hooks.emit(site, 'conversation.closed', { ...convSummary(conv), messages: db.prepare('SELECT sender, body, created_at FROM messages WHERE conversation_id=? ORDER BY id').all(conv.id) });
 }
 
@@ -1098,7 +1120,7 @@ function setup(io, secret) {
 
     socket.on('join', (p, ack) => {
       site = getSiteByKey(String(p?.site || ''));
-      if (!site) return ack?.({ error: 'site' });
+      if (!site || !edition.active(site.id)) { site = null; return ack?.({ error: 'site' }); } // e.g. the store's subscription ended
       const origin = socket.handshake.headers.origin;
       if (!originAllowed(site, origin)) return ack?.({ error: 'origin' });
       if (origin) db.prepare('INSERT INTO widget_pings(site_id,origin,last_seen,hits) VALUES(?,?,?,1) ON CONFLICT(site_id,origin) DO UPDATE SET last_seen=excluded.last_seen, hits=hits+1').run(site.id, origin.slice(0, 200), now());
@@ -1141,7 +1163,7 @@ function setup(io, secret) {
       socket.join('c' + conv.id);
       await loadCustomer(conv, site);
       sendHistory();
-      aio.emit('notify', { type: 'new', conversation: convSummary(conv) });
+      toSite(conv.site_id).emit('notify', { type: 'new', conversation: convSummary(conv) });
       hooks.emit(site, 'conversation.started', convSummary(conv));
       sendNode(conv, site, '__root');
       ack?.({ ok: true });
@@ -1197,7 +1219,7 @@ function setup(io, secret) {
         if (Object.keys(upd).length) saveConv(conv, upd);
         addMessage(conv, 'visitor', tk.type === 'callback' ? `${t.t_callback}: ${tk.name} — ${tk.phone}` : `${t['t_' + tk.type]}: ${tk.text}`.slice(0, 600));
         botSay(conv, site, fill(tk.type === 'callback' ? t.callback_created : t.ticket_created, { type: t['t_' + tk.type], number: tk.number, date: tk.created_at.slice(0, 10) }), conv.status === 'bot' ? navOptions(conv, site) : null);
-        aio.emit('ticket:new', { site_id: site.id, id: tk.id, number: tk.number, type: tk.type, name: tk.name, text: tk.text.slice(0, 140) });
+        toSite(site.id).emit('ticket:new', { site_id: site.id, id: tk.id, number: tk.number, type: tk.type, name: tk.name, text: tk.text.slice(0, 140) });
         ack?.({ ok: true, number: tk.number });
       } catch (e) {
         if (e.fields) return ack?.({ error: 'validation', fields: e.fields });
@@ -1205,7 +1227,7 @@ function setup(io, secret) {
       }
     });
 
-    socket.on('typing', (p) => { if (conv) aio.emit('visitor:typing', { conversation_id: conv.id, typing: !!p?.typing, text: String(p?.text || '').slice(0, 200) }); });
+    socket.on('typing', (p) => { if (conv) toSite(conv.site_id).emit('visitor:typing', { conversation_id: conv.id, typing: !!p?.typing, text: String(p?.text || '').slice(0, 200) }); });
     socket.on('close', (_, ack) => { reloadConv(); if (conv) closeConversation(conv, 'visitor'); ack?.({ ok: true }); });
 
     socket.on('upload_ticket', (_, ack) => {
@@ -1226,7 +1248,7 @@ function setup(io, secret) {
       const r = Math.round(Number(p?.rating) * 2) / 2;
       if (!(r >= 0.5 && r <= max)) return ack?.({ error: 'value' });
       saveConv(conv, { rating: r, rating_comment: String(p?.comment || '').slice(0, 1000) || null });
-      aio.emit('notify', { type: 'rated', conversation: { ...convSummary(conv), rating_max: max } });
+      toSite(conv.site_id).emit('notify', { type: 'rated', conversation: { ...convSummary(conv), rating_max: max } });
       hooks.emit(getSite(conv.site_id), 'conversation.rated', { ...convSummary(conv), comment: conv.rating_comment });
       broadcastConv(conv);
       ack?.({ ok: true });
@@ -1236,20 +1258,25 @@ function setup(io, secret) {
   aio.use((socket, next) => {
     try {
       const u = jwt.verify(socket.handshake.auth?.token, JWT_SECRET);
-      const user = db.prepare('SELECT id,name,role,active,job_title,avatar,pwd_changed_at FROM users WHERE id=?').get(u.id);
+      const user = db.prepare('SELECT id,name,role,active,job_title,avatar,pwd_changed_at,site_id FROM users WHERE id=?').get(u.id);
       if (!user?.active || (user.pwd_changed_at && u.iat * 1000 < user.pwd_changed_at - 1000)) return next(new Error('unauthorized'));
       socket.user = user; next();
     } catch { next(new Error('unauthorized')); }
   });
 
-  const emitOnline = () => aio.emit('agents:online', [...online.values()]);
+  const emitOnline = () => {
+    aio.to('site:all').emit('agents:online', [...online.values()]);
+    for (const sid of new Set([...online.values()].map(a => a.site_id).filter(x => x != null))) aio.to('site:' + sid).emit('agents:online', onlineFor(sid));
+  };
   const refreshWaiting = () => {
     for (const c of db.prepare("SELECT id FROM conversations WHERE status='waiting'").all()) visitorStatus(getConv(c.id));
   };
 
   aio.on('connection', (socket) => {
     const u = socket.user;
-    online.set(u.id, { id: u.id, name: u.name, role: u.role, avatar: u.avatar, title: u.job_title });
+    online.set(u.id, { id: u.id, name: u.name, role: u.role, avatar: u.avatar, title: u.job_title, site_id: u.site_id ?? null });
+    socket.join(u.site_id == null ? 'site:all' : 'site:' + u.site_id);
+    const mine = (conv) => conv && canSee(u, conv.site_id) ? conv : null; // a store employee can only act on that store's conversations
     db.prepare('UPDATE users SET last_seen=? WHERE id=?').run(now(), u.id);
     emitOnline(); refreshWaiting();
     socket.on('disconnect', async () => {
@@ -1258,13 +1285,13 @@ function setup(io, secret) {
     });
 
     socket.on('take', (p, ack) => {
-      const conv = getConv(Number(p?.id));
+      const conv = mine(getConv(Number(p?.id)));
       if (!conv || conv.status === 'closed') return ack?.({ error: 'closed' });
       takeConv(conv, u); ack?.({ ok: true });
     });
 
     socket.on('send', (p, ack) => {
-      const conv = getConv(Number(p?.id));
+      const conv = mine(getConv(Number(p?.id)));
       const text = String(p?.text || '').trim().slice(0, 4000);
       let media = Array.isArray(p?.media) ? p.media.filter(x => x && typeof x.url === 'string' && /^(\/media\/|https?:\/\/)/.test(x.url)).slice(0, 5) : [];
       if (!conv || conv.status === 'closed' || (!text && !media.length)) return ack?.({ error: 'closed' });
@@ -1284,10 +1311,10 @@ function setup(io, secret) {
       ack?.({ ok: true, learned: learnedId });
     });
 
-    socket.on('typing', (p) => { const id = Number(p?.id); if (id) vio.to('c' + id).emit('typing', { typing: !!p.typing, name: u.name }); });
+    socket.on('typing', (p) => { const id = Number(p?.id); if (id && mine(getConv(id))) vio.to('c' + id).emit('typing', { typing: !!p.typing, name: u.name }); });
 
     socket.on('close', (p, ack) => {
-      const conv = getConv(Number(p?.id));
+      const conv = mine(getConv(Number(p?.id)));
       if (!conv) return ack?.({ error: 'nf' });
       closeConversation(conv, 'agent', u.id);
       require('./db').audit(u.id, 'conversation.close', { id: conv.id });
@@ -1295,7 +1322,7 @@ function setup(io, secret) {
     });
 
     socket.on('return_to_bot', (p, ack) => {
-      const conv = getConv(Number(p?.id));
+      const conv = mine(getConv(Number(p?.id)));
       if (!conv || conv.status === 'closed') return ack?.({ error: 'closed' });
       const site = getSite(conv.site_id);
       saveConv(conv, { status: 'bot', assigned_to: null, state: { ...conv.state, pending: [] } });
@@ -1306,13 +1333,13 @@ function setup(io, secret) {
     });
 
     socket.on('transfer', (p, ack) => {
-      const conv = getConv(Number(p?.id));
-      const to = db.prepare('SELECT id,name FROM users WHERE id=? AND active=1').get(Number(p?.to));
-      if (!conv || !to || conv.status === 'closed') return ack?.({ error: 'invalid' });
+      const conv = mine(getConv(Number(p?.id)));
+      const to = db.prepare('SELECT id,name,site_id FROM users WHERE id=? AND active=1').get(Number(p?.to));
+      if (!conv || !to || !canSee(to, conv.site_id) || conv.status === 'closed') return ack?.({ error: 'invalid' });
       saveConv(conv, { status: 'human', assigned_to: to.id });
       addMessage(conv, 'system', `↪️ ${to.name}`);
       visitorStatus(conv);
-      aio.emit('notify', { type: 'transfer', to: to.id, conversation: convSummary(conv) });
+      toSite(conv.site_id).emit('notify', { type: 'transfer', to: to.id, conversation: convSummary(conv) });
       ack?.({ ok: true });
     });
   });
@@ -1337,7 +1364,7 @@ function maintenance() {
       const cutoff = new Date(Date.now() - mins * 60000).toISOString();
       // conversations waiting for a human are not auto-closed while agents are online
       const stale = db.prepare("SELECT id, status FROM conversations WHERE site_id=? AND status!='closed' AND updated_at < ?").all(site.id, cutoff);
-      for (const c of stale) if (!(c.status === 'waiting' && online.size)) closeConversation(getConv(c.id), 'system');
+      for (const c of stale) if (!(c.status === 'waiting' && onlineFor(site.id).length)) closeConversation(getConv(c.id), 'system');
     }
     const days = Number(b.retention_days) || 0;
     if (days > 0) {
@@ -1362,5 +1389,5 @@ function visitorFile(convId, file) {
 module.exports = {
   isOpen, uploadTicket, readTicket, visitorFile,
   setup, maintenance, convSummary, publicMsg, closeConversation, learn, locationPayload, resolveMapLink,
-  getAio: () => aio, getVio: () => vio, onlineAgents: () => [...online.values()]
+  getAio: () => aio, getVio: () => vio, toSite: (sid) => toSite(sid), onlineAgents: (sid) => sid ? onlineFor(sid) : [...online.values()]
 };

@@ -18,6 +18,8 @@ const reports = require('./reports');
 const patterns = require('../public/patterns');
 const ICONS = require('../public/icons');
 const persistence = require('./persist');
+const tenant = require('./tenant');
+const edition = require('./edition');
 
 const PORT = Number(process.env.PORT) || 3000;
 const secretFile = path.join(DATA_DIR, '.jwt_secret');
@@ -156,7 +158,7 @@ function widgetConfig(site, base = '', inline = false) {
     org: { name: o.name || a.company_name || '', unified_number: o.unified_number || '',
       address: a.show_address ? String(a.header_address || o.address || '').trim() : '', map_url: a.show_address ? (o.map_url || '') : '',
       email: a.show_email ? String(a.header_email || o.email || '').trim() : '' },
-    attachments: (({ enabled, only_with_agent, max_mb, images, pdf }) => ({ enabled: enabled !== false, only_with_agent: !!only_with_agent, max_mb: max_mb || 5, images: images !== false, pdf: pdf !== false }))(site.settings.behavior.attachments || {}),
+    attachments: (({ enabled, only_with_agent, max_mb, images, pdf }) => ({ enabled: enabled !== false && edition.allows(site.id, 'attachments'), only_with_agent: !!only_with_agent, max_mb: max_mb || 5, images: images !== false, pdf: pdf !== false }))(site.settings.behavior.attachments || {}),
     languages: { enabled, default: enabled.includes(L.default) ? L.default : enabled[0], show_switcher: L.show_switcher !== false && enabled.length > 1, meta: Object.fromEntries(enabled.map(l => [l, LANGS[l]])) },
     texts: Object.fromEntries(enabled.map(l => [l, texts(site, l)])),
     tickets: { enabled: site.settings.tickets.enabled, require_email: site.settings.tickets.require_email },
@@ -166,7 +168,7 @@ function widgetConfig(site, base = '', inline = false) {
 
 app.get('/api/widget/config', cors, limit(120, 60000), (req, res) => {
   const site = getSiteByKey(String(req.query.site || ''));
-  if (!site) return res.status(404).json({ error: 'site not found' });
+  if (!site || !edition.active(site.id)) return res.status(404).json({ error: 'site not found' });
   res.json(widgetConfig(site, `${req.protocol}://${req.get('host')}`));
 });
 
@@ -205,7 +207,7 @@ app.post('/api/widget/upload', cors, limit(12, 10 * 60 * 1000), express.raw({ ty
   if (!tk) return res.status(403).json({ error: 'انتهت صلاحية الرفع، حاول مرة أخرى' });
   const site = getSite(tk.s); if (!site) return res.status(404).json({ error: 'site' });
   const A = site.settings.behavior.attachments || {};
-  if (A.enabled === false) return res.status(403).json({ error: 'إرسال الملفات غير مفعّل' });
+  if (A.enabled === false || !edition.allows(site.id, 'attachments')) return res.status(403).json({ error: 'إرسال الملفات غير مفعّل' });
   if (db.prepare("SELECT COUNT(*) n FROM messages WHERE conversation_id=? AND sender='visitor' AND payload LIKE '%\"media\"%'").get(tk.c).n >= 20) return res.status(429).json({ error: 'تم الوصول للحد الأقصى من الملفات في هذه المحادثة' });
   const r = await fileScan.scan(req.body, { maxBytes: Math.min(15, Number(A.max_mb) || 5) * 1048576, images: A.images !== false, pdf: A.pdf !== false, vtKey: site.settings.security.virustotal_key || process.env.VIRUSTOTAL_KEY || '' });
   if (!r.ok) { audit(null, 'upload.rejected', { conv: tk.c, reason: r.reason }); return res.status(400).json({ error: r.reason }); }
@@ -260,11 +262,13 @@ function auth(minRole = 'agent') {
     try {
       const tok = (req.headers.authorization || '').replace(/^Bearer /, '') || String(req.query.token || '');
       const p = jwt.verify(tok, JWT_SECRET);
-      const u = db.prepare('SELECT id,name,email,role,active,job_title,avatar,phone,prefs,pwd_changed_at FROM users WHERE id=?').get(p.id);
+      const u = db.prepare('SELECT id,name,email,role,active,job_title,avatar,phone,prefs,pwd_changed_at,site_id FROM users WHERE id=?').get(p.id);
       if (!u || !u.active) return res.status(401).json({ error: 'unauthorized' });
       if (u.pwd_changed_at && p.iat * 1000 < u.pwd_changed_at - 1000) return res.status(401).json({ error: 'unauthorized' }); // password changed: old sessions end
       if (ROLE_LEVEL[u.role] < ROLE_LEVEL[minRole]) return res.status(403).json({ error: 'ليس لديك صلاحية' });
-      req.user = u; next();
+      req.user = u;
+      if (u.site_id != null) { const no = tenant.gate(req, u); if (no) return res.status(no.status).json({ error: no.error }); } // a store / branch user: only its own site
+      next();
     } catch { res.status(401).json({ error: 'unauthorized' }); }
   };
 }
@@ -283,7 +287,7 @@ app.post('/api/auth/login', (req, res) => {
 const WEAK = ['admin123', 'change-me-now', '12345678', 'password'];
 function meOut(u) {
   let prefs = {}; try { prefs = JSON.parse(u.prefs || '{}'); } catch { /* ignore */ }
-  return { id: u.id, name: u.name, email: u.email, role: u.role, job_title: u.job_title || '', avatar: u.avatar || '', phone: u.phone || '', prefs };
+  return { id: u.id, name: u.name, email: u.email, role: u.role, job_title: u.job_title || '', avatar: u.avatar || '', phone: u.phone || '', prefs, site_id: u.site_id ?? null };
 }
 app.get('/api/me', auth(), (req, res) => {
   const hash = db.prepare('SELECT password FROM users WHERE id=?').get(req.user.id).password;
@@ -314,17 +318,20 @@ app.put('/api/me', auth(), (req, res) => {
 
 /* ============================== users ============================== */
 app.get('/api/users', auth(), (req, res) => {
-  const cols = req.user.role === 'admin' ? 'id,name,email,role,active,last_seen,created_at,job_title,avatar,phone' : 'id,name,role,active,job_title,avatar';
-  res.json(db.prepare(`SELECT ${cols} FROM users ORDER BY id`).all());
+  const cols = req.user.role === 'admin' ? 'id,name,email,role,active,last_seen,created_at,job_title,avatar,phone,site_id' : 'id,name,role,active,job_title,avatar,site_id';
+  res.json(req.tenant ? db.prepare(`SELECT ${cols} FROM users WHERE site_id=? ORDER BY id`).all(req.tenant) : db.prepare(`SELECT ${cols} FROM users ORDER BY id`).all());
 });
 app.post('/api/users', auth('admin'), (req, res) => {
   const { name, email, password, role, job_title, avatar, phone } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'الاسم والبريد وكلمة المرور مطلوبة' });
   if (String(password).length < 8) return res.status(400).json({ error: 'كلمة المرور 8 أحرف على الأقل' });
   if (!ROLE_LEVEL[role]) return res.status(400).json({ error: 'صلاحية غير صحيحة' });
+  // a store user creates users of the same store; the platform admin may tie a user to one site
+  const siteId = req.tenant || (req.body.site_id && getSite(Number(req.body.site_id)) ? Number(req.body.site_id) : null);
+  if (req.tenant) { const lim = edition.userLimit(req.tenant); if (lim != null && db.prepare('SELECT COUNT(*) n FROM users WHERE site_id=?').get(req.tenant).n >= lim) return res.status(403).json({ error: `باقتك تسمح بـ ${lim} مستخدم — رقِّ الباقة لإضافة موظفين`, upgrade: true }); }
   try {
-    const r = db.prepare('INSERT INTO users(name,email,password,role,job_title,avatar,phone,created_at) VALUES(?,?,?,?,?,?,?,?)')
-      .run(String(name).slice(0, 80), String(email).toLowerCase().trim(), bcrypt.hashSync(String(password), 10), role, String(job_title || '').slice(0, 80), cleanAvatar(avatar), String(phone || '').slice(0, 20), now());
+    const r = db.prepare('INSERT INTO users(name,email,password,role,job_title,avatar,phone,created_at,site_id) VALUES(?,?,?,?,?,?,?,?,?)')
+      .run(String(name).slice(0, 80), String(email).toLowerCase().trim(), bcrypt.hashSync(String(password), 10), role, String(job_title || '').slice(0, 80), cleanAvatar(avatar), String(phone || '').slice(0, 20), now(), siteId);
     audit(req.user.id, 'user.create', { id: r.lastInsertRowid, email, role });
     res.json({ id: r.lastInsertRowid });
   } catch (e) { res.status(400).json({ error: /UNIQUE/.test(e.message) ? 'البريد مستخدم مسبقاً' : e.message }); }
@@ -343,6 +350,7 @@ app.put('/api/users/:id', auth('admin'), (req, res) => {
       job_title ?? u.job_title ?? '', phone ?? u.phone ?? '', avatar === undefined ? (u.avatar || '') : cleanAvatar(avatar), id);
   } catch (e) { return res.status(400).json({ error: /UNIQUE/.test(e.message) ? 'البريد مستخدم مسبقاً' : e.message }); }
   if (password) db.prepare('UPDATE users SET password=?, pwd_changed_at=? WHERE id=?').run(bcrypt.hashSync(String(password), 10), Date.now(), id);
+  if (!req.tenant && req.body.site_id !== undefined && id !== req.user.id) db.prepare('UPDATE users SET site_id=? WHERE id=?').run(req.body.site_id && getSite(Number(req.body.site_id)) ? Number(req.body.site_id) : null, id);
   audit(req.user.id, 'user.update', { id, role, active });
   res.json({ ok: true });
 });
@@ -375,7 +383,7 @@ function maskSite(s, user) {
 }
 const SECTION_ROLE = { biz: 'supervisor', ui: 'admin', appointments: 'supervisor', eligibility: 'supervisor', appearance: 'supervisor', texts: 'supervisor', prechat: 'supervisor', behavior: 'supervisor', org: 'supervisor', developer: 'supervisor', tickets: 'supervisor', languages: 'supervisor', datasource: 'admin', security: 'admin', notify: 'admin', integrations: 'admin' };
 
-app.get('/api/sites', auth(), (req, res) => res.json(db.prepare('SELECT id FROM sites ORDER BY id').all().map(r => maskSite(getSite(r.id), req.user))));
+app.get('/api/sites', auth(), (req, res) => res.json((req.tenant ? [{ id: req.tenant }] : db.prepare('SELECT id FROM sites ORDER BY id').all()).map(r => getSite(r.id)).filter(Boolean).map(s => maskSite(s, req.user))));
 app.post('/api/sites', auth('admin'), (req, res) => {
   const s = createSite(String(req.body.name || 'موقع جديد').slice(0, 80));
   audit(req.user.id, 'site.create', { id: s.id });
@@ -398,6 +406,7 @@ app.put('/api/sites/:id', auth('supervisor'), (req, res) => {
   if (settings) {
     for (const sec of Object.keys(settings)) {
       if (!SECTION_ROLE[sec]) continue;
+      if (req.tenant && !tenant.SITE_SECTIONS.includes(sec)) return res.status(403).json({ error: 'ليس لديك صلاحية لتعديل ' + sec });
       if (ROLE_LEVEL[req.user.role] < ROLE_LEVEL[SECTION_ROLE[sec]]) return res.status(403).json({ error: 'ليس لديك صلاحية لتعديل ' + sec });
       const incoming = keepMasked(JSON.parse(JSON.stringify(settings[sec])), merged[sec]);
       merged = { ...merged, [sec]: deepMerge(defaultSettings()[sec], deepMerge(merged[sec] || {}, incoming)) };
@@ -618,7 +627,7 @@ app.post('/api/kb', auth(), (req, res) => {
     .run(Number(site_id), question.trim(), answer.trim(), keywords || '', JSON.stringify(media), req.body.conversation_id || unanswered_id ? 'learned' : 'manual', req.body.conversation_id || null, req.user.id, lang || 'all', now(), now());
   if (category_id) db.prepare('UPDATE kb SET category_id=? WHERE id=?').run(Number(category_id) || null, r.lastInsertRowid);
   const rel = cleanRelated(Number(site_id), req.body.related, Number(r.lastInsertRowid)); if (rel) db.prepare('UPDATE kb SET related=? WHERE id=?').run(rel, r.lastInsertRowid);
-  if (unanswered_id) db.prepare("UPDATE unanswered SET status='answered', kb_id=?, updated_at=? WHERE id=?").run(r.lastInsertRowid, now(), Number(unanswered_id));
+  if (unanswered_id) db.prepare("UPDATE unanswered SET status='answered', kb_id=?, updated_at=? WHERE id=? AND site_id=?").run(r.lastInsertRowid, now(), Number(unanswered_id), Number(site_id));
   res.json({ id: r.lastInsertRowid });
 });
 app.put('/api/kb/:id', auth(), (req, res) => {
@@ -688,9 +697,10 @@ app.post('/api/tickets', auth(), async (req, res) => {
   catch (e) { res.status(400).json({ error: e.fields ? 'تحقق من الحقول المطلوبة' : e.message, fields: e.fields }); }
 });
 app.put('/api/tickets/:id', auth(), async (req, res) => {
+  if (req.tenant && req.body.assigned_to && !db.prepare('SELECT 1 FROM users WHERE id=? AND site_id=?').get(Number(req.body.assigned_to), req.tenant)) return res.status(400).json({ error: 'الموظف غير موجود' });
   const r = await tickets.update(Number(req.params.id), req.body, req.user.id);
   if (!r) return res.status(404).json({ error: 'not found' });
-  chat.getAio().emit('ticket:update', { id: r.ticket.id, status: r.ticket.status });
+  chat.toSite(r.ticket.site_id).emit('ticket:update', { id: r.ticket.id, status: r.ticket.status });
   res.json(r);
 });
 app.delete('/api/tickets/:id', auth('supervisor'), (req, res) => {
@@ -845,14 +855,16 @@ app.post('/api/reset', auth('admin'), async (req, res) => {
 
 /* ============================== stats & reports ============================== */
 app.get('/api/stats', auth(), (req, res) => res.json(reports.dashboard(req.query)));
-app.get('/api/reports/agents', auth('supervisor'), (req, res) => { const r = reports.agentReport(req.query); delete r.conversations; res.json(r); });
-app.get('/api/reports/agents.xlsx', auth('supervisor'), async (req, res) => {
+const reportsAllowed = (req, res, next) => req.tenant && !edition.allows(req.tenant, 'reports') ? res.status(403).json({ error: 'تقارير الموظفين متاحة في الباقة الاحترافية', upgrade: true }) : next();
+app.get('/api/reports/agents', auth('supervisor'), reportsAllowed, (req, res) => { const r = reports.agentReport(req.query); delete r.conversations; res.json(r); });
+app.get('/api/reports/agents.xlsx', auth('supervisor'), reportsAllowed, async (req, res) => {
   const site = req.query.site ? getSite(Number(req.query.site)) : null;
   const buf = await reports.agentsExcel(req.query, (site?.settings.appearance.primary_color || '#1a6739').replace('#', '').toUpperCase());
   res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="agents-report-${new Date().toISOString().slice(0, 10)}.xlsx"` }).send(Buffer.from(buf));
 });
 app.get('/api/audit', auth('admin'), (req, res) => res.json(db.prepare('SELECT a.*, u.name user_name FROM audit a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.id DESC LIMIT 300').all()));
-app.get('/api/online', auth(), (req, res) => res.json(chat.onlineAgents()));
+app.get('/api/online', auth(), (req, res) => res.json(chat.onlineAgents(req.tenant)));
+app.get('/api/edition', (req, res) => res.json({ name: edition.name, brand: process.env.APP_BRAND || '' }));
 
 app.use((err, req, res, next) => { // never leak stack traces
   if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'الملف أكبر من الحد المسموح' });

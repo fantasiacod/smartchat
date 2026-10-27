@@ -36,7 +36,7 @@ function dashboard(q) {
   for (const c of convs) byHour[(new Date(c.created_at).getUTCHours() + 3) % 24]++; // Riyadh time
   const count = (arr, key) => arr.reduce((m, x) => { const k = x[key] ?? 'none'; m[k] = (m[k] || 0) + 1; return m; }, {});
 
-  const agentRows = db.prepare(`SELECT u.id, u.name, u.avatar, u.job_title FROM users u`).all().map(u => {
+  const agentRows = (q._tenant ? db.prepare('SELECT u.id, u.name, u.avatar, u.job_title FROM users u WHERE u.site_id=?').all(Number(q._tenant)) : db.prepare('SELECT u.id, u.name, u.avatar, u.job_title FROM users u').all()).map(u => { // a store sees only its own employees
     const mine = handed.filter(c => c.assigned_to === u.id);
     return {
       id: u.id, name: u.name, avatar: u.avatar, title: u.job_title, conversations: mine.length,
@@ -79,7 +79,7 @@ function dashboard(q) {
 function agentReport(q) {
   const { from, to, days } = range(q);
   const ids = String(q.agents || '').split(',').map(Number).filter(Boolean);
-  const users = db.prepare('SELECT id,name,email,role,job_title,avatar FROM users ORDER BY name').all().filter(u => !ids.length || ids.includes(u.id));
+  const users = (q._tenant ? db.prepare('SELECT id,name,email,role,job_title,avatar FROM users WHERE site_id=? ORDER BY name').all(Number(q._tenant)) : db.prepare('SELECT id,name,email,role,job_title,avatar FROM users ORDER BY name').all()).filter(u => !ids.length || ids.includes(u.id));
   const sw = siteWhere(q.site);
   const convs = db.prepare(`SELECT * FROM conversations WHERE ${sw.sql} AND handoff_at IS NOT NULL AND created_at>=? AND created_at<=?`).all(...sw.args, from, to);
   const msgs = db.prepare(`SELECT m.agent_id, m.created_at FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE ${sw.sql.replace('site_id', 'c.site_id')} AND m.sender='agent' AND m.created_at>=? AND m.created_at<=?`).all(...sw.args, from, to);

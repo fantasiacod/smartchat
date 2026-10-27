@@ -109,6 +109,7 @@ addColumn('conversations', 'tags', "TEXT DEFAULT ''");
 addColumn('kb', 'category_id', 'INTEGER');
 addColumn('kb', 'related', "TEXT DEFAULT '[]'");
 addColumn('users', 'pwd_changed_at', 'INTEGER DEFAULT 0');
+addColumn('users', 'site_id', 'INTEGER'); // NULL = all sites; a number = this user only ever sees that site (store / branch)
 
 const now = () => new Date().toISOString();
 

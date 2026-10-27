@@ -28,6 +28,7 @@
     developer: { icon: '🛠️', name: 'مطوّر البرنامج', desc: 'رابط المطوّر' },
     end: { icon: '✋', name: 'إنهاء المحادثة', desc: 'ثم التقييم' }
   };
+  A.TREE_ACTIONS = ACTIONS; // editions may add their own buttons
   var ORG_BASE = [['contact', '📞 أرقام التواصل'], ['hours', '🕘 ساعات العمل'], ['website', '🌐 الموقع الإلكتروني'], ['social', '📱 حسابات التواصل'], ['location', '📍 الموقع'], ['developer', '🛠️ مطوّر البرنامج']];
   var ORG_FIELDS = ORG_BASE;
   function orgFields() { return ((S.site.settings.org.sections) || []).map(function (x) { return ['section:' + x.id, '📄 ' + (x.title || x.id)]; }).concat(ORG_BASE); }

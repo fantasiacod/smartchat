@@ -410,7 +410,9 @@
   App.page = function (id, def) { def.id = id; App.pages[id] = def; App.order.push(id); };
   // pages hidden by the admin (Settings → System pages); the settings hub and that page itself always stay
   App.LOCKED_PAGES = ['settings', 'pages', 'account'];
-  App.isHidden = function (id) { var h = (S.site && S.site.settings.ui && S.site.settings.ui.hidden_pages) || []; return App.LOCKED_PAGES.indexOf(id) < 0 && h.indexOf(id) >= 0; };
+  // pages an edition may hide
+  App.EDITION_HIDDEN = [];
+  App.isHidden = function (id) { if (App.EDITION_HIDDEN.indexOf(id) >= 0) return true; var h = (S.site && S.site.settings.ui && S.site.settings.ui.hidden_pages) || []; return App.LOCKED_PAGES.indexOf(id) < 0 && h.indexOf(id) >= 0; };
   App.NAV = [
     ['العمل اليومي', ['live', 'history', 'tickets', 'appointments']],
     ['عقل البوت', ['mindmap', 'tree', 'business', 'eligibility', 'org']],
@@ -438,8 +440,9 @@
       (S.sites.length > 1 ? '<select class="in" id="site-sel" style="width:auto">' + S.sites.map(function (s) { return '<option value="' + s.id + '"' + (s.id === site.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select>' : '') +
       '<label class="switch" title="الحالة: متاح لاستقبال المحادثات"><input type="checkbox" id="avail"><span class="tr"></span><span class="lbl small" id="avail-l"></span></label>' +
       '<button class="btn ghost icon" id="mute" title="كتم/تشغيل صوت الرنين"></button>' +
-      '<span class="row small muted" id="conn"><span class="dot off"></span></span></div><div class="content" id="content"></div></main></div>';
+      '<span class="row small muted" id="conn"><span class="dot off"></span></span></div><div id="ed-banner"></div><div class="content" id="content"></div></main></div>';
     App.renderNav();
+    if (App.editionBanner) App.editionBanner(App.$('#ed-banner'));
     App.$('#me-link').onclick = function () { location.hash = '#/account'; };
     App.$('#burger').onclick = function () { App.$('.side').classList.toggle('open'); };
     var sel = App.$('#site-sel'); if (sel) sel.onchange = function () { App.selectSite(Number(sel.value)); };
@@ -521,9 +524,11 @@
   function start() {
     App.GET('/api/me').then(function (me) {
       S.me = me; me.prefs = me.prefs || {}; App.muted = false; App.applyTheme();
-      return Promise.all([App.GET('/api/sites'), App.GET('/api/users'), App.GET('/api/i18n')]);
+      return Promise.all([App.GET('/api/sites'), App.GET('/api/users'), App.GET('/api/i18n'), App.GET('/api/edition').catch(function () { return { name: 'smartchat' }; })]);
     }).then(function (r) {
-      S.sites = r[0]; S.users = r[1]; S.i18n = r[2];
+      S.sites = r[0]; S.users = r[1]; S.i18n = r[2]; S.edition = r[3] || { name: 'smartchat' };
+      return App.editionSetup ? App.editionSetup().then(function () { return r; }) : r;
+    }).then(function () {
       var saved; try { saved = Number(localStorage.getItem('sc_site')); } catch (e) { }
       S.site = S.sites.find(function (s) { return s.id === saved; }) || S.sites[0];
       shell(); connect(); route(); App.loadActive(); App.refreshCounts();

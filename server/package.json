@@ -5,7 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/start.js",
-    "test": "node test/flow.test.js && node test/setup.test.js"
+    "test": "node test/flow.test.js && node test/tenant.test.js && node test/setup.test.js"
   },
   "engines": {
     "node": "22.x"

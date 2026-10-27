@@ -93,3 +93,14 @@ node test/load.js http://localhost:3000 SITE_KEY 600  # اختبار التحم�
 - Protected by a one-time code printed in the log (`SETUP_CODE` to fix it). Requests from localhost without proxy headers don't need it. 8 wrong codes → 10-minute lock.
 - Storage adapters in `src/persist.js`: PostgreSQL, MySQL, SQL Server (one row), MongoDB and Firestore (gzip, split into parts, written under a new generation and switched last). Firestore uses the REST API with a service-account JWT (no extra package); `FIRESTORE_EMULATOR_HOST` is honoured.
 - Tests: `node test/setup.test.js` (47 checks). Optional real databases: `SETUP_PG_URL`, `SETUP_MYSQL_URL`. `npm test` runs both suites.
+
+
+## Store / site separation (`src/tenant.js`)
+- `users.site_id`: NULL = all sites (as before); a number = that user only ever reaches that site.
+- `tenant.gate()` runs inside `auth()` for site users. Every dashboard route has a rule (`any`, `query`, `body`, `param`, `own:<table>`, `deny`); a route without a rule is refused (fail closed). Editions add rules with `tenant.allow()`.
+- Live chat: employees join room `site:<id>` (or `site:all`); every event goes through `chat.toSite(siteId)`; socket actions check `canSee()`.
+- Tests: `node test/tenant.test.js` (64 checks, also verifies that every route has a rule).
+
+## Edition hooks (`src/edition.js`)
+- `active(site)`, `allows(site, feature)`, `userLimit(site)`, `botAction/botAwait/botText`. Smart Chat allows everything (no plans).
+- `npm test` runs all suites: flow (150), store separation (64), setup (47).
