@@ -100,7 +100,8 @@
           if (ifr && ifr.contentWindow) ifr.contentWindow.postMessage({ type: 'sc-preview', config: cfg }, location.origin);
         }).catch(function () { });
       }, 350);
-      settingsPage(root, ['appearance', 'prechat'], function (el, d, ch) {
+      settingsPage(root, ['appearance', 'prechat', 'texts'], function (el, d, ch) {
+        d.texts = d.texts || {}; d.texts.ar = d.texts.ar || {};
         var a = d.appearance, P0 = window.SCPatterns;
         // older settings kept a picture theme as the "pattern": it is now a background, with the decoration on top
         if (P0.themeOf(a.pattern)) { if (!a.bg) a.bg = a.pattern; a.pattern = 'girih12'; }
@@ -108,13 +109,15 @@
           card('🎨 ألوان المحادثة (الأساسية)', '<div class="swatches" id="pal">' + PALETTES.map(function (p, i) { return '<button class="swatch" data-p="' + i + '"><div class="sw"><i style="background:' + p[1] + '"></i><i style="background:' + p[2] + '"></i></div><span>' + p[0] + '</span></button>'; }).join('') + '</div>' +
             '<div class="grid g3" style="margin-top:14px">' + f.color('appearance.primary_color', 'اللون الرئيسي', { clear: false }) + f.color('appearance.secondary_color', 'اللون الثانوي', { clear: false }) + f.select('appearance.header_style', 'خلفية الرأس', [['gradient', 'متدرّج بين اللونين'], ['solid', 'لون واحد']]) + '</div>', 'مجموعة صغيرة تكفي لتلوين المحادثة بالكامل. ألوان لوحة التحكم نفسها تُغيَّر من «حسابي ← مظهر اللوحة».') +
           card('🏷️ الشعار والاسم', '<div class="grid g2"><div><label class="f">شعار الجهة</label><div id="logo"></div></div><div><label class="f">صورة البوت <small>(اختياري)</small></label><div id="botav"></div></div></div>' +
+            '<div class="grid g2" style="margin-top:12px">' + f.range('appearance.avatar_size', '🔍 حجم صورة البوت بجانب الرسائل', 24, 56, 1, 'px') + f.range('appearance.avatar_zoom', '🖼️ تكبير / تصغير الصورة داخل الدائرة', 40, 150, 5, '%') + '</div><div class="hint" style="margin-top:-4px">إذا كان الشعار مقصوصاً صغّر النسبة (مثلاً 80%) ليظهر كاملاً داخل الدائرة.</div>' +
+            '<div class="grid g2" style="margin-top:12px">' + f.text('texts.ar.title', 'عنوان نافذة المحادثة', { ph: 'خدمة العملاء' }) + f.text('texts.ar.subtitle', 'النص تحت العنوان', { ph: 'نرد عادة خلال دقائق' }) + '</div>' +
             '<div class="grid g2" style="margin-top:12px">' + f.text('appearance.company_name', 'الاسم الظاهر أعلى المحادثة', { hint: 'إن تُرك فارغاً يُستخدم اسم الجهة من صفحة معلومات الجهة' }) + f.text('appearance.footer_text', 'نص التذييل', { ph: 'بدعم من' }) + '</div>' +
             f.sw('appearance.show_footer', 'إظهار التذييل أسفل النافذة')) +
           card('📌 معلومات في الشريط العلوي', f.sw('appearance.show_unified_number', '📞 الرقم الموحّد', 'يُضبط الرقم من صفحة «بيانات الجهة»') +
             f.sw('appearance.show_address', '📍 الموقع / العنوان', 'يظهر تحت الاسم، وعند الضغط يفتح الموقع في الخرائط إن وُضع رابطه في «بيانات الجهة»') + '<div id="haddr"></div>' +
             f.sw('appearance.show_email', '✉️ البريد الإلكتروني') + '<div id="hmail"></div>', 'كلها اختيارية — فعّل ما تريد ظهوره في أعلى نافذة المحادثة.') +
           card('🔤 الخط', '<div class="grid g2">' + f.select('appearance.font', 'نوع الخط', FONTS) + f.range('appearance.font_size', 'حجم خط الرسائل', 12, 18, 0.5, 'px') + '</div><div id="fontprev" style="padding:12px;border-radius:12px;background:var(--soft);font-size:18px"></div>') +
-          card('🖼️ خلفية المحادثة', '<div class="patterns" id="bgs"></div><div id="bgcustom"></div><div id="bgfade"></div>', 'صورة كاملة خلف المحادثة: تصميمك الخاص أو إحدى الخلفيات الجاهزة. الزخرفة المختارة أدناه تبقى ظاهرة فوقها (ويمكنك إخفاؤها أو جعلها في الشريط العلوي فقط).') +
+          card('🖼️ خلفية المحادثة', '<div class="patterns" id="bgs"></div><div id="bgcustom"></div><div id="bgfade"></div><div id="bgseason"></div>', 'صورة كاملة خلف المحادثة: تصميمك الخاص أو إحدى الخلفيات الجاهزة. الزخرفة المختارة أدناه تبقى ظاهرة فوقها (ويمكنك إخفاؤها أو جعلها في الشريط العلوي فقط).') +
           card('🕌 الزخرفة', '<div class="patterns" id="pats"></div><div class="grid g3" style="margin-top:14px">' + f.color('appearance.pattern_color', 'لون الزخرفة', { ph: 'نفس اللون الرئيسي' }) + f.range('appearance.pattern_opacity', 'الشفافية', 0.02, 0.3, 0.01) + f.range('appearance.pattern_scale', 'الحجم', 0.5, 2.5, 0.1, '×') + '</div>' +
             '<label class="f">مكان الزخرفة</label><div class="seg" id="patplace"><button type="button" data-pl="both">في المحادثة والشريط العلوي</button><button type="button" data-pl="header">الشريط العلوي فقط</button><button type="button" data-pl="chat">المحادثة فقط</button><button type="button" data-pl="off">إخفاء الزخرفة</button></div><div id="patimg"></div>', 'زخارف إسلامية وعربية وسعودية، ومناسبات، أو شعار الجهة وصورك الخاصة — تُطبّق على نافذة المحادثة. ولتطبيقها على لوحة التحكم: حسابي ← مظهر اللوحة.') +
           card('🎉 زخرفة المناسبات التلقائية', f.sw('appearance.occasions.auto', 'تبديل الزخرفة تلقائياً في المناسبات', 'يرجع للزخرفة المختارة أعلاه بعد انتهاء المناسبة. التواريخ الهجرية حسب تقويم أم القرى') +
@@ -126,6 +129,7 @@
             '<div class="grid g3">' + f.color('appearance.launcher_bg', 'لون الزر', { ph: 'اللون الرئيسي' }) + f.select('appearance.launcher_style', 'نمط الزر', [['solid', 'لون واحد'], ['gradient', 'متدرّج']]) + f.num('appearance.teaser_delay', 'ظهور رسالة الترحيب بعد (ثانية)', { min: 0 }) + '</div>' +
             '<div class="grid g2">' + f.num('appearance.offset_x', 'البعد عن الحافة الجانبية (px)') + f.num('appearance.offset_y', 'البعد عن الأسفل (px)') + '</div>' + f.sw('appearance.hide_on_mobile', 'إخفاء على الجوال')) +
           card('🪟 النافذة والفقاعات', '<div class="grid g3">' + f.range('appearance.window_width', 'عرض النافذة', 320, 460, 10, 'px') + f.range('appearance.window_radius', 'استدارة النافذة', 0, 28, 1, 'px') + f.range('appearance.bubble_radius', 'استدارة الفقاعات', 4, 24, 1, 'px') + '</div>' +
+            f.sw('appearance.option_numbers', '🔢 إظهار الأرقام بجانب خيارات القائمة', 'إن أخفيتها تظهر الخيارات بشكل بطاقات أنيقة بأيقونة وسهم، ويبقى بإمكان الزائر كتابة الرقم') +
             '<label class="f">شكل أزرار الخيارات</label><div class="choices" id="ostyle">' + [['pill', 'كبسولات'], ['card', 'بطاقات'], ['list', 'قائمة']].map(function (s) { return '<button class="choice" data-o="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>' +
             '<div class="grid g2" style="margin-top:12px">' + f.select('appearance.rating_max', 'عدد نجوم التقييم', [[3, '3'], [5, '5'], [6, '6'], [7, '7'], [10, '10']]) + '</div>') +
           '<details class="card" style="margin-bottom:16px"><summary style="cursor:pointer;font-weight:700">🎛️ ألوان متقدمة (كل تفصيلة)</summary><div class="grid g3" style="margin-top:14px">' +
@@ -179,10 +183,11 @@
             return shrinkUpload(fs[0], 1400, true).then(function (u) { a.bg_image = u; a.bg = 'custom'; refresh(); A.toast('تم وضع خلفيتك ✅', 'ok'); });
           }).catch(A.fail);
         }
+        function seasonUrl(p) { var u = (a.theme_images || {})[p.id]; return u || ('/themes/' + p.theme); }
         function paintBg() {
           var cur = a.bg || '';
           var tiles = [{ id: '', name: 'بدون صورة', css: 'none' }, { id: 'custom', name: a.bg_image ? 'تصميمي' : '＋ ارفع تصميمك', css: a.bg_image ? "url('" + esc(a.bg_image) + "');background-size:cover;background-position:center" : 'none' }]
-            .concat(P.list.filter(function (p) { return p.theme; }).map(function (p) { return { id: p.id, name: p.name, css: "url('/themes/" + p.theme + "');background-size:cover;background-position:center" }; }));
+            .concat(P.list.filter(function (p) { return p.theme; }).map(function (p) { return { id: p.id, name: p.name, css: "url('" + esc(seasonUrl(p)) + "');background-size:cover;background-position:center" }; }));
           A.$('#bgs', el).innerHTML = tiles.map(function (t) {
             return '<button class="pat' + (cur === t.id ? ' on' : '') + '" data-bg="' + t.id + '"><div class="pv" style="background-color:' + (a.chat_bg || '#f6f7f4') + ';background-image:' + t.css + '">' + (t.id === 'custom' && !a.bg_image ? '<span style="font-size:22px;line-height:56px">🖼️</span>' : '') + '</div><span>' + esc(t.name) + '</span></button>';
           }).join('');
@@ -191,6 +196,22 @@
           var chg = A.$('#bgchg', el), del = A.$('#bgdel', el);
           if (chg) chg.onclick = bgUpload;
           if (del) del.onclick = function () { a.bg_image = ''; if (a.bg === 'custom') a.bg = ''; refresh(); };
+          // the season pictures (Ramadan, Eids, National Day, Founding Day): replace any of them with your own
+          var seasons = P.list.filter(function (p) { return p.theme; }), own = a.theme_images || {};
+          A.$('#bgseason', el).innerHTML = '<details style="margin-top:14px"' + (S.seasonOpen ? ' open' : '') + '><summary style="cursor:pointer;font-weight:700">🎨 تغيير صور المواسم بصورك الخاصة</summary><p class="tiny muted" style="margin:8px 0">الصورة الجديدة تظهر في المحادثة وفي التبديل التلقائي للمناسبات. يفضّل صورة طولية بألوان هادئة.</p>' +
+            seasons.map(function (p) {
+              return '<div class="row" style="gap:10px;padding:8px 0;border-bottom:1px solid var(--border)"><div style="width:46px;height:46px;border-radius:10px;flex:none;background:url(\'' + esc(seasonUrl(p)) + '\') center/cover"></div><div class="grow small"><b>' + esc(p.name) + '</b><br><span class="tiny muted">' + (own[p.id] ? '🖼️ صورتك' : 'الصورة الأصلية') + '</span></div>' +
+                '<button class="btn sm soft" data-sup="' + p.id + '">🔄 تغيير الصورة</button>' + (own[p.id] ? '<button class="btn sm ghost" data-srs="' + p.id + '">↩️ الصورة الأصلية</button>' : '') + '</div>';
+            }).join('') + '</details>';
+          var det = A.$('#bgseason details', el); det.ontoggle = function () { S.seasonOpen = det.open; };
+          A.$$('[data-sup]', el).forEach(function (b) { b.onclick = function () {
+            var id = b.getAttribute('data-sup');
+            A.pickFile('image/png,image/jpeg,image/webp', false).then(function (fs) {
+              if (!fs || !fs[0]) return; A.toast('⏳ جارٍ رفع الصورة…');
+              return shrinkUpload(fs[0], 1400, true).then(function (u) { a.theme_images = Object.assign({}, a.theme_images || {}); a.theme_images[id] = u; a.bg = id; refresh(); A.toast('تم تغيير صورة الموسم ✅', 'ok'); });
+            }).catch(A.fail);
+          }; });
+          A.$$('[data-srs]', el).forEach(function (b) { b.onclick = function () { a.theme_images = Object.assign({}, a.theme_images || {}); a.theme_images[b.getAttribute('data-srs')] = ''; refresh(); }; });
           var fb = A.$('#bgfade', el);
           if (a.bg && !fb.firstChild) { fb.innerHTML = '<div style="margin-top:12px">' + f.range('appearance.bg_fade', 'تفتيح الخلفية (لوضوح الرسائل)', 0, 0.8, 0.05) + '</div>'; A.bind(fb, d, refresh); }
           else if (!a.bg) fb.innerHTML = '';
@@ -250,14 +271,20 @@
       settingsPage(root, ['languages', 'texts'], function (el, d, ch) {
         var L = d.languages; L.enabled = L.enabled || ['ar'];
         var DEF = S.i18n.defaults;
+        var ORG = ['org_name', 'org_address', 'prechat_title', 'footer_text', 'launcher_label'];
+        var SS = S.site.settings, AP = SS.appearance || {}, OG = SS.org || {};
+        // what is typed in Arabic on the other pages — shown faded as a hint while translating
+        var ORIG = { org_name: OG.name || AP.company_name || '', org_address: AP.header_address || OG.address || '', prechat_title: (SS.prechat || {}).title || '', launcher_label: AP.launcher_label || '' };
+        var LBL = { org_name: 'اسم الجهة', org_address: 'العنوان في رأس النافذة', prechat_title: 'عنوان نموذج «عرّفنا بنفسك»', footer_text: 'نص التذييل قبل اسم الجهة', launcher_label: 'نص زر فتح المحادثة' };
         var GROUPS = [
+          ['🏢 اسم الجهة والعنوان ونافذة البداية', ORG],
           ['رأس النافذة وزر البدء', ['title', 'subtitle', 'bot_name', 'teaser', 'placeholder', 'start', 'end_chat', 'new_chat', 'confirm_end']],
           ['التحويل للموظف', ['handoff', 'no_answer_handoff', 'waiting', 'with_agent', 'queue', 'no_agents', 'agent_joined', 'back_to_bot']],
           ['ردود البوت', ['anything_else', 'fallback', 'did_you_mean', 'unlinked', 'org_missing', 'nav_home', 'nav_agent', 'nav_cancel', 'nav_retry', 'nav_ticket']],
           ['الشكاوى والاقتراحات', ['ticket_intro', 'ticket_form_complaint', 'ticket_form_suggestion', 'ticket_created', 'ticket_ask_number', 'ticket_not_found', 'ticket_status_msg', 'f_name', 'f_phone', 'f_email', 'f_message', 'f_send', 'f_required', 'f_phone_invalid']],
           ['التقييم والإنهاء', ['rating_title', 'rating_comment', 'rating_send', 'rating_thanks', 'ended', 'closed']],
           ['الاستعلام من قاعدة البيانات (أسئلة المربعات الخاصة تُعدّل من: الإعدادات ← قواعد البيانات)', ['ask_param', 'invalid_value', 'invalid_giveup', 'rule_number', 'rule_phone', 'rule_id', 'rule_email', 'rule_date', 'not_found', 'customer_not_found', 'db_error']],
-          ['أخرى', ['prechat_title', 'open_maps', 'directions', 'open_file', 'open_link', 'visit_site', 'call']]
+          ['أخرى', ['open_maps', 'directions', 'open_file', 'open_link', 'visit_site', 'call']]
         ];
         el.innerHTML = card('🌐 لغات البوت', '<div class="grid g3">' + Object.keys(S.i18n.langs).map(function (l) { return '<label class="card flat row" style="padding:12px;cursor:pointer"><input type="checkbox" data-l="' + l + '"' + (L.enabled.indexOf(l) >= 0 ? ' checked' : '') + '><b>' + S.i18n.langs[l].name + '</b><span class="tiny muted">' + (S.i18n.langs[l].dir === 'rtl' ? 'من اليمين' : 'من اليسار') + '</span></label>'; }).join('') + '</div>' +
           '<div class="grid g2" style="margin-top:12px">' + f.select('languages.default', 'اللغة الافتراضية', Object.keys(S.i18n.langs).map(function (l) { return [l, S.i18n.langs[l].name]; })) + '<div style="padding-top:24px">' + f.swi('languages.show_switcher', 'إظهار أزرار تبديل اللغة للمستفيد') + '</div></div>' +
@@ -269,10 +296,12 @@
           A.$$('#tl button', el).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-t') === cur); b.onclick = function () { cur = b.getAttribute('data-t'); texts(); }; });
           d.texts[cur] = d.texts[cur] || {};
           var dir = S.i18n.langs[cur].dir;
-          A.$('#tx', el).innerHTML = GROUPS.map(function (g) {
-            return '<details' + (g === GROUPS[0] ? ' open' : '') + ' style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:700;padding:6px 0">' + g[0] + '</summary><div class="grid g2" style="margin-top:8px">' + g[1].map(function (k) {
-              var dv = (DEF[cur] || {})[k] || '', long = dv.length > 50 || /\n/.test(dv);
-              return '<div class="field"><label class="f"><span class="ltr tiny muted">' + k + '</span></label>' + (long ? '<textarea class="in" rows="2" dir="' + dir + '" data-k="texts.' + cur + '.' + k + '" placeholder="' + esc(dv) + '"></textarea>' : '<input class="in" dir="' + dir + '" data-k="texts.' + cur + '.' + k + '" placeholder="' + esc(dv) + '">') + '</div>';
+          A.$('#tx', el).innerHTML = (cur === 'ar' ? '<div class="alert info" style="margin-bottom:10px">🏢 اسم الجهة والعنوان وعنوان نافذة البداية بالعربية تُكتب من صفحاتها (بيانات الجهة، الشكل والألوان). ترجمتها للغات الأخرى من تبويب اللغة نفسها.</div>' : '') + GROUPS.filter(function (g) { return cur !== 'ar' || g[1] !== ORG; }).map(function (g, gi) {
+            return '<details' + (gi === 0 ? ' open' : '') + ' style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:700;padding:6px 0">' + g[0] + '</summary><div class="grid g2" style="margin-top:8px">' + g[1].map(function (k) {
+              var dv = (DEF[cur] || {})[k] || '', long0 = (ORIG[k] || '');
+              if (ORG.indexOf(k) >= 0 && !dv) dv = long0;
+              var long = dv.length > 50 || /\n/.test(dv);
+              return '<div class="field"><label class="f">' + (LBL[k] ? LBL[k] + ' ' : '') + '<span class="ltr tiny muted">' + k + '</span></label>' + (long ? '<textarea class="in" rows="2" dir="' + dir + '" data-k="texts.' + cur + '.' + k + '" placeholder="' + esc(dv) + '"></textarea>' : '<input class="in" dir="' + dir + '" data-k="texts.' + cur + '.' + k + '" placeholder="' + esc(dv) + '">') + '</div>';
             }).join('') + '</div></details>';
           }).join('');
           A.bind(A.$('#tx', el), d, ch);
@@ -376,7 +405,7 @@
       var origin = location.origin, key = S.site.key, plat = 'wordpress';
       var code = '<script src="' + origin + '/widget.js" data-site="' + key + '" async></script>';
       var PL = {
-        wordpress: { n: 'ووردبريس', e: '🧩' }, salla: { n: 'سلة', e: '🛍️' }, zid: { n: 'زد', e: '🛒' }, shopify: { n: 'Shopify', e: '🟢' }, html: { n: 'أي موقع HTML', e: '🌐' }, gtm: { n: 'Google Tag Manager', e: '🏷️' }
+        wordpress: { n: 'ووردبريس', e: '🧩' }, html: { n: 'أي موقع إلكتروني (HTML)', e: '🌐' }
       };
       root.innerHTML = '<div class="grid" style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px"><div>' +
         card('1️⃣ اختر منصة موقعك', '<div class="platforms">' + Object.keys(PL).map(function (k) { return '<div class="plat" data-p="' + k + '"><span class="pe">' + PL[k].e + '</span>' + PL[k].n + '</div>'; }).join('') + '</div>') +

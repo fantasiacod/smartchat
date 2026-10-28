@@ -34,12 +34,12 @@ const RULES = {
   'GET /api/backup/download': 'deny', 'GET /api/backups': 'deny', 'PUT /api/backups/config': 'deny', 'POST /api/backups': 'deny',
   'GET /api/backups/:name': 'deny', 'DELETE /api/backups/:name': 'deny', 'POST /api/backups/:name/restore': 'deny', 'POST /api/backup/restore': 'deny',
   'POST /api/reset': 'deny', 'GET /api/audit': 'deny',
-  'GET /api/stats': 'query', 'GET /api/reports/agents': 'query', 'GET /api/reports/agents.xlsx': 'query', 'GET /api/online': 'any', 'GET /api/edition': 'any'
+  'GET /api/stats': 'query', 'GET /api/reports/agents': 'query', 'GET /api/reports/agents.xlsx': 'query', 'GET /api/online': 'any', 'GET /api/edition': 'any', 'GET /api/regs': 'query', 'GET /api/regs/export': 'query', 'DELETE /api/regs/:id': 'own:program_regs'
 };
-const OWN_TABLES = ['users', 'conversations', 'kb', 'unanswered', 'tickets', 'appointments', 'kb_categories'];
+const OWN_TABLES = ['program_regs', 'users', 'conversations', 'kb', 'unanswered', 'tickets', 'appointments', 'kb_categories'];
 
 // settings a site user may change (the rest belong to whoever runs the platform)
-const SITE_SECTIONS = ['biz', 'ui', 'appointments', 'eligibility', 'appearance', 'texts', 'prechat', 'behavior', 'org', 'tickets', 'languages'];
+const SITE_SECTIONS = ['regs', 'biz', 'ui', 'appointments', 'eligibility', 'appearance', 'texts', 'prechat', 'behavior', 'org', 'tickets', 'languages'];
 
 const extra = {}; // routes added by editions: 'METHOD /path' → rule
 function allow(key, rule) { extra[key] = rule; }

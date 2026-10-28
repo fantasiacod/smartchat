@@ -121,11 +121,16 @@
     // PNG / WEBP / GIF / SVG logos keep their transparency (no white box behind them); JPG gets a white card
     var clearImg = function (u) { return /\.(png|webp|gif|svg)(\?|#|$)/i.test(u || '') || /^data:image\/(png|webp|gif|svg)/i.test(u || ''); };
     var logoClear = clearImg(logo);
-    var orgName = (cfg.org && cfg.org.name) || A.company_name || '';
+    var orgBase = (cfg.org && cfg.org.name) || A.company_name || '';
+    // organisation name & address in the chosen language (falls back to what was typed on the dashboard)
+    var orgName = function () { return T('org_name') || orgBase; };
     var unified = A.show_unified_number !== false && cfg.org && cfg.org.unified_number;
     var pattern = A.pattern_chat !== false ? (A.pattern_css || 'none') : 'none';
     var headPattern = A.pattern_header !== false ? (A.pattern_header_css || 'none') : 'none';
     var optStyle = A.option_style || 'pill';
+    // the bot picture: its size next to the messages and how much it is zoomed inside the circle (below 100% the whole logo shows)
+    var avS = Math.max(20, Math.min(64, Number(A.avatar_size) || 30)), avZ = Math.max(30, Math.min(200, Number(A.avatar_zoom) || 100));
+    var avImg = avZ === 100 ? 'width:100%;height:100%;object-fit:cover' : (avZ < 100 ? 'width:' + avZ + '%;height:' + avZ + '%;object-fit:contain' : 'width:100%;height:100%;object-fit:cover;transform:scale(' + (avZ / 100) + ')');
     // background picture (own design / picture theme) under the decoration, with a light veil so messages stay readable
     var veil = function (hex, a) { var h = String(hex || '#ffffff').replace('#', ''); if (h.length === 3) h = h.replace(/./g, '$&$&'); if (!/^[0-9a-f]{6}$/i.test(h)) return 'rgba(255,255,255,' + a + ')'; return 'rgba(' + parseInt(h.slice(0, 2), 16) + ',' + parseInt(h.slice(2, 4), 16) + ',' + parseInt(h.slice(4, 6), 16) + ',' + a + ')'; };
     var layers = function (base) {
@@ -134,7 +139,8 @@
       return 'background-color:' + base + ';background-image:' + (p ? pattern + ',' : '') + 'linear-gradient(' + v + ',' + v + '),' + A.bg_css +
         ';background-size:' + (p ? 'auto,' : '') + 'cover,cover;background-position:' + (p ? '0 0,' : '') + 'center,center;background-repeat:' + (p ? 'repeat,' : '') + 'no-repeat,no-repeat';
     };
-    var addr = cfg.org && cfg.org.address, mail = cfg.org && cfg.org.email;
+    var addrOf = function () { return cfg.org && cfg.org.address ? (T('org_address') || cfg.org.address) : ''; }, mail = cfg.org && cfg.org.email;
+    var footer = function () { return '<span>' + esc(T('footer_text')) + '</span> <b>' + esc(orgName()) + '</b>'; };
 
     var host = document.createElement('div');
     host.id = 'smart-chat-root';
@@ -173,7 +179,8 @@
       '.view{flex:1;display:flex;flex-direction:column;min-height:0}' +
       '.body{flex:1;overflow-y:auto;padding:16px 12px;' + layers(V.chat) + ';display:flex;flex-direction:column;gap:8px}' +
       '.row{display:flex;gap:8px;align-items:flex-end;max-width:90%}.row.me{align-self:flex-end;flex-direction:row-reverse}' +
-      '.mav{width:30px;height:30px;border-radius:50%;background:' + V.av + ';color:' + contrast(V.av) + ';display:grid;place-items:center;font-size:12px;font-weight:700;flex:none;overflow:hidden}.mav img{width:100%;height:100%;object-fit:cover}.mav.clear{background:none;border-radius:0}' +
+      '.mav{width:' + avS + 'px;height:' + avS + 'px;border-radius:50%;background:' + V.av + ';color:' + contrast(V.av) + ';display:grid;place-items:center;font-size:' + Math.round(avS * 0.4) + 'px;font-weight:700;flex:none;overflow:hidden}.mav img{' + avImg + '}.mav.clear{background:none;border-radius:0}' +
+      '.av img{' + avImg + '}' +
       '.bub{padding:10px 13px;border-radius:' + V.bubR + ';font-size:' + V.fs + ';line-height:1.65;overflow-wrap:anywhere;box-shadow:0 1px 2px rgba(0,0,0,.07)}' +
       '.row.bot .bub{background:' + V.bot + ';color:' + V.botTxt + ';border-end-start-radius:4px}.row.agent .bub{background:' + V.agent + ';color:' + V.agentTxt + ';border-end-start-radius:4px}' +
       '.row.me .bub{background:' + V.me + ';color:' + V.meTxt + ';border-end-end-radius:4px}.bub a{color:inherit}' +
@@ -186,6 +193,8 @@
       '.opt:hover{background:' + V.optTxt + ';color:' + contrast(V.optTxt) + '}.opt[disabled]{opacity:.45;cursor:default}.opt[disabled]:hover{background:' + V.opt + ';color:' + V.optTxt + '}' +
       '.num{min-width:22px;height:22px;border-radius:7px;background:' + c1 + ';color:' + V.on1 + ';display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}' +
       '.opt:hover .num{background:' + V.on1 + ';color:' + c1 + '}' +
+      '.opt .lbl{flex:1}.chev{flex:none;opacity:.45;font-size:18px;line-height:1;transition:.15s;margin-inline-start:6px}.opt:hover .chev{opacity:1;transform:translateX(-3px)}' +
+      '.opt .oic{flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:' + veil(c1, 0.1) + '}.opt:hover .oic{background:rgba(255,255,255,.2)}' +
       '.link{display:inline-block;margin-top:8px;background:' + c1 + ';color:' + V.on1 + '!important;text-decoration:none;padding:7px 12px;border-radius:9px;font-size:13px;font-weight:600}' +
       '.att{display:flex;flex-direction:column;gap:8px;margin-top:8px}.att img{display:block;max-width:100%;max-height:260px;border-radius:10px;object-fit:cover;cursor:zoom-in}' +
       '.att video,.att iframe{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:10px;background:#000}' +
@@ -230,7 +239,7 @@
 
     root.innerHTML = '<style>' + css + '</style><div class="wrap"><div class="teaser" style="display:none"><button class="x" aria-label="close">×</button><span></span></div>' +
       '<div class="panel" role="dialog" aria-label="chat"><div class="head"></div><div class="view"></div>' +
-      (orgName && A.show_footer !== false ? '<div class="power">' + esc(A.footer_text || '') + ' <b>' + esc(orgName) + '</b></div>' : '') + '</div>' +
+      (orgBase && A.show_footer !== false ? '<div class="power"></div>' : '') + '</div>' +
       '<div class="launch-row">' + (A.launcher_label && !pill ? '<div class="label"></div>' : '') +
       '<button class="launcher" aria-label="chat"><span class="li">' + launcherIcon + '</span>' + (pill ? '<span class="lt"></span>' : '') + '<span class="badge">0</span></button></div></div>';
 
@@ -245,8 +254,9 @@
       var d = dirOf(lang);
       root.querySelector('.wrap').setAttribute('dir', d);
       root.querySelector('.wrap').classList.toggle('ur', lang === 'ur');
-      if ($('.label')) $('.label').textContent = A.launcher_label || '';
-      if ($('.lt')) $('.lt').textContent = A.launcher_label || T('start');
+      if ($('.label')) $('.label').textContent = T('launcher_label') || T('start');
+      if ($('.lt')) $('.lt').textContent = T('launcher_label') || T('start');
+      if ($('.power')) $('.power').innerHTML = footer();
       teaser.querySelector('span').textContent = T('teaser');
       renderHead();
     }
@@ -255,12 +265,12 @@
       var off = cfg.work && cfg.work.enabled && !cfg.work.open;
       var sub = state.status === 'waiting' ? T('waiting') : state.status === 'human' ? T('with_agent', { agent: state.agent || '' }) : state.status === 'closed' ? T('ended') : off ? T('off_hours_status') : T('subtitle');
       var avatar = logo ? '<div class="av logo' + (logoClear ? ' clear' : '') + '"><img src="' + esc(logo) + '" alt=""></div>' : '<div class="av">' + (A.bot_avatar ? '<img src="' + esc(abs(A.bot_avatar)) + '" alt="">' : ICONS[A.launcher_icon_preset] || ICONS.chat) + '</div>';
-      head.innerHTML = '<div class="hrow">' + avatar + '<div class="ht">' + (orgName ? '<span class="org">' + esc(orgName) + '</span>' : '') +
+      head.innerHTML = '<div class="hrow">' + avatar + '<div class="ht">' + (orgName() ? '<span class="org">' + esc(orgName()) + '</span>' : '') +
         '<span class="ttl">' + esc(T('title')) + '</span><span class="sub"><i class="dot' + (state.status === 'waiting' ? ' wait' : off ? ' off' : '') + '"></i>' + esc(sub) + '</span></div>' +
         '<button class="hb mbtn" title="menu">' + I.menu + '</button><button class="hb xbtn" title="close">' + I.close + '</button></div>' +
-        (unified || addr || mail ? '<div class="chips">' +
+        (unified || addrOf() || mail ? '<div class="chips">' +
           (unified ? '<a class="uni" href="tel:' + esc(String(cfg.org.unified_number).replace(/\s/g, '')) + '">' + I.phone + esc(cfg.org.unified_number) + '</a>' : '') +
-          (addr ? (/^https:\/\//.test(cfg.org.map_url || '') ? '<a class="hinfo" target="_blank" rel="noopener" href="' + esc(cfg.org.map_url) + '">' : '<span class="hinfo">') + I.pin + '<span>' + esc(addr) + '</span>' + (/^https:\/\//.test(cfg.org.map_url || '') ? '</a>' : '</span>') : '') +
+          (addrOf() ? (/^https:\/\//.test(cfg.org.map_url || '') ? '<a class="hinfo" target="_blank" rel="noopener" href="' + esc(cfg.org.map_url) + '">' : '<span class="hinfo">') + I.pin + '<span>' + esc(addrOf()) + '</span>' + (/^https:\/\//.test(cfg.org.map_url || '') ? '</a>' : '</span>') : '') +
           (mail ? '<a class="hinfo" href="mailto:' + esc(mail) + '" dir="ltr">' + I.mail + '<span>' + esc(mail) + '</span></a>' : '') + '</div>' : '') +
         (LG.show_switcher ? '<div class="langs">' + LG.enabled.map(function (l) { return '<button data-l="' + l + '" class="' + (l === lang ? 'on' : '') + '">' + esc((LG.meta[l] || {}).name || l) + '</button>'; }).join('') + '</div>' : '') +
         '<div class="menu">' + (state.hasConv && !state.closed ? '<button class="endc danger">' + esc(T('end_chat')) + '</button>' : '') + '<button class="newc">' + esc(T('new_chat')) + '</button></div>';
@@ -311,14 +321,14 @@
     function renderStart() {
       var html = '<div class="screen">';
       if (P.enabled) {
-        html += '<h3>' + esc(P.title || T('prechat_title')) + '</h3><form class="pf" style="display:flex;flex-direction:column;gap:10px">';
+        html += '<h3>' + esc(T('prechat_title')) + '</h3><form class="pf" style="display:flex;flex-direction:column;gap:10px">';
         if (P.name) html += '<input name="name" required placeholder="' + esc(T('f_name')) + '" autocomplete="name">';
         if (P.phone) html += '<input name="phone" required placeholder="' + esc(T('f_phone')) + '" inputmode="tel" autocomplete="tel" dir="ltr">';
         if (P.email) html += '<input name="email" type="email" required placeholder="' + esc(T('f_email')) + '" autocomplete="email" dir="ltr">';
         html += '<button class="btn" type="submit">' + esc(T('start')) + '</button></form>';
       } else {
         html += '<div class="hero"><div>' + (logo ? '<div class="lg img"><img src="' + esc(logo) + '" alt=""></div>' : '<div class="lg">' + (ICONS[A.launcher_icon_preset] || ICONS.chat) + '</div>') +
-          '<h3>' + esc(orgName || T('title')) + '</h3><p>' + esc(T('teaser') || T('subtitle')) + '</p></div></div>' +
+          '<h3>' + esc(orgName() || T('title')) + '</h3><p>' + esc(T('teaser') || T('subtitle')) + '</p></div></div>' +
           '<button class="btn startb">' + esc(T('start')) + '</button>';
       }
       view.innerHTML = html + '</div>';
@@ -433,7 +443,7 @@
         var who = m.sender === 'agent' ? (m.agent_name || '') : m.sender === 'bot' ? T('bot_name') : '';
         var avImg = m.sender === 'agent' ? m.agent_avatar : (A.bot_avatar || A.company_logo);
         var av = avImg ? '<img src="' + esc(abs(avImg)) + '" alt=""' + (m.sender === 'bot' && !A.bot_avatar ? ' style="object-fit:contain;padding:2px;background:' + (logoClear ? 'transparent' : '#fff') + '"' : '') + '>' : m.sender === 'bot' ? (ICONS[A.launcher_icon_preset] || ICONS.chat).replace(/width="\d+" height="\d+"/, 'width="17" height="17"') : esc((who || '?').trim().charAt(0));
-        var extra = (m.link ? '<br><a class="link" href="' + esc(m.link) + '" target="_blank" rel="noopener">' + esc(m.link_label || T('open_link')) + '</a>' : '') +
+        var extra = (m.link ? '<br><a class="link" href="' + esc(/^\/go\//.test(m.link) ? abs(m.link) : m.link) + '" target="_blank" rel="noopener">' + esc(m.link_label || T('open_link')) + '</a>' : '') +
           (m.media ? '<div class="att">' + mediaHTML(m.media) + '</div>' : '') + (m.location ? locationHTML(m.location) : '') + (m.contacts ? contactsHTML(m.contacts) : '') + (m.banks ? banksHTML(m.banks) : '');
         var card = m.card ? cardHTML(m.card) : '';
         if (m.body || extra || card) {
@@ -446,7 +456,10 @@
           var active = i >= state.messages.length - 1 || !state.messages.slice(i + 1).some(function (x) { return x.sender === 'visitor'; });
           if (m.related) html += '<div class="relt">' + esc(T('related_title')) + '</div>';
           html += '<div class="opts ' + optStyle + '">' + m.options.map(function (o, k) {
-            return '<button class="opt" data-mid="' + m.id + '" data-i="' + o.i + '"' + (active ? '' : ' disabled') + '>' + (m.numbered ? '<span class="num">' + (k + 1) + '</span>' : '') + (o.icon ? '<span class="oic">' + o.icon + '</span>' : '') + '<span>' + esc(o.label) + '</span></button>';
+            var nums = m.numbered && A.option_numbers !== false; // the admin may hide the numbers (typing a number still works)
+            var lbl = esc(o.label), ic = o.icon ? '<span class="oic">' + o.icon + '</span>' : '';
+            if (!nums && !o.icon) { var em = /^((?:\p{Extended_Pictographic}|\p{Emoji_Presentation})(?:\uFE0F|\u200D(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}))*)\s*/u.exec(o.label); if (em) { ic = '<span class="oic">' + em[1] + '</span>'; lbl = esc(o.label.slice(em[0].length)); } }
+            return '<button class="opt" data-mid="' + m.id + '" data-i="' + o.i + '"' + (active ? '' : ' disabled') + '>' + (nums ? '<span class="num">' + (k + 1) + '</span>' : '') + ic + '<span class="lbl">' + lbl + '</span>' + (nums ? '' : '<span class="chev">' + (document.dir === 'ltr' || lang === 'en' ? '›' : '‹') + '</span>') + '</button>';
           }).join('') + '</div>';
         }
       });

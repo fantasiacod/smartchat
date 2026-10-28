@@ -9,6 +9,8 @@ const T = {
   ar: {
     branches_title: '📍 لدينا أكثر من فرع — اختر الفرع:', main_branch: 'المقر الرئيسي', branch_hours: '🕘 أوقات العمل:',
     related_title: 'أسئلة ذات صلة:',
+    reg_hub: 'هذه البرامج المتاحة للتسجيل الآن 👇', reg_none: 'لا توجد برامج متاحة للتسجيل حالياً 🌟 تابعنا لمعرفة البرامج القادمة.',
+    reg_until: '📅 التسجيل متاح حتى {date}', reg_seats: '🪑 المقاعد المتبقية: {n}', reg_now: '📝 سجّل الآن', reg_others: '📣 برامج أخرى', reg_closed: 'عذراً، انتهى التسجيل في هذا البرنامج 🙏', reg_ask_name: '✍️ اكتب اسمك الكامل:', reg_ask_phone: '📱 اكتب رقم جوالك:', reg_bad_phone: 'رقم الجوال غير صحيح، اكتبه مثل: 0551234567', reg_done: '✅ تم تسجيلك في «{program}» برقم *{number}*\nسنتواصل معك قريباً بإذن الله.', reg_dup: 'أنت مسجّل مسبقاً في «{program}» برقم *{number}* ✅',
     live_unavailable: 'المحادثة المباشرة مع الفريق غير متاحة حالياً 🙏\nاترك اسمك ورقم جوالك وسنتواصل معك في أقرب وقت.',
     after_hours: 'نعتذر، نحن الآن خارج أوقات العمل 🌙\nأوقات العمل:\n{hours}\n\nاترك اسمك ورقم جوالك وسنتواصل معك في أقرب يوم عمل بإذن الله.', t_callback: 'طلب تواصل', ticket_form_callback: 'اترك بياناتك وسنتواصل معك', callback_created: '✅ تم تسجيل طلبك برقم *{number}*.\nسنتواصل معك خلال أوقات العمل الرسمية بإذن الله.', closed_day: 'مغلق', days: 'الأحد,الإثنين,الثلاثاء,الأربعاء,الخميس,الجمعة,السبت', off_hours_status: 'خارج أوقات العمل',
     about_title: 'ماذا تحب أن تعرف عنا؟ اختر من القائمة:', hours_label: '🕘 ساعات العمل', web_social_label: '🌐 موقعنا وحساباتنا', banks_title: '🏦 حساباتنا البنكية — اختر التصنيف:', banks_group: '🏦 {group}', banks_empty: 'لم تتم إضافة حسابات بنكية بعد.', iban: 'الآيبان', account_no: 'رقم الحساب', copy: 'نسخ', copied: 'تم النسخ ✓', kb_browse_title: 'اختر الموضوع:', kb_cat_title: 'اختر سؤالك:', kb_empty: 'لا توجد أسئلة في هذا الموضوع بعد.',
@@ -41,11 +43,14 @@ const T = {
     ticket_ask_number: 'أرسل رقم الشكوى أو الاقتراح (مثال: C-1024)', ticket_not_found: 'لم أجد طلباً بهذا الرقم. تأكد من الرقم وحاول مرة أخرى.',
     ticket_status_msg: '📋 {type} رقم *{number}*\nالحالة: *{status}*\nتاريخ التقديم: {date}{reply}',
     ticket_reply_prefix: '\nالرد: ',
-    s_new: 'جديدة', s_in_progress: 'قيد المعالجة', s_resolved: 'تم الحل', s_closed: 'مغلقة', s_rejected: 'مرفوضة'
+    s_new: 'جديدة', s_in_progress: 'قيد المعالجة', s_resolved: 'تم الحل', s_closed: 'مغلقة', s_rejected: 'مرفوضة',
+    org_name: '', org_address: '', footer_text: 'بدعم من', launcher_label: ''
   },
   en: {
     branches_title: '📍 We have several branches — choose one:', main_branch: 'Head office', branch_hours: '🕘 Working hours:',
     related_title: 'Related questions:',
+    reg_hub: 'These programs are open for registration now 👇', reg_none: 'No programs are open for registration right now 🌟 Follow us for upcoming ones.',
+    reg_until: '📅 Registration open until {date}', reg_seats: '🪑 Seats left: {n}', reg_now: '📝 Register now', reg_others: '📣 Other programs', reg_closed: 'Sorry, registration for this program has closed 🙏', reg_ask_name: '✍️ Type your full name:', reg_ask_phone: '📱 Type your mobile number:', reg_bad_phone: 'Invalid mobile number, e.g. 0551234567', reg_done: '✅ You are registered in «{program}» with number *{number}*\nWe will contact you soon.', reg_dup: 'You are already registered in «{program}» with number *{number}* ✅',
     live_unavailable: 'Live chat with our team is not available right now 🙏\nLeave your name and mobile number and we will contact you soon.',
     after_hours: 'Sorry, we are currently outside working hours 🌙\nWorking hours:\n{hours}\n\nLeave your name and mobile number and we will contact you on the next working day.', t_callback: 'Callback request', ticket_form_callback: 'Leave your details and we will call you back', callback_created: '✅ Your request was registered with number *{number}*.\nWe will contact you during official working hours.', closed_day: 'Closed', days: 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday', off_hours_status: 'Outside working hours',
     about_title: 'What would you like to know about us?', hours_label: '🕘 Working hours', web_social_label: '🌐 Website & social', banks_title: '🏦 Our bank accounts — choose a category:', banks_group: '🏦 {group}', banks_empty: 'No bank accounts have been added yet.', iban: 'IBAN', account_no: 'Account no.', copy: 'Copy', copied: 'Copied ✓', kb_browse_title: 'Choose a topic:', kb_cat_title: 'Choose your question:', kb_empty: 'No questions in this topic yet.',
@@ -78,11 +83,13 @@ const T = {
     ticket_ask_number: 'Send the ticket number (e.g. C-1024)', ticket_not_found: 'No ticket found with this number. Please check and try again.',
     ticket_status_msg: '📋 {type} *{number}*\nStatus: *{status}*\nSubmitted: {date}{reply}',
     ticket_reply_prefix: '\nReply: ',
-    s_new: 'New', s_in_progress: 'In progress', s_resolved: 'Resolved', s_closed: 'Closed', s_rejected: 'Rejected'
+    s_new: 'New', s_in_progress: 'In progress', s_resolved: 'Resolved', s_closed: 'Closed', s_rejected: 'Rejected',
+    org_name: '', org_address: '', footer_text: 'Powered by', launcher_label: ''
   },
   ur: {
     branches_title: '📍 ہماری کئی شاخیں ہیں — شاخ منتخب کریں:', main_branch: 'مرکزی دفتر', branch_hours: '🕘 اوقات کار:',
     related_title: 'متعلقہ سوالات:',
+    reg_hub: 'یہ پروگرام اس وقت رجسٹریشن کے لیے دستیاب ہیں 👇', reg_none: 'اس وقت رجسٹریشن کے لیے کوئی پروگرام دستیاب نہیں 🌟', reg_until: '📅 رجسٹریشن {date} تک', reg_seats: '🪑 باقی نشستیں: {n}', reg_now: '📝 ابھی رجسٹر کریں', reg_others: '📣 دیگر پروگرام', reg_closed: 'معذرت، اس پروگرام کی رجسٹریشن بند ہو چکی ہے 🙏', reg_ask_name: '✍️ اپنا پورا نام لکھیں:', reg_ask_phone: '📱 اپنا موبائل نمبر لکھیں:', reg_bad_phone: 'موبائل نمبر درست نہیں، مثلاً: 0551234567', reg_done: '✅ آپ «{program}» میں نمبر *{number}* کے ساتھ رجسٹر ہو گئے\nہم جلد رابطہ کریں گے۔', reg_dup: 'آپ پہلے سے «{program}» میں نمبر *{number}* کے ساتھ رجسٹر ہیں ✅',
     live_unavailable: 'ٹیم کے ساتھ براہ راست چیٹ ابھی دستیاب نہیں 🙏\nاپنا نام اور موبائل نمبر چھوڑیں، ہم جلد رابطہ کریں گے۔',
     after_hours: 'معذرت، اس وقت دفتری اوقات ختم ہو چکے ہیں 🌙\nاوقات کار:\n{hours}\n\nاپنا نام اور موبائل نمبر چھوڑیں، ہم اگلے کام کے دن آپ سے رابطہ کریں گے۔', t_callback: 'رابطے کی درخواست', ticket_form_callback: 'اپنی تفصیلات چھوڑیں، ہم رابطہ کریں گے', callback_created: '✅ آپ کی درخواست نمبر *{number}* کے ساتھ درج ہو گئی۔\nہم دفتری اوقات میں آپ سے رابطہ کریں گے۔', closed_day: 'بند', days: 'اتوار,پیر,منگل,بدھ,جمعرات,جمعہ,ہفتہ', off_hours_status: 'دفتری اوقات کے بعد',
     about_title: 'آپ ہمارے بارے میں کیا جاننا چاہتے ہیں؟', hours_label: '🕘 اوقات کار', web_social_label: '🌐 ویب سائٹ اور سوشل میڈیا', banks_title: '🏦 ہمارے بینک اکاؤنٹس — زمرہ منتخب کریں:', banks_group: '🏦 {group}', banks_empty: 'ابھی کوئی بینک اکاؤنٹ شامل نہیں کیا گیا۔', iban: 'IBAN', account_no: 'اکاؤنٹ نمبر', copy: 'کاپی', copied: 'کاپی ہو گیا ✓', kb_browse_title: 'موضوع منتخب کریں:', kb_cat_title: 'اپنا سوال منتخب کریں:', kb_empty: 'اس موضوع میں ابھی کوئی سوال نہیں۔',
@@ -115,7 +122,8 @@ const T = {
     ticket_ask_number: 'شکایت یا تجویز کا نمبر بھیجیں (مثال: C-1024)', ticket_not_found: 'اس نمبر سے کوئی درخواست نہیں ملی۔',
     ticket_status_msg: '📋 {type} نمبر *{number}*\nحالت: *{status}*\nتاریخ: {date}{reply}',
     ticket_reply_prefix: '\nجواب: ',
-    s_new: 'نئی', s_in_progress: 'زیر کارروائی', s_resolved: 'حل ہو گئی', s_closed: 'بند', s_rejected: 'مسترد'
+    s_new: 'نئی', s_in_progress: 'زیر کارروائی', s_resolved: 'حل ہو گئی', s_closed: 'بند', s_rejected: 'مسترد',
+    org_name: '', org_address: '', footer_text: 'تعاون:', launcher_label: ''
   }
 };
 

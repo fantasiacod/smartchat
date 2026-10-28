@@ -54,6 +54,11 @@ CREATE TABLE IF NOT EXISTS appointments (
   status TEXT DEFAULT 'confirmed', notes TEXT, created_by INTEGER, created_at TEXT, updated_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_appt_site_date ON appointments(site_id, date);
+CREATE TABLE IF NOT EXISTS program_regs (
+  id INTEGER PRIMARY KEY, site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  program_id TEXT NOT NULL, name TEXT NOT NULL, phone TEXT, conversation_id INTEGER, created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_regs_site ON program_regs(site_id, program_id, created_at);
 CREATE TABLE IF NOT EXISTS elig_results (
   id INTEGER PRIMARY KEY, site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
   program_id TEXT, conversation_id INTEGER, eligible INTEGER, amount REAL, reason TEXT, answers TEXT, created_at TEXT
@@ -109,7 +114,9 @@ addColumn('conversations', 'tags', "TEXT DEFAULT ''");
 addColumn('kb', 'category_id', 'INTEGER');
 addColumn('kb', 'related', "TEXT DEFAULT '[]'");
 addColumn('users', 'pwd_changed_at', 'INTEGER DEFAULT 0');
-addColumn('users', 'site_id', 'INTEGER'); // NULL = all sites; a number = this user only ever sees that site (store / branch)
+addColumn('users', 'site_id', 'INTEGER');
+addColumn('users', 'avatar_orig', "TEXT DEFAULT ''"); // the owner's original picture while it is shown blurred to others
+addColumn('users', 'avatar_blur', 'INTEGER DEFAULT 0'); // NULL = all sites; a number = this user only ever sees that site (store / branch)
 
 const now = () => new Date().toISOString();
 
@@ -245,6 +252,23 @@ function addLookupsButton() {
   }
 }
 addLookupsButton();
+// existing sites: add the «programs open for registration» button once (it stays hidden while no program is open)
+function addRegsButton() {
+  for (const row of db.prepare('SELECT id, settings, tree FROM sites').all()) {
+    let s, tree; try { s = JSON.parse(row.settings || '{}'); tree = JSON.parse(row.tree || 'null'); } catch { continue; }
+    s.regs = s.regs || {};
+    if (s.regs.button_added || !tree?.nodes) continue;
+    s.regs.button_added = true;
+    const menu = tree.nodes.find(n => n.id === 'menu') || tree.nodes.find(n => n.id === tree.root);
+    if (menu && !menu.options.some(o => o.action === 'reg_programs')) {
+      const at = menu.options.findIndex(o => o.action === 'lookups_menu' || o.action === 'eligibility_menu');
+      const btn = { label: '📣 البرامج المتاحة للتسجيل', action: 'reg_programs', i18n: { en: { label: '📣 Programs open for registration' } } };
+      if (at >= 0) menu.options.splice(at, 0, btn); else menu.options.push(btn);
+    }
+    db.prepare('UPDATE sites SET settings=?, tree=? WHERE id=?').run(JSON.stringify(s), JSON.stringify(tree), row.id);
+  }
+}
+addRegsButton();
 
 
 module.exports = { db, now, getSite, getSiteByKey, createSite, getConv, hydrateConv, audit, meta, DATA_DIR };

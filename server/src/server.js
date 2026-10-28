@@ -135,7 +135,9 @@ function patternCss(site, base, inline) {
   const a = site.settings.appearance, { bg, pat } = layersOf(a), color = a.pattern_color || a.primary_color;
   const hdrOp = Math.min(0.25, (Number(a.pattern_opacity) || 0.07) * 2.2);
   const abs = (u) => /^https:/.test(u) ? u : base + u;
-  const bgLayer = bg === 'custom' ? { bg: 'custom', bg_css: `url("${abs(a.bg_image)}")` } : bg ? { bg, bg_css: `url("${base}/themes/${patterns.themeOf(bg)}")` } : { bg: '', bg_css: '' };
+  const own = bg && bg !== 'custom' ? (a.theme_images || {})[bg] : null; // the admin replaced this season's picture with their own
+  const bgLayer = bg === 'custom' ? { bg: 'custom', bg_css: `url("${abs(a.bg_image)}")` }
+    : bg ? { bg, bg_css: own && safeBgUrl(own) ? `url("${abs(own)}")` : `url("${base}/themes/${patterns.themeOf(bg)}")` } : { bg: '', bg_css: '' };
   bgLayer.bg_fade = Math.max(0, Math.min(0.9, Number(a.bg_fade ?? 0.15) || 0));
   if (pat === 'logo' || pat === 'images') {
     const one = (c, o, hdr) => {
@@ -148,19 +150,38 @@ function patternCss(site, base, inline) {
   return { pattern: pat, pattern_css: patterns.css(pat, color, a.pattern_opacity, a.pattern_scale, base), pattern_header_css: patterns.css(pat, '#ffffff', hdrOp, a.pattern_scale, base), ...bgLayer };
 }
 
+// Texts of one language for the chat window.
+// What is typed on the dashboard pages (prechat title, organisation name, address, footer, launcher label) is Arabic,
+// so it is used for Arabic only; the other languages take their own translation from «اللغات والنصوص» or the built-in text.
+// Names and addresses with no translation stay as written (better than an empty header).
+function localTexts(site, l) {
+  const t = texts(site, l), own = (site.settings.texts || {})[l] || {}, a = site.settings.appearance, o = site.settings.org;
+  const typed = {
+    prechat_title: (site.settings.prechat || {}).title, org_name: o.name || a.company_name,
+    org_address: a.show_address ? (a.header_address || o.address) : '', footer_text: a.footer_text, launcher_label: a.launcher_label
+  };
+  for (const k of Object.keys(typed)) {
+    const v = String(typed[k] || '').trim();
+    if (own[k]) continue; // own translation for this language wins
+    if (k === 'org_address' && !a.show_address) { t[k] = ''; continue; }
+    if (l === 'ar' || k === 'org_name' || k === 'org_address') { if (v) t[k] = v; }
+  }
+  return t;
+}
+
 function widgetConfig(site, base = '', inline = false) {
   const a = site.settings.appearance, o = site.settings.org, L = site.settings.languages;
   const enabled = (L.enabled || ['ar']).filter(l => LANGS[l]);
   return {
     name: site.name,
-    appearance: { ...a, pattern_images: undefined, pattern_logo: undefined, bg_image: undefined, ...patternCss(site, base, inline) },
+    appearance: { ...a, pattern_images: undefined, pattern_logo: undefined, bg_image: undefined, theme_images: undefined, ...patternCss(site, base, inline) },
     prechat: site.settings.prechat,
     org: { name: o.name || a.company_name || '', unified_number: o.unified_number || '',
       address: a.show_address ? String(a.header_address || o.address || '').trim() : '', map_url: a.show_address ? (o.map_url || '') : '',
       email: a.show_email ? String(a.header_email || o.email || '').trim() : '' },
     attachments: (({ enabled, only_with_agent, max_mb, images, pdf }) => ({ enabled: enabled !== false && edition.allows(site.id, 'attachments'), only_with_agent: !!only_with_agent, max_mb: max_mb || 5, images: images !== false, pdf: pdf !== false }))(site.settings.behavior.attachments || {}),
     languages: { enabled, default: enabled.includes(L.default) ? L.default : enabled[0], show_switcher: L.show_switcher !== false && enabled.length > 1, meta: Object.fromEntries(enabled.map(l => [l, LANGS[l]])) },
-    texts: Object.fromEntries(enabled.map(l => [l, texts(site, l)])),
+    texts: Object.fromEntries(enabled.map(l => [l, localTexts(site, l)])),
     tickets: { enabled: site.settings.tickets.enabled, require_email: site.settings.tickets.require_email },
     work: { enabled: !!site.settings.behavior.work_hours?.enabled, open: chat.isOpen(site) }
   };
@@ -262,7 +283,7 @@ function auth(minRole = 'agent') {
     try {
       const tok = (req.headers.authorization || '').replace(/^Bearer /, '') || String(req.query.token || '');
       const p = jwt.verify(tok, JWT_SECRET);
-      const u = db.prepare('SELECT id,name,email,role,active,job_title,avatar,phone,prefs,pwd_changed_at,site_id FROM users WHERE id=?').get(p.id);
+      const u = db.prepare('SELECT id,name,email,role,active,job_title,avatar,avatar_orig,avatar_blur,phone,prefs,pwd_changed_at,site_id FROM users WHERE id=?').get(p.id);
       if (!u || !u.active) return res.status(401).json({ error: 'unauthorized' });
       if (u.pwd_changed_at && p.iat * 1000 < u.pwd_changed_at - 1000) return res.status(401).json({ error: 'unauthorized' }); // password changed: old sessions end
       if (ROLE_LEVEL[u.role] < ROLE_LEVEL[minRole]) return res.status(403).json({ error: 'ليس لديك صلاحية' });
@@ -287,7 +308,7 @@ app.post('/api/auth/login', (req, res) => {
 const WEAK = ['admin123', 'change-me-now', '12345678', 'password'];
 function meOut(u) {
   let prefs = {}; try { prefs = JSON.parse(u.prefs || '{}'); } catch { /* ignore */ }
-  return { id: u.id, name: u.name, email: u.email, role: u.role, job_title: u.job_title || '', avatar: u.avatar || '', phone: u.phone || '', prefs, site_id: u.site_id ?? null };
+  return { id: u.id, name: u.name, email: u.email, role: u.role, job_title: u.job_title || '', avatar: u.avatar || '', avatar_blur: !!u.avatar_blur, avatar_orig: u.avatar_blur ? (u.avatar_orig || '') : '', phone: u.phone || '', prefs, site_id: u.site_id ?? null };
 }
 app.get('/api/me', auth(), (req, res) => {
   const hash = db.prepare('SELECT password FROM users WHERE id=?').get(req.user.id).password;
@@ -310,7 +331,16 @@ app.put('/api/me', auth(), (req, res) => {
     if (name !== undefined && String(name).trim()) db.prepare('UPDATE users SET name=? WHERE id=?').run(String(name).slice(0, 80), u.id);
     if (job_title !== undefined) db.prepare('UPDATE users SET job_title=? WHERE id=?').run(String(job_title).slice(0, 80), u.id);
     if (phone !== undefined) db.prepare('UPDATE users SET phone=? WHERE id=?').run(String(phone).slice(0, 20), u.id);
-    if (avatar !== undefined) db.prepare('UPDATE users SET avatar=? WHERE id=?').run(cleanAvatar(avatar), u.id);
+    // a blurred picture: everyone (colleagues, visitors) only ever receives the blurred copy; the original stays with its owner
+    if (avatar !== undefined || req.body.avatar_blur !== undefined) {
+      const blur = req.body.avatar_blur !== undefined ? !!req.body.avatar_blur : !!u.avatar_blur;
+      const orig = avatar !== undefined ? cleanAvatar(avatar) : ((u.avatar_blur ? u.avatar_orig : u.avatar) || '');
+      if (blur && orig) {
+        const b = cleanAvatar(req.body.avatar_blurred);
+        if (!b) throw new Error('تعذر تجهيز الصورة المغبّشة — أعد المحاولة');
+        db.prepare('UPDATE users SET avatar=?, avatar_orig=?, avatar_blur=1 WHERE id=?').run(b, orig, u.id);
+      } else db.prepare("UPDATE users SET avatar=?, avatar_orig='', avatar_blur=? WHERE id=?").run(orig, blur ? 1 : 0, u.id);
+    }
     if (prefs !== undefined) db.prepare('UPDATE users SET prefs=? WHERE id=?').run(JSON.stringify(prefs || {}).slice(0, 20000), u.id);
   } catch (e) { return res.status(400).json({ error: e.message }); }
   res.json(meOut(db.prepare('SELECT * FROM users WHERE id=?').get(u.id)));
@@ -341,6 +371,7 @@ app.put('/api/users/:id', auth('admin'), (req, res) => {
   const u = db.prepare('SELECT * FROM users WHERE id=?').get(id);
   if (!u) return res.status(404).json({ error: 'not found' });
   const { name, email, password, role, active, job_title, avatar, phone } = req.body;
+  if (avatar !== undefined && u.avatar_blur && id !== req.user.id && avatar !== u.avatar) return res.status(400).json({ error: 'هذا المستخدم فعّل تغبيش صورته — يغيّرها بنفسه من «حسابي»' });
   if (id === req.user.id && ((role && role !== 'admin') || active === false || active === 0)) return res.status(400).json({ error: 'لا يمكنك تعطيل حسابك أو تغيير صلاحيتك' });
   if (role && !ROLE_LEVEL[role]) return res.status(400).json({ error: 'صلاحية غير صحيحة' });
   if (password && String(password).length < 8) return res.status(400).json({ error: 'كلمة المرور 8 أحرف على الأقل' });
@@ -381,7 +412,7 @@ function maskSite(s, user) {
   }
   return out;
 }
-const SECTION_ROLE = { biz: 'supervisor', ui: 'admin', appointments: 'supervisor', eligibility: 'supervisor', appearance: 'supervisor', texts: 'supervisor', prechat: 'supervisor', behavior: 'supervisor', org: 'supervisor', developer: 'supervisor', tickets: 'supervisor', languages: 'supervisor', datasource: 'admin', security: 'admin', notify: 'admin', integrations: 'admin' };
+const SECTION_ROLE = { regs: 'supervisor', biz: 'supervisor', ui: 'admin', appointments: 'supervisor', eligibility: 'supervisor', appearance: 'supervisor', texts: 'supervisor', prechat: 'supervisor', behavior: 'supervisor', org: 'supervisor', developer: 'supervisor', tickets: 'supervisor', languages: 'supervisor', datasource: 'admin', security: 'admin', notify: 'admin', integrations: 'admin' };
 
 app.get('/api/sites', auth(), (req, res) => res.json((req.tenant ? [{ id: req.tenant }] : db.prepare('SELECT id FROM sites ORDER BY id').all()).map(r => getSite(r.id)).filter(Boolean).map(s => maskSite(s, req.user))));
 app.post('/api/sites', auth('admin'), (req, res) => {
@@ -744,6 +775,37 @@ app.put('/api/appointments/:id', auth(), (req, res) => {
 app.delete('/api/appointments/:id', auth(), (req, res) => {
   db.prepare('DELETE FROM appointments WHERE id=?').run(Number(req.params.id));
   audit(req.user.id, 'appointment.delete', { id: Number(req.params.id) });
+  res.json({ ok: true });
+});
+
+/* ---------- programs open for registration ---------- */
+const regs = require('./regs');
+// the visitor's «سجّل الآن» goes through here so the clicks are counted, then on to the program's own page
+app.get('/go/reg/:key/:pid', limit(60, 60000), (req, res) => {
+  const site = getSiteByKey(String(req.params.key)), p = site && regs.find(site, req.params.pid);
+  if (!p || !/^https:\/\/[^\s"'<>]+$/.test(p.link || '')) return res.status(404).send('not found');
+  regs.countClick(site.id, p.id);
+  res.redirect(302, p.link);
+});
+app.get('/api/regs', auth(), (req, res) => {
+  const site = getSite(Number(req.query.site)); if (!site) return res.status(404).json({ error: 'site' });
+  const pid = req.query.program ? String(req.query.program) : null;
+  res.json({
+    stats: Object.fromEntries(regs.programs(site).map(p => [p.id, regs.statusOf(site, p)])), today: regs.today(),
+    items: db.prepare(`SELECT * FROM program_regs WHERE site_id=?${pid ? ' AND program_id=?' : ''} ORDER BY id DESC LIMIT 2000`).all(...(pid ? [site.id, pid] : [site.id]))
+  });
+});
+app.get('/api/regs/export', auth(), (req, res) => {
+  const site = getSite(Number(req.query.site)); if (!site) return res.status(404).end();
+  const names = Object.fromEntries(regs.programs(site).map(p => [p.id, p.title]));
+  const q = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const rows = db.prepare('SELECT * FROM program_regs WHERE site_id=? ORDER BY program_id, id').all(site.id);
+  const csv = ['رقم التسجيل,البرنامج,الاسم,الجوال,التاريخ', ...rows.map(r => ['REG-' + r.id, names[r.program_id] || r.program_id, r.name, r.phone, r.created_at.replace('T', ' ').slice(0, 16)].map(q).join(','))].join('\r\n');
+  res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="registrations-${regs.today()}.csv"` }).send('\uFEFF' + csv);
+});
+app.delete('/api/regs/:id', auth('supervisor'), (req, res) => {
+  db.prepare('DELETE FROM program_regs WHERE id=?').run(Number(req.params.id));
+  audit(req.user.id, 'reg.delete', { id: Number(req.params.id) });
   res.json({ ok: true });
 });
 

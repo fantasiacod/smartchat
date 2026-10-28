@@ -6,10 +6,10 @@
   A.page('account', {
     title: 'حسابي', icon: '👤',
     render: function (root) {
-      var me = S.me, v = { name: me.name, job_title: me.job_title, phone: me.phone, avatar: me.avatar }, pw = { current_password: '', password: '', confirm: '' };
+      var me = S.me, v = { name: me.name, job_title: me.job_title, phone: me.phone, avatar: me.avatar_blur ? (me.avatar_orig || '') : me.avatar, avatar_blur: !!me.avatar_blur }, pw = { current_password: '', password: '', confirm: '' };
       var prefs = A.clone(me.prefs || {}); prefs.theme = Object.assign({}, A.themeOf(), prefs.theme || {});
       root.innerHTML = '<div class="grid g2"><div>' +
-        '<div class="card" style="margin-bottom:16px"><h3>🪪 بياناتي</h3><div class="row" style="gap:18px;margin-bottom:14px"><span id="avbox"></span><div class="col" style="gap:6px"><div class="row"><button class="btn sm soft" id="avup">📷 تغيير الصورة</button><button class="btn sm ghost" id="avrm">إزالة</button></div><span class="tiny muted">تظهر للمستفيد بجانب رسائلك</span></div></div>' +
+        '<div class="card" style="margin-bottom:16px"><h3>🪪 بياناتي</h3><div class="row" style="gap:18px;margin-bottom:14px"><span id="avbox"></span><div class="col" style="gap:6px"><div class="row"><button class="btn sm soft" id="avup">📷 تغيير الصورة</button><button class="btn sm ghost" id="avrm">إزالة</button></div><label class="row" style="gap:8px;cursor:pointer"><span class="switch"><input type="checkbox" id="avblur"><span class="tr"></span></span><span class="small"><b>🌫️ تغبيش صورتي</b><br><span class="tiny muted">تظهر صورتك مغبّشة للزملاء والزوار (يمكنك إلغاؤه في أي وقت)</span></span></label><span class="tiny muted">تظهر للمستفيد بجانب رسائلك</span></div></div>' +
         '<div class="grid g2">' + f.text('name', 'الاسم') + f.text('job_title', 'المسمى الوظيفي', { ph: 'مثال: أخصائي خدمة المستفيدين' }) + '</div><div class="grid g2">' + f.text('phone', 'الجوال', { ltr: true }) + '<div class="field"><label class="f">البريد</label><input class="in" dir="ltr" disabled value="' + esc(me.email) + '"></div></div>' +
         '<div class="row between"><span class="tag gray">' + A.ROLE[me.role] + '</span><button class="btn" id="svme" style="display:none">حفظ البيانات</button><span class="tiny muted" id="svmes">✅ تُحفظ تلقائياً</span></div></div>' +
         '<div class="card" style="margin-bottom:16px"><h3>🔔 التنبيهات</h3>' +
@@ -20,9 +20,9 @@
         '<div><div class="card"><h3>🖌️ مظهر لوحة التحكم</h3><p class="sub">يُحفظ لحسابك فقط. ألوان نافذة المحادثة للزوار تُضبط من «الهوية والمظهر».</p>' +
         '<label class="f">سمات جاهزة</label><div class="swatches" id="thm">' + Object.keys(A.THEMES).map(function (k) { var t = A.THEMES[k]; return '<button class="swatch" data-t="' + k + '"><div class="sw"><i style="background:' + t.side + '"></i><i style="background:' + t.accent + '"></i><i style="background:' + t.accent2 + '"></i></div><span>' + t.name + '</span></button>'; }).join('') + '</div>' +
         '<div class="field" style="margin-top:14px"><label class="f">الوضع</label><div class="seg" id="mode"><button data-m="light">☀️ فاتح</button><button data-m="dark">🌙 داكن</button></div></div>' +
-        '<div class="grid g2">' + f.color('theme.accent', 'اللون الرئيسي', { clear: false }) + f.color('theme.accent2', 'لون التمييز', { clear: false }) + f.color('theme.side', 'القائمة الجانبية (أعلى)', { clear: false }) + f.color('theme.side2', 'القائمة الجانبية (أسفل)', { clear: false }) + f.color('theme.bg', 'خلفية الصفحات', { clear: false }) +
+        '<div class="grid g2">' + f.color('theme.accent', 'اللون الرئيسي', { clear: false }) + f.color('theme.accent2', 'لون التمييز', { clear: false }) + f.color('theme.side', 'القائمة الجانبية (أعلى)', { clear: false }) + f.color('theme.side2', 'القائمة الجانبية (أسفل)', { clear: false }) + f.color('theme.bg', 'خلفية الصفحات', { clear: false }) + f.color('theme.side_text', 'لون نص القائمة الجانبية', { ph: 'تلقائي (حسب لون الخلفية)' }) +
         f.select('theme.font', 'الخط', A.DASH_FONTS.map(function (x) { return [x, x]; })) + '</div>' +
-        '<label class="f">الزخرفة</label><div class="patterns" id="dpat"></div>' + f.sw('theme.pattern_bg', 'إظهار الزخرفة في خلفية الصفحات أيضاً', 'تظهر دائماً في القائمة الجانبية') + f.range('theme.pattern_opacity', 'شفافية زخرفة الخلفية', 0.02, 0.15, 0.01) +
+        '<label class="f">الزخرفة</label><div class="patterns" id="dpat"></div>' + f.range('theme.side_shade', '🌗 تعتيم خلفية القائمة الجانبية (لوضوح النص فوق الصور)', 0, 0.85, 0.05) + f.sw('theme.pattern_bg', 'إظهار الزخرفة في خلفية الصفحات أيضاً', 'تظهر دائماً في القائمة الجانبية') + f.range('theme.pattern_opacity', 'شفافية زخرفة الخلفية', 0.02, 0.15, 0.01) +
         '<div class="row" style="margin-top:12px"><button class="btn" id="svth" style="display:none">حفظ المظهر</button><span class="tiny muted" id="svths">✅ يُحفظ تلقائياً</span><button class="btn ghost" id="rsth">استعادة الافتراضي</button></div></div></div></div>';
       var meT = null;
       A.bind(root.querySelector('.grid > div:first-child .card'), v, function () { A.$('#svmes').textContent = '● جارٍ الحفظ…'; clearTimeout(meT); meT = setTimeout(function () { A.$('#svme').onclick(); }, 1000); });
@@ -30,11 +30,28 @@
       var notif = A.$('.grid > div:first-child .card:nth-child(2)');
       prefs.notifications = prefs.notifications !== false; prefs.sound = prefs.sound !== false; prefs.available = prefs.available !== false;
       A.bind(notif, prefs, function () { me.prefs = Object.assign(me.prefs, { notifications: prefs.notifications, sound: prefs.sound, available: prefs.available }); A.savePrefs().then(function () { A.toast('تم الحفظ', 'ok'); }); A.updateRing(); var av = A.$('#avail'); if (av) { av.checked = prefs.available; av.dispatchEvent(new Event('change')); } });
-      function avBox() { A.$('#avbox').innerHTML = A.avatar({ name: v.name, avatar: v.avatar }, 'xl'); }
+      function avBox() { A.$('#avbox').innerHTML = A.avatar({ name: v.name, avatar: v.avatar }, 'xl' + (v.avatar_blur ? ' blurred' : '')); var cb = A.$('#avblur'); if (cb) cb.checked = !!v.avatar_blur; }
+      // a really blurred copy (made here in the browser): only this copy is sent to colleagues and visitors
+      function blurImage(src) {
+        return new Promise(function (res, rej) {
+          var im = new Image(); im.onload = function () {
+            var small = document.createElement('canvas'), big = document.createElement('canvas'); small.width = small.height = 12; big.width = big.height = 256;
+            var s1 = small.getContext('2d'); s1.drawImage(im, 0, 0, 12, 12);
+            var b1 = big.getContext('2d'); b1.imageSmoothingEnabled = true; b1.imageSmoothingQuality = 'high'; b1.drawImage(small, 0, 0, 256, 256);
+            res(big.toDataURL('image/jpeg', 0.8));
+          }; im.onerror = rej; im.src = src;
+        });
+      }
+      function mePayload() {
+        var pl = { name: v.name, job_title: v.job_title, phone: v.phone, avatar: v.avatar || '', avatar_blur: !!v.avatar_blur };
+        return v.avatar_blur && v.avatar ? blurImage(v.avatar).then(function (b) { pl.avatar_blurred = b; return pl; }) : Promise.resolve(pl);
+      }
+      function saveAvatar() { avBox(); A.$('#svmes').textContent = '● جارٍ الحفظ…'; A.$('#svme').onclick(); }
       avBox();
-      A.$('#avup').onclick = function () { A.pickFile('image/*').then(function (fs) { if (fs[0]) A.readDataURL(fs[0], 256).then(function (u) { v.avatar = u; avBox(); }); }); };
-      A.$('#avrm').onclick = function () { v.avatar = ''; avBox(); };
-      A.$('#svme').onclick = function () { A.api('PUT', '/api/me', v).then(function (u) { Object.assign(me, u); var st = A.$('#svmes'); if (st) st.textContent = '✅ تم الحفظ تلقائياً'; A.$('#me-link').innerHTML = A.avatar(me, 'sm') + '<div class="grow" style="min-width:0"><b style="display:block;font-size:13.5px">' + esc(me.name) + '</b><small style="color:var(--side-muted)">' + esc(me.job_title || A.ROLE[me.role]) + '</small></div><span>⚙️</span>'; return A.GET('/api/users'); }).then(function (u) { if (u) S.users = u; }).catch(A.fail); };
+      A.$('#avup').onclick = function () { A.pickFile('image/*').then(function (fs) { if (fs[0]) A.readDataURL(fs[0], 256).then(function (u) { v.avatar = u; saveAvatar(); }); }); };
+      A.$('#avrm').onclick = function () { v.avatar = ''; saveAvatar(); };
+      A.$('#avblur').onchange = function () { v.avatar_blur = this.checked; saveAvatar(); };
+      A.$('#svme').onclick = function () { mePayload().then(function (pl) { return A.api('PUT', '/api/me', pl); }).then(function (u) { Object.assign(me, u); var st = A.$('#svmes'); if (st) st.textContent = '✅ تم الحفظ تلقائياً'; A.$('#me-link').innerHTML = A.avatar(me, 'sm') + '<div class="grow" style="min-width:0"><b style="display:block;font-size:13.5px">' + esc(me.name) + '</b><small style="color:var(--side-muted)">' + esc(me.job_title || A.ROLE[me.role]) + '</small></div><span>⚙️</span>'; return A.GET('/api/users'); }).then(function (u) { if (u) S.users = u; }).catch(A.fail); };
       A.$('#svpw').onclick = function () {
         if (pw.password !== pw.confirm) return A.toast('كلمتا المرور غير متطابقتين', 'err');
         A.api('PUT', '/api/me', { current_password: pw.current_password, password: pw.password }).then(function (r) { if (r && r.token) { S.token = r.token; try { localStorage.setItem('sc_token', r.token); } catch (e) { } if (A.socket) { A.socket.auth = { token: r.token }; } } A.toast('تم تغيير كلمة المرور', 'ok'); me.weak_password = false; pw.current_password = pw.password = pw.confirm = ''; A.$$('input', pwf).forEach(function (i) { i.value = ''; }); }).catch(A.fail);
@@ -52,12 +69,31 @@
         A.$$('#mode button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-m') === (th.mode || 'light')); });
         var P = window.SCPatterns;
         A.$('#dpat').innerHTML = P.list.map(function (p) { return '<button class="pat' + (th.pattern === p.id ? ' on' : '') + '" data-p="' + p.id + '"><div class="pv" style="background-color:' + th.side + ';background-image:' + P.css(p.id, '#ffffff', 0.25, 1).replace(/"/g, "'") + '"></div><span>' + esc(p.name) + '</span></button>'; }).join('');
-        A.$$('#dpat .pat').forEach(function (b) { b.onclick = function () { th.pattern = b.getAttribute('data-p'); live(); }; });
+        A.$$('#dpat .pat').forEach(function (b) { b.onclick = function () {
+          th.pattern = b.getAttribute('data-p');
+          if (P.themeOf(th.pattern) && !Number(th.side_shade)) { th.side_shade = 0.45; var rg = thBox.querySelector('[data-k="theme.side_shade"]'); if (rg) { rg.value = 0.45; rg.dispatchEvent(new Event('input')); } } // a picture: shade it so the menu stays readable
+          live();
+        }; });
       }
       var setInputs = function () { ['accent', 'accent2', 'side', 'side2', 'bg'].forEach(function (k) { var i = thBox.querySelector('[data-k="theme.' + k + '"]'); i.value = th[k]; var c = thBox.querySelector('[data-kc="theme.' + k + '"]'); if (c) c.value = th[k]; }); };
       A.$$('#thm .swatch').forEach(function (b) { b.onclick = function () { var t = A.THEMES[b.getAttribute('data-t')]; Object.assign(th, t, { preset: b.getAttribute('data-t') }); delete th.name; setInputs(); live(); }; });
       A.$$('#mode button').forEach(function (b) { b.onclick = function () { th.mode = b.getAttribute('data-m'); live(); }; });
       A.$('#svth').onclick = function () { me.prefs.theme = th; A.savePrefs().then(function () { var st = A.$('#svths'); if (st) st.textContent = '✅ تم الحفظ تلقائياً'; }); };
+
+      // the dashboard's own name and logo (top of the side menu) — for every user, so only the system admin sees this
+      if (A.can('admin') && S.site) {
+        var ui = { dash_name: (S.site.settings.ui || {}).dash_name || '', dash_sub: (S.site.settings.ui || {}).dash_sub || '', dash_logo: (S.site.settings.ui || {}).dash_logo || '' };
+        var O = S.site.settings.org || {}, AP = S.site.settings.appearance || {};
+        root.querySelector(':scope > .grid > div:last-child').insertAdjacentHTML('beforeend', '<div class="card" id="dbrand" style="margin-top:16px"><h3>🏷️ اسم وشعار لوحة التحكم</h3><p class="sub">يظهر أعلى القائمة الجانبية لكل المستخدمين. اتركه فارغاً لاستخدام اسم الجهة وشعارها.</p>' +
+          '<div class="grid g2">' + f.text('dash_name', 'الاسم', { ph: O.name || AP.company_name || 'المساعد الذكي' }) + f.text('dash_sub', 'النص تحته', { ph: 'لوحة تحكم المحادثات' }) + '</div>' +
+          '<label class="f">الشعار</label><div id="dlogo"></div><span class="tiny muted" id="dbst">✅ يُحفظ تلقائياً</span></div>');
+        var box = A.$('#dbrand'), saveUi = A.debounce(function () {
+          A.saveSite({ settings: { ui: ui } }).then(function () { A.renderBrand(); A.$('#dbst').textContent = '✅ تم الحفظ تلقائياً'; }, A.fail);
+        }, 800);
+        var chUi = function () { A.$('#dbst').textContent = '● جارٍ الحفظ…'; S.site.settings.ui = Object.assign({}, S.site.settings.ui, ui); A.renderBrand(); saveUi(); };
+        A.bind(box, ui, chUi);
+        A.imageField(A.$('#dlogo'), function () { return ui.dash_logo; }, function (v) { ui.dash_logo = v; chUi(); }, { hint: 'PNG بخلفية شفافة أفضل' });
+      }
       // the dashboard look saves itself shortly after each change
       var thT = null;
       thBox.addEventListener('input', function () { clearTimeout(thT); thT = setTimeout(function () { A.$('#svth').onclick(); }, 1200); }, true);

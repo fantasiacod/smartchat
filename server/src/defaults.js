@@ -21,7 +21,8 @@ function defaultSettings() {
       launcher_shape: 'circle', launcher_icon_preset: 'chat', launcher_icon: '', launcher_label: '', launcher_size: 64,
       window_width: 370, window_radius: 18, bubble_radius: 16, option_style: 'pill', // pill | card | list
       position: 'right', offset_x: 24, offset_y: 24, hide_on_mobile: false, dir: 'auto',
-      bot_avatar: '', teaser_delay: 4,
+      bot_avatar: '', option_numbers: true, avatar_size: 30, avatar_zoom: 100, teaser_delay: 4, // bot picture next to messages: size (px) and zoom inside the circle (%)
+      theme_images: {}, // the admin's own pictures for the season backgrounds (Ramadan, Eid…): { img_ramadan: url }
       // decoration
       pattern: 'girih12', pattern_color: '', pattern_opacity: 0.07, pattern_scale: 1, pattern_header: true, pattern_chat: true,
       pattern_logo: '', pattern_images: [], pattern_img_tint: false, // image patterns: small copies of the logo / admin's pictures
@@ -96,7 +97,9 @@ function defaultSettings() {
     },
     // eligibility calculator programs: [{ id, title, keywords, intro, enabled, questions, calcs, rules, amount, messages, after }]
     // dashboard pages the admin chose to hide from the system (the settings page itself can never be hidden)
-    ui: { hidden_pages: [] },
+    // programs open for registration (courses, aid rounds, events…): shown only while open
+    regs: { hub: { label: '📣 البرامج المتاحة للتسجيل', message: 'هذه البرامج المتاحة للتسجيل الآن 👇', none: 'لا توجد برامج متاحة للتسجيل حالياً 🌟 تابعنا لمعرفة البرامج القادمة.', keywords: 'برامج متاحة, البرامج المتاحة, ابي اسجل, ابغى اسجل, ابغا اسجل, سجلني, تسجيل في برنامج, الدورات المتاحة, البرامج المتاحة للتسجيل' }, programs: [] },
+    ui: { hidden_pages: [], dash_name: '', dash_sub: '', dash_logo: '' }, // dashboard: hidden pages; its own name, subtitle and logo (top of the side menu)
     // business type and its lists (menu, services & prices, doctors, insurance…)
     biz: { type: '', currency: 'ريال', catalogs: [] },
     // appointments calendar (salons, clinics…): the bot tells a visitor his appointment by name
@@ -125,6 +128,7 @@ function defaultTree() {
           { label: '❓ الأسئلة الشائعة', action: 'kb_browse', i18n: { en: { label: '❓ FAQ' }, ur: { label: '❓ عام سوالات' } } },
           { label: '📝 الشكاوى والاقتراحات', action: 'goto', target: 'tickets', i18n: { en: { label: '📝 Complaints & suggestions' }, ur: { label: '📝 شکایات و تجاویز' } } },
           // appear automatically once queries / eligibility programs are added in the dashboard
+          { label: '📣 البرامج المتاحة للتسجيل', action: 'reg_programs', i18n: { en: { label: '📣 Programs open for registration' }, ur: { label: '📣 رجسٹریشن کے لیے دستیاب پروگرام' } } },
           { label: '🔎 استعلاماتي (طلباتي وبياناتي)', action: 'lookups_menu', i18n: { en: { label: '🔎 My requests & details' }, ur: { label: '🔎 میری درخواستیں اور معلومات' } } },
           { label: '🧮 حساب آلية الاستحقاق', action: 'eligibility_menu', i18n: { en: { label: '🧮 Eligibility check' }, ur: { label: '🧮 اہلیت کا حساب' } } }
         ] },
@@ -304,7 +308,12 @@ const TREE_TYPES = {
     B('❓ الأسئلة الشائعة', 'kb_browse', {}, '❓ FAQ'), B('📞 أرقام التواصل', 'org', { field: 'contact' }, '📞 Contact'), B('👨‍💼 التحدث مع موظف', 'handoff', {}, '👨‍💼 Talk to an agent')
   ]) }
 };
-function treeTemplate(type) { return (TREE_TYPES[type] || TREE_TYPES.charity).build(); }
+// every ready tree gets the «programs open for registration» button (hidden by itself while no program is open)
+function treeTemplate(type) {
+  const t = (TREE_TYPES[type] || TREE_TYPES.charity).build(), m = t.nodes.find(n => n.id === 'menu');
+  if (m && !m.options.some(o => o.action === 'reg_programs')) m.options.splice(Math.max(0, m.options.length - 2), 0, { label: '📣 البرامج المتاحة للتسجيل', action: 'reg_programs', i18n: { en: { label: '📣 Programs open for registration' } } });
+  return t;
+}
 
 function deepMerge(base, over) {
   if (Array.isArray(base) || typeof base !== 'object' || base === null) return over === undefined ? base : over;

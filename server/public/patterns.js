@@ -62,6 +62,69 @@
         return '<g fill="none" stroke="' + c + '" stroke-width="1.4"><path d="M8 70V36C8 20 18 10 30 4c12 6 22 16 22 32v34"/><path d="M18 70V40c0-10 6-17 12-21 6 4 12 11 12 21v30"/><circle cx="30" cy="30" r="2" fill="' + c + '"/></g>';
       }
     },
+    palms: {
+      name: '🌴 نخيل', tile: 90,
+      svg: function (c) {
+        return '<g fill="none" stroke="' + c + '" stroke-width="1.4" stroke-linecap="round"><path d="M45 80c1-14 0-26-2-40"/>' +
+          '<path d="M43 40c-8-7-18-7-23-2M43 40c-5-10-15-13-21-10M43 40c2-10 10-15 19-12M43 40c7-6 17-5 22 1M43 40c0-9 4-16 10-18"/><path d="M30 84h30"/></g>' +
+          '<g fill="' + c + '"><circle cx="40" cy="46" r="1.7"/><circle cx="46" cy="47" r="1.7"/><circle cx="43" cy="50" r="1.7"/>' + star4(12, 14, 3) + star4(80, 70, 2.6) + '</g>';
+      }
+    },
+    coffee: {
+      name: '☕ دلة وفنجان', tile: 96,
+      svg: function (c) {
+        return '<g fill="none" stroke="' + c + '" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round">' +
+          '<path d="M30 72h22l-3-18c-1-6-4-9-8-9s-7 3-8 9z"/><path d="M35 45c0-5 3-8 6-8s6 3 6 8"/><circle cx="41" cy="34" r="1.8"/>' +
+          '<path d="M33 58c-6-2-10-8-14-14l3-1c3 5 7 9 12 10"/><path d="M50 50c6 1 7 9 2 13"/>' +
+          '<path d="M64 68h12l-2 8h-8z"/><path d="M67 62c-2-3 2-4 0-7M73 62c-2-3 2-4 0-7"/></g>' +
+          '<g fill="' + c + '">' + star4(14, 16, 3) + star4(84, 24, 2.5) + '<circle cx="18" cy="84" r="1.6"/><circle cx="24" cy="86" r="1.6"/></g>';
+      }
+    },
+    lanterns: {
+      name: '🏮 فوانيس', tile: 80, h: 100,
+      svg: function (c) {
+        return '<g fill="none" stroke="' + c + '" stroke-width="1.4" stroke-linejoin="round"><path d="M40 0v10"/><circle cx="40" cy="13" r="3"/>' +
+          '<path d="M32 22l8-6 8 6z"/><path d="M31 22h18l-2 26H33z"/><path d="M36 24v22M44 24v22"/><path d="M33 48h14l-3 6h-8z"/><path d="M40 54v6"/></g>' +
+          '<g fill="' + c + '">' + star4(12, 70, 3) + star4(68, 86, 2.6) + star5(64, 64, 2.4) + '</g>';
+      }
+    },
+    dunes: {
+      name: '🏜️ كثبان رملية', tile: 120, h: 44,
+      svg: function (c) {
+        return '<g fill="none" stroke="' + c + '" stroke-width="1.4" stroke-linecap="round"><path d="M0 30c20-14 40-14 60 0s40 14 60 0"/><path d="M8 14c14-8 28-8 42 0M70 12c12-6 24-6 36 0"/></g>';
+      }
+    },
+    roses: {
+      name: '🌸 ورود', tile: 64,
+      svg: function (c) {
+        var petals = ''; for (var i = 0; i < 8; i++) petals += '<ellipse cx="32" cy="22" rx="3.6" ry="8" transform="rotate(' + (i * 45) + ' 32 32)"/>';
+        return '<g fill="none" stroke="' + c + '" stroke-width="1.2">' + petals + '<circle cx="32" cy="32" r="3.5"/></g>' +
+          '<g fill="' + c + '"><circle cx="0" cy="0" r="2.5"/><circle cx="64" cy="0" r="2.5"/><circle cx="0" cy="64" r="2.5"/><circle cx="64" cy="64" r="2.5"/></g>';
+      }
+    },
+    diamonds: {
+      name: '🔷 معيّنات', tile: 40,
+      svg: function (c) { return '<g fill="none" stroke="' + c + '" stroke-width="1.2"><path d="M20 0 40 20 20 40 0 20z"/><path d="M20 11 29 20 20 29 11 20z"/></g>'; }
+    },
+    kufic: {
+      name: '🔲 كوفي مربع', tile: 48,
+      svg: function (c) {
+        return '<g fill="' + c + '"><path d="M4 4h18v4H8v10h10v-6h4v10H4z"/><path d="M44 44H26v-4h14V30H30v6h-4V26h18z"/>' +
+          '<path d="M26 4h18v18h-4V8H26z" opacity=".7"/><path d="M22 44H4V26h4v14h14z" opacity=".7"/></g>';
+      }
+    },
+    stars: {
+      name: '✨ نجوم متناثرة', tile: 90,
+      svg: function (c) { return '<g fill="' + c + '">' + star5(18, 20, 4) + star4(64, 14, 3) + star8(44, 50, 5) + star4(14, 74, 2.6) + star5(76, 70, 3.2) + '<circle cx="34" cy="28" r="1.2"/><circle cx="80" cy="40" r="1.2"/><circle cx="56" cy="82" r="1.2"/></g>'; }
+    },
+    waves: {
+      name: '〰️ أمواج', tile: 80, h: 28,
+      svg: function (c) { return '<g fill="none" stroke="' + c + '" stroke-width="1.3"><path d="M0 14c10-10 30-10 40 0s30 10 40 0"/></g>'; }
+    },
+    shemagh: {
+      name: '🟥 شماغ (مربعات)', tile: 24,
+      svg: function (c) { return '<g fill="' + c + '"><path d="M0 0h6v6H0zM12 12h6v6h-6z"/></g><g fill="none" stroke="' + c + '" stroke-width="1"><path d="M0 12h24M12 0v24"/></g>'; }
+    },
     // occasions
     ramadan: {
       name: '🌙 رمضان', tile: 100, occasion: true,

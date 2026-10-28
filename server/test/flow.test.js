@@ -526,7 +526,108 @@ let pass = 0; const ok = (c, m) => { assert.ok(c, m); pass++; console.log('  ✔
   await api('PUT', '/api/sites/' + siteId, { settings: { appearance: { bg: 'img_eid_fitr', bg_image: '', show_address: false, show_email: false, pattern_chat: true } } }, T);
   const wcOff = (await api('GET', '/api/widget/config?site=' + key)).j;
   ok(/eid_fitr\.jpg/.test(wcOff.appearance.bg_css) && wcOff.appearance.pattern_chat === true && !wcOff.org.address && !wcOff.org.email, 'picture background + decoration on it; address/email hidden when switched off');
+  // the admin's own picture for a season (Eid) replaces the built-in one; «الصورة الأصلية» brings it back
+  await api('PUT', '/api/sites/' + siteId, { settings: { appearance: { bg: 'img_eid_fitr', theme_images: { img_eid_fitr: '/media/own-eid-1.jpg' }, avatar_size: 40, avatar_zoom: 80 } } }, T);
+  let wcS = (await api('GET', '/api/widget/config?site=' + key)).j.appearance;
+  ok(/\/media\/own-eid-1\.jpg/.test(wcS.bg_css) && wcS.theme_images === undefined, "season background replaced with the admin's own picture");
+  ok(wcS.avatar_size === 40 && wcS.avatar_zoom === 80, 'bot picture size and zoom reach the chat window');
+  await api('PUT', '/api/sites/' + siteId, { settings: { appearance: { theme_images: { img_eid_fitr: 'javascript:x")' } } } }, T);
+  ok(/themes\/eid_fitr\.jpg/.test((await api('GET', '/api/widget/config?site=' + key)).j.appearance.bg_css), 'an unsafe season picture link is ignored (built-in picture used)');
+  await api('PUT', '/api/sites/' + siteId, { settings: { appearance: { theme_images: { img_eid_fitr: '' }, avatar_size: 30, avatar_zoom: 100 } } }, T);
+  ok(/themes\/eid_fitr\.jpg/.test((await api('GET', '/api/widget/config?site=' + key)).j.appearance.bg_css), '«الصورة الأصلية» brings back the built-in season picture');
   await api('PUT', '/api/sites/' + siteId, { settings: { appearance: { pattern: 'girih12', bg: '' } } }, T);
+
+  // ---------------- programs open for registration (dates, seats, link, poster)
+  {
+  const dayOff = (n) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + n * 86400000));
+  await api('PUT', '/api/sites/' + siteId, { settings: { regs: { programs: [
+    { id: 'pc', enabled: true, icon: '💻', title: 'دورة الحاسب', desc: 'للمبتدئين', from: dayOff(-1), to: dayOff(5), capacity: 2, manual_count: 0, link: '', poster: '/media/poster-1.png' },
+    { id: 'pv', enabled: true, icon: '🤝', title: 'برنامج التطوع', from: dayOff(-3), to: '', capacity: '', link: 'https://forms.example.org/volunteer' },
+    { id: 'pf', enabled: true, title: 'برنامج قادم', from: dayOff(3), to: dayOff(10) },
+    { id: 'pe', enabled: true, title: 'برنامج انتهى', from: dayOff(-10), to: dayOff(-1) },
+    { id: 'px', enabled: true, title: 'برنامج مكتمل', from: dayOff(-1), full: true }
+  ] } } }, T);
+  const st0 = (await api('GET', '/api/regs?site=' + siteId, null, T)).j.stats;
+  ok(st0.pc.status === 'open' && st0.pv.status === 'open' && st0.pf.status === 'soon' && st0.pe.status === 'ended' && st0.px.status === 'full', 'status from dates and «اكتمل العدد»: open / not started / ended / full');
+  const vr = visitor(key, 'v-reg'); await vr.join(); await vr.emit('start', {}); await wait(150);
+  const pick = async (re) => { const m = [...vr.msgs].reverse().find(x => x.options && x.options.some(o => re.test(o.label))); await vr.emit('option', { mid: m.id, i: m.options.findIndex(o => re.test(o.label)) }); await wait(200); };
+  await pick(/البرامج المتاحة للتسجيل/);
+  const hub = vr.last();
+  ok(hub.options.some(o => /دورة الحاسب/.test(o.label)) && hub.options.some(o => /برنامج التطوع/.test(o.label)) && !hub.options.some(o => /قادم|انتهى|مكتمل/.test(o.label)), 'the bot lists only the programs open now');
+  await pick(/دورة الحاسب/);
+  const card = vr.last();
+  ok(/دورة الحاسب/.test(card.body) && /المقاعد المتبقية: 2/.test(card.body) && /التسجيل متاح حتى/.test(card.body) && card.media?.[0]?.url === '/media/poster-1.png' && card.options.some(o => /سجّل الآن/.test(o.label)), 'program card: description, last day, seats left, poster, «سجّل الآن»');
+  await pick(/سجّل الآن/);
+  ok(/اسمك/.test(vr.last().body), 'registering inside the chat: asks the name');
+  await vr.say('سارة أحمد'); await vr.say('123');
+  ok(/غير صحيح/.test(vr.last().body), 'wrong mobile number explained');
+  await vr.say('0551234567');
+  ok(/تم تسجيلك في «دورة الحاسب» برقم \*REG-\d+\*/.test(vr.last().body), 'registered with a number');
+  await pick(/البرامج المتاحة للتسجيل/); await pick(/دورة الحاسب/); await pick(/سجّل الآن/);
+  ok(/مسجّل مسبقاً/.test(vr.last().body), 'same mobile again → «already registered» (known name and mobile not asked twice)');
+  const vr2 = visitor(key, 'v-reg2'); await vr2.join(); await vr2.emit('start', {}); await wait(150);
+  await vr2.say('ابي اسجل في دورة الحاسب');
+  const m2 = [...vr2.msgs].reverse().find(x => x.options && x.options.some(o => /سجّل الآن/.test(o.label)));
+  await vr2.emit('option', { mid: m2.id, i: m2.options.findIndex(o => /سجّل الآن/.test(o.label)) }); await wait(200);
+  await vr2.say('خالد'); await vr2.say('0559876543');
+  ok(/REG-/.test(vr2.last().body), 'typing the program name opens it; second person registers (last seat)');
+  const st1 = (await api('GET', '/api/regs?site=' + siteId, null, T)).j;
+  ok(st1.stats.pc.status === 'full' && st1.stats.pc.left === 0 && st1.items.length === 2, 'seats taken → the program closes by itself');
+  await vr2.say('ابي اسجل');
+  const only = vr2.last();
+  ok(/برنامج التطوع/.test(only.body) && !/دورة الحاسب/.test(only.body) && /^\/go\/reg\//.test(only.link) && /سجّل الآن/.test(only.link_label), '«ابي اسجل» → the one open program shown directly, with its registration link');
+  const go = await fetch(URL + only.link, { redirect: 'manual' });
+  ok(go.status === 302 && go.headers.get('location') === 'https://forms.example.org/volunteer', 'the link opens the program page');
+  ok((await api('GET', '/api/regs?site=' + siteId, null, T)).j.stats.pv.clicks === 1, 'link clicks counted');
+  const csv = await fetch(URL + '/api/regs/export?site=' + siteId + '&token=' + T);
+  const csvText = await csv.text();
+  ok(/سارة أحمد/.test(csvText) && /0559876543/.test(csvText) && /دورة الحاسب/.test(csvText), 'registrations download (Excel / CSV)');
+  // ---- the chosen language: programs and the window's own texts follow it
+  const sBefore = (await api('GET', '/api/sites', null, T)).j.find(x => x.id === siteId).settings;
+  await api('PUT', '/api/sites/' + siteId, { settings: {
+    languages: { enabled: ['ar', 'en'], default: 'ar' },
+    regs: { programs: [{ id: 'pv', enabled: true, icon: '🤝', title: 'برنامج التطوع', desc: 'انضم لفريقنا', i18n: { en: { title: 'Volunteer program', desc: 'Join our team' } }, from: dayOff(-3), link: 'https://forms.example.org/volunteer' }] },
+    prechat: { title: 'عرّفنا عليك' }, org: { name: 'جمعية البر' }, appearance: { show_address: true, header_address: 'المدينة المنورة', launcher_label: 'تواصل معنا' },
+    texts: { en: { org_name: 'Al-Birr Society' } } } }, T);
+  const ve = visitor(key, 'v-reg-en', 'en'); await ve.join(); await ve.emit('start', {}); await wait(150);
+  const mEn = [...ve.msgs].reverse().find(x => x.options && x.options.some(o => /Programs open for registration/.test(o.label)));
+  ok(!!mEn, 'English menu shows the registration button in English');
+  await ve.emit('option', { mid: mEn.id, i: mEn.options.findIndex(o => /Programs open for registration/.test(o.label)) }); await wait(200);
+  ok(/Volunteer program/.test(ve.last().body) && /Join our team/.test(ve.last().body) && !/التطوع/.test(ve.last().body) && /Register now/.test(ve.last().link_label), 'program shown in English (its translation) with «Register now»');
+  const wl = (await api('GET', '/api/widget/config?site=' + key)).j.texts;
+  ok(wl.ar.prechat_title === 'عرّفنا عليك' && wl.en.prechat_title === 'Tell us about yourself', 'prechat title typed in Arabic stays Arabic; English gets English');
+  ok(wl.en.org_name === 'Al-Birr Society' && wl.ar.org_name === 'جمعية البر' && wl.en.org_address === 'المدينة المنورة', 'organisation name translated; untranslated address kept as written');
+  ok(wl.en.footer_text === 'Powered by' && wl.ar.footer_text === 'بدعم من' && wl.ar.launcher_label === 'تواصل معنا' && !wl.en.launcher_label, 'footer and launcher label follow the language');
+  ve.s.close();
+  await api('PUT', '/api/sites/' + siteId, { settings: { languages: sBefore.languages, prechat: { title: sBefore.prechat.title || '' }, appearance: { show_address: !!sBefore.appearance.show_address, header_address: sBefore.appearance.header_address || '', launcher_label: sBefore.appearance.launcher_label || '' }, org: { name: sBefore.org.name || '' }, texts: { en: { org_name: '' } } } }, T);
+
+  await api('PUT', '/api/sites/' + siteId, { settings: { regs: { programs: [] } } }, T);
+  const vr3 = visitor(key, 'v-reg3'); await vr3.join(); await vr3.emit('start', {}); await wait(150);
+  ok(![...vr3.msgs].some(m => (m.options || []).some(o => /البرامج المتاحة للتسجيل/.test(o.label))), 'no open program → the menu button hides itself');
+  for (const x of [vr, vr2, vr3]) x.s.close();
+  }
+
+  // ---------------- window title, menu numbers, dashboard name & logo
+  await api('PUT', '/api/sites/' + siteId, { settings: { texts: { ar: { title: 'تواصل معنا' } }, appearance: { option_numbers: false }, ui: { dash_name: 'لوحة جمعية البر', dash_sub: 'خدمة المستفيدين', dash_logo: '/media/abc.png' } } }, T);
+  const wcT = (await api('GET', '/api/widget/config?site=' + key)).j;
+  ok(wcT.texts.ar.title === 'تواصل معنا' && wcT.appearance.option_numbers === false, 'window title changed; numbers next to the options hidden');
+  const uiS = (await api('GET', '/api/sites', null, T)).j[0].settings.ui;
+  ok(uiS.dash_name === 'لوحة جمعية البر' && uiS.dash_sub === 'خدمة المستفيدين' && uiS.dash_logo === '/media/abc.png' && Array.isArray(uiS.hidden_pages), 'dashboard name, subtitle and logo saved (hidden pages kept)');
+  await api('PUT', '/api/sites/' + siteId, { settings: { texts: { ar: { title: '' } }, appearance: { option_numbers: true }, ui: { dash_name: '', dash_sub: '', dash_logo: '' } } }, T);
+
+  // ---------------- a blurred profile picture: others only ever receive the blurred copy
+  const ORIG = 'data:image/png;base64,T1JJR0lOQUw=', BLUR = 'data:image/jpeg;base64,QkxVUlJFRA==';
+  const bu = (await api('POST', '/api/users', { name: 'نورة', email: 'noura@x.sa', password: 'Noura#Pass2026', role: 'agent' }, T)).j.id;
+  const TN = (await api('POST', '/api/auth/login', { email: 'noura@x.sa', password: 'Noura#Pass2026' })).j.token;
+  const mb = (await api('PUT', '/api/me', { avatar: ORIG, avatar_blur: true, avatar_blurred: BLUR }, TN)).j;
+  ok(mb.avatar === BLUR && mb.avatar_blur === true && mb.avatar_orig === ORIG, 'blur on: the owner keeps the original, the shown picture is the blurred copy');
+  const others = JSON.stringify((await api('GET', '/api/users', null, T)).j);
+  ok(others.includes(BLUR) && !others.includes(ORIG), 'colleagues receive only the blurred picture (never the original)');
+  ok((await api('PUT', '/api/users/' + bu, { avatar: ORIG }, T)).s === 400, "the admin cannot replace a blurred picture with the original");
+  ok((await api('PUT', '/api/me', { avatar_blur: true }, TN)).s === 400, 'blur without the blurred copy is refused (nothing unblurred leaks)');
+  const mo = (await api('PUT', '/api/me', { avatar_blur: false }, TN)).j;
+  ok(mo.avatar === ORIG && mo.avatar_blur === false && !mo.avatar_orig, 'blur off: the original picture is back');
+  await api('DELETE', '/api/users/' + bu, null, T);
 
   // ---------------- visitor attachments: checked before they enter the conversation
   const FSc = require('../src/filescan');

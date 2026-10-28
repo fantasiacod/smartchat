@@ -298,7 +298,9 @@
   App.themeOf = function () {
     var p = (S.me && S.me.prefs && S.me.prefs.theme) || {};
     var base = App.THEMES[p.preset] || App.THEMES.madinah;
-    return Object.assign({ mode: 'light', font: 'Tajawal', pattern: 'girih12', pattern_opacity: 0.05 }, base, p);
+    var t = Object.assign({ mode: 'light', font: 'Tajawal', pattern: 'girih12', pattern_opacity: 0.05 }, base, p);
+    if (t.side_shade === undefined || t.side_shade === null || t.side_shade === '') t.side_shade = window.SCPatterns && SCPatterns.themeOf(t.pattern) ? 0.45 : 0; // pictures get a shade by default
+    return t;
   };
   App.applyTheme = function (t) {
     t = t || App.themeOf(); var r = document.documentElement.style;
@@ -307,7 +309,16 @@
     document.documentElement.setAttribute('data-mode', t.mode === 'dark' ? 'dark' : 'light');
     if (t.mode !== 'dark') r.setProperty('--bg', t.bg || '#f3f5f1'); else r.removeProperty('--bg');
     var P = window.SCPatterns;
-    r.setProperty('--side-pattern', P ? P.css(t.pattern, '#ffffff', 0.09, 1) : 'none');
+    // the sidebar: its decoration / picture, a shade over it, and a text colour that stays readable
+    var pic = P && P.themeOf(t.pattern), shade = Math.max(0, Math.min(0.9, Number(t.side_shade) || 0));
+    var lum = function (hex) { var h = String(hex || '').replace('#', ''); if (h.length === 3) h = h.replace(/./g, '$&$&'); if (!/^[0-9a-f]{6}$/i.test(h)) return 0; var c = [0, 2, 4].map(function (i) { return parseInt(h.substr(i, 2), 16) / 255; }); return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]; };
+    var txt = /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(t.side_text || '') ? t.side_text : (pic ? (shade >= 0.25 ? '#ffffff' : '#1f2a24') : (lum(t.side) > 0.6 ? '#1f2a24' : '#e8f1ea'));
+    var tl = lum(txt) > 0.5;
+    var layer = P ? P.css(t.pattern, tl ? '#ffffff' : '#000000', tl ? 0.09 : 0.08, 1) : 'none'; // the decoration follows the text: light on dark menus, dark on light ones
+    r.setProperty('--side-pattern', (shade ? 'linear-gradient(rgba(0,0,0,' + shade + '),rgba(0,0,0,' + shade + ')),' : '') + layer);
+    r.setProperty('--side-pattern-size', pic ? 'cover' : 'auto');
+    r.setProperty('--side-text', txt);
+    r.setProperty('--side-muted', tl ? 'rgba(255,255,255,.72)' : 'rgba(0,0,0,.58)');
     r.setProperty('--pattern', P && t.pattern_bg ? P.css(t.pattern, t.accent, t.pattern_opacity || 0.05, 1.2) : 'none');
     r.setProperty('--chat-pattern', P ? P.css(t.pattern, t.accent, 0.05, 1) : 'none');
     var link = document.getElementById('dash-font'), fam = t.font.replace(/ /g, '+');
@@ -415,7 +426,7 @@
   App.isHidden = function (id) { if (App.EDITION_HIDDEN.indexOf(id) >= 0) return true; var h = (S.site && S.site.settings.ui && S.site.settings.ui.hidden_pages) || []; return App.LOCKED_PAGES.indexOf(id) < 0 && h.indexOf(id) >= 0; };
   App.NAV = [
     ['العمل اليومي', ['live', 'history', 'tickets', 'appointments']],
-    ['عقل البوت', ['mindmap', 'tree', 'business', 'eligibility', 'org']],
+    ['عقل البوت', ['mindmap', 'tree', 'business', 'regs', 'eligibility', 'org']],
     ['المتابعة', ['stats', 'reports']],
     ['الإعدادات', ['appearance', 'languages', 'install', 'settings', 'users', 'backup']]
   ];
@@ -434,13 +445,14 @@
   function shell() {
     var me = S.me, site = S.site, a = site ? site.settings.appearance : {}, org = site ? site.settings.org : {};
     App.$('#app').innerHTML =
-      '<div class="shell"><aside class="side"><div class="brand"><div class="logo' + (/\.(png|webp|gif|svg)(\?|$)/i.test(a.company_logo || '') ? ' clear' : '') + '">' + (a.company_logo ? '<img src="' + esc(a.company_logo) + '">' : '💬') + '</div><div style="min-width:0"><b>' + esc(org.name || a.company_name || 'المساعد الذكي') + '</b><small>لوحة تحكم المحادثات</small></div></div>' +
+      '<div class="shell"><aside class="side"><div class="brand"></div>' +
       '<nav class="nav"></nav><div class="me" id="me-link">' + App.avatar(me, 'sm') + '<div class="grow" style="min-width:0"><b style="display:block;font-size:13.5px">' + esc(me.name) + '</b><small style="color:var(--side-muted)">' + esc(me.job_title || App.ROLE[me.role]) + '</small></div><span>⚙️</span></div></aside>' +
       '<main class="main"><div class="top"><button class="btn ghost icon burger" id="burger">☰</button><h1 id="ptitle"></h1><div class="grow"></div>' +
       (S.sites.length > 1 ? '<select class="in" id="site-sel" style="width:auto">' + S.sites.map(function (s) { return '<option value="' + s.id + '"' + (s.id === site.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select>' : '') +
       '<label class="switch" title="الحالة: متاح لاستقبال المحادثات"><input type="checkbox" id="avail"><span class="tr"></span><span class="lbl small" id="avail-l"></span></label>' +
       '<button class="btn ghost icon" id="mute" title="كتم/تشغيل صوت الرنين"></button>' +
       '<span class="row small muted" id="conn"><span class="dot off"></span></span></div><div id="ed-banner"></div><div class="content" id="content"></div></main></div>';
+    App.renderBrand();
     App.renderNav();
     if (App.editionBanner) App.editionBanner(App.$('#ed-banner'));
     App.$('#me-link').onclick = function () { location.hash = '#/account'; };
@@ -454,6 +466,13 @@
     paintMute(); mute.onclick = function () { App.muted = !App.muted; if (!App.muted && App.prefs().sound === false) { me.prefs.sound = true; App.savePrefs(); } paintMute(); App.updateRing(); };
     App.on('socket', function (on) { var c = App.$('#conn'); if (c) c.innerHTML = '<span class="dot ' + (on ? 'on' : 'off') + '"></span>' + (on ? 'متصل' : 'غير متصل'); });
   }
+  // top of the side menu: the dashboard's own name / subtitle / logo (Settings), else the organisation's
+  App.renderBrand = function () {
+    var el = App.$('.side .brand'); if (!el) return;
+    var site = S.site || { settings: {} }, ui = site.settings.ui || {}, a = site.settings.appearance || {}, org = site.settings.org || {};
+    var logo = ui.dash_logo || a.company_logo || '';
+    el.innerHTML = '<div class="logo' + (/\.(png|webp|gif|svg)(\?|$)/i.test(logo) || /^data:image\/(png|webp|gif|svg)/i.test(logo) ? ' clear' : '') + '">' + (logo ? '<img src="' + esc(logo) + '">' : '💬') + '</div><div style="min-width:0"><b>' + esc(ui.dash_name || org.name || a.company_name || 'المساعد الذكي') + '</b><small>' + esc(ui.dash_sub || 'لوحة تحكم المحادثات') + '</small></div>';
+  };
   App.savePrefs = function () { return App.api('PUT', '/api/me', { prefs: S.me.prefs }).then(function (u) { S.me.prefs = u.prefs; }).catch(App.fail); };
   App.selectSite = function (id) {
     S.site = S.sites.find(function (s) { return s.id === id; }) || S.sites[0];

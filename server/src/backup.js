@@ -5,7 +5,7 @@ const zlib = require('zlib');
 const { db, now, meta, createSite, DATA_DIR } = require('./db');
 
 const TABLES = ['users', 'sites', 'kb_categories', 'kb', 'conversations', 'messages', 'media_assets', 'unanswered', 'tickets',
-  'ticket_events', 'elig_results', 'appointments', 'notify_log', 'widget_pings', 'audit', 'app_meta', 'demo_orders', 'demo_customers'];
+  'ticket_events', 'elig_results', 'appointments', 'program_regs', 'notify_log', 'widget_pings', 'audit', 'app_meta', 'demo_orders', 'demo_customers'];
 const DEFAULTS = { enabled: false, frequency: 'daily', hour: 3, keep: 7, folder: '', email: '' };
 
 const config = () => ({ ...DEFAULTS, ...meta.get('backup', {}) });
@@ -116,7 +116,7 @@ function reset(scope, keepUserId) {
       if (s.logs) { db.prepare('DELETE FROM audit').run(); db.prepare('DELETE FROM notify_log').run(); db.prepare('DELETE FROM widget_pings').run(); }
       if (s.users) db.prepare('DELETE FROM users WHERE id != ?').run(keepUserId);
       if (s.settings) {
-        for (const t of ['appointments', 'elig_results', 'messages', 'conversations', 'ticket_events', 'tickets', 'kb', 'kb_categories', 'unanswered', 'widget_pings']) db.prepare(`DELETE FROM ${t}`).run();
+        for (const t of ['program_regs', 'appointments', 'elig_results', 'messages', 'conversations', 'ticket_events', 'tickets', 'kb', 'kb_categories', 'unanswered', 'widget_pings']) db.prepare(`DELETE FROM ${t}`).run();
         db.prepare('DELETE FROM sites').run();
       }
     })();

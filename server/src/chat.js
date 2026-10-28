@@ -11,6 +11,7 @@ const ICONS = require('../public/icons');
 const hooks = require('./webhooks');
 const { canSee } = require('./tenant');
 const edition = require('./edition');
+const regs = require('./regs');
 const elig = require('./eligibility');
 
 let vio, aio, JWT_SECRET;
@@ -140,6 +141,7 @@ function findNode(site, id) {
 function visibleOpts(site, node) {
   return (node?.options || []).filter(o => !o.hidden
     && !(o.action === 'lookups_menu' && !listedLookups(site).length)
+    && !(o.action === 'reg_programs' && !regs.openPrograms(site).length)
     && !(o.action === 'catalog' && !usableCatalog(catalogOf(site, o.target)))
     && !(o.action === 'eligibility_menu' && !(site.settings.eligibility?.programs || []).some(p => p.enabled !== false && p.visible !== false && (p.questions || []).length)));
 }
@@ -250,7 +252,7 @@ function sendOrg(conv, site, field, opts = {}) {
       botSay(conv, site, `🌐 ${name}`, nav, { link: o.website, link_label: t.visit_site }); return true;
     case 'social': {
       const list = Object.keys(SOCIAL).filter(k => o.social?.[k]).map(k => ({ icon: '', label: SOCIAL[k][0], value: o.social[k].replace(/^https?:\/\/(www\.)?/, ''), href: socialHref(k, o.social[k]) }));
-      if (o.website) list.unshift({ icon: '🌐', label: conv.lang === 'en' ? 'Website' : 'الموقع', value: o.website.replace(/^https?:\/\/(www\.)?/, ''), href: o.website });
+      if (o.website) list.unshift({ icon: '🌐', label: conv.lang === 'en' ? 'Website' : conv.lang === 'ur' ? 'ویب سائٹ' : 'الموقع', value: o.website.replace(/^https?:\/\/(www\.)?/, ''), href: o.website });
       if (!list.length) return opts.silent ? false : !!botSay(conv, site, t.org_missing, nav);
       botSay(conv, site, `🔗 ${name}`, nav, { contacts: list }); return true;
     }
@@ -425,6 +427,9 @@ async function runAction(conv, site, opt, freeText) {
     case 'eligibility': return opt.target ? startElig(conv, site, opt.target) : sendEligHub(conv, site);
     case 'eligibility_menu': return sendEligHub(conv, site);
     case 'lookups_menu': return sendLookupsHub(conv, site);
+    case 'reg_programs': return sendRegHub(conv, site);
+    case 'reg': return showReg(conv, site, opt.target);
+    case 'reg_form': return startRegForm(conv, site, opt.target);
     case 'appointment_lookup': return startApptLookup(conv, site);
     case 'catalog': return sendCatalog(conv, site, opt.target, opt.field || null);
     case 'elig': {
@@ -699,6 +704,61 @@ function sendLookupsHub(conv, site) {
   return botSay(conv, site, site.settings.datasource.list_message || t.lookups_hub, [...opts, ...navOptions(conv, site)], { numbered: true });
 }
 
+/* ---------- programs open for registration ---------- */
+function sendRegHub(conv, site) {
+  const t = tr(conv, site), H = (site.settings.regs || {}).hub || {}, open = regs.openPrograms(site);
+  const own = (k) => (!conv.lang || conv.lang === 'ar') && H[k]; // messages typed on the dashboard are Arabic
+  if (!open.length) return botSay(conv, site, own('none') || t.reg_none, navOptions(conv, site));
+  if (open.length === 1) return showReg(conv, site, open[0].id);
+  return botSay(conv, site, own('message') || t.reg_hub, [...open.map(p => ({ label: (p.icon || '🎯') + ' ' + L(conv, p.title, p.i18n, 'title'), action: 'reg', target: p.id })), ...navOptions(conv, site)], { numbered: true });
+}
+function showReg(conv, site, id) {
+  const t = tr(conv, site), p = regs.find(site, id);
+  if (!p) return sendRegHub(conv, site);
+  const s = regs.statusOf(site, p);
+  if (!s.open) return botSay(conv, site, t.reg_closed, [...(regs.openPrograms(site).length ? [{ label: t.reg_others, action: 'reg_programs' }] : []), ...navOptions(conv, site)]);
+  const title = L(conv, p.title, p.i18n, 'title'), desc = L(conv, p.desc, p.i18n, 'desc');
+  const lines = [`${p.icon || '🎯'} *${title}*`, desc ? '\n' + desc : '', p.to ? '\n' + fill(t.reg_until, { date: regs.fmtDate(p.to, conv.lang) }) : '', s.left != null ? fill(t.reg_seats, { n: s.left }) : ''].filter(Boolean);
+  const media = [p.poster, p.image].filter(u => /^(\/media\/[\w.-]+|https:\/\/[^\s"'<>]+)$/.test(String(u || ''))).map((url, i) => ({ url, type: 'image', name: i ? 'image' : 'poster' }));
+  const extra = media.length ? { media } : {};
+  const opts = [];
+  if (/^https:\/\//.test(p.link || '')) { extra.link = `/go/reg/${site.key}/${encodeURIComponent(p.id)}`; extra.link_label = t.reg_now; } // through us, to count the clicks
+  else opts.push({ label: t.reg_now, action: 'reg_form', target: p.id });
+  if (regs.openPrograms(site).length > 1) opts.push({ label: t.reg_others, action: 'reg_programs' });
+  return botSay(conv, site, lines.join('\n'), [...opts, ...navOptions(conv, site)], extra);
+}
+function startRegForm(conv, site, id) {
+  const t = tr(conv, site), p = regs.find(site, id);
+  if (!p || !regs.statusOf(site, p).open) return showReg(conv, site, id);
+  const a = { kind: 'reg', pid: p.id, name: conv.visitor_name || '', phone: conv.visitor_phone ? cleanValue('phone', conv.visitor_phone) || '' : '' };
+  if (a.name && a.phone) return finishReg(conv, site, a);
+  a.step = a.name ? 'phone' : 'name';
+  saveConv(conv, { state: { ...conv.state, await: a } });
+  return botSay(conv, site, a.step === 'name' ? t.reg_ask_name : t.reg_ask_phone, [{ label: t.nav_cancel, action: 'cancel' }]);
+}
+function answerReg(conv, site, text) {
+  const t = tr(conv, site), a = { ...conv.state.await };
+  if (a.step === 'name') {
+    const name = String(text || '').trim().slice(0, 120);
+    if (name.length < 2) return botSay(conv, site, t.reg_ask_name, [{ label: t.nav_cancel, action: 'cancel' }]);
+    a.name = name; a.step = a.phone ? null : 'phone';
+    if (a.step) { saveConv(conv, { state: { ...conv.state, await: a } }); return botSay(conv, site, t.reg_ask_phone, [{ label: t.nav_cancel, action: 'cancel' }]); }
+    return finishReg(conv, site, a);
+  }
+  const phone = cleanValue('phone', text);
+  if (!phone) return botSay(conv, site, t.reg_bad_phone, [{ label: t.nav_cancel, action: 'cancel' }]);
+  a.phone = phone;
+  return finishReg(conv, site, a);
+}
+function finishReg(conv, site, a) {
+  const t = tr(conv, site), p = regs.find(site, a.pid);
+  saveConv(conv, { state: { ...conv.state, await: null }, visitor_name: conv.visitor_name || a.name, visitor_phone: conv.visitor_phone || a.phone }); // remembered for the next registration and for the employees
+  if (!p || !regs.statusOf(site, p).open) return botSay(conv, site, t.reg_closed, navOptions(conv, site)); // the last seat may have just gone
+  const r = regs.register(site, p, a.name, a.phone, conv.id);
+  if (!r.dup) toSite(conv.site_id).emit('reg:new', { site_id: site.id, program: p.title, name: a.name });
+  return botSay(conv, site, fill(r.dup ? t.reg_dup : t.reg_done, { program: L(conv, p.title, p.i18n, 'title'), number: r.number }), navOptions(conv, site));
+}
+
 // the hub: one main-menu button that lists every visible program (monthly aid, seasonal aid…)
 function sendEligHub(conv, site) {
   const t = tr(conv, site), E = site.settings.eligibility || {}, H = E.hub || {};
@@ -943,6 +1003,7 @@ async function handleVisitorText(conv, site, text) {
   if (st.await) {
     if (['الغاء', 'cancel', 'منسوخ'].includes(nlp.normalize(text))) return sendNode(conv, site, '__menu');
     if (String(st.await.kind || '').startsWith('ed:') && edition.botAwait) return edition.botAwait(conv, site, text, botApi(conv, site));
+    if (st.await.kind === 'reg') return answerReg(conv, site, text);
     if (st.await.kind === 'elig') return answerElig(conv, site, text);
     if (st.await.kind === 'appt') return answerAppt(conv, site, text);
     if (st.await.kind === 'ticket_status') {
@@ -1003,6 +1064,11 @@ async function handleVisitorText(conv, site, text) {
   if (intentHit(text, I.complaint)) return sendTicketForm(conv, site, 'complaint');
   if (intentHit(text, I.suggestion)) return sendTicketForm(conv, site, 'suggestion');
   if (intentHit(text, [...I.order, ...(b.order_keywords || [])]) && site.settings.datasource.type !== 'none') return startLookup(conv, site, 'order', text);
+  // programs open for registration: «ابي اسجل»… or a program's own name
+  { const R = site.settings.regs || {}, open = regs.openPrograms(site);
+    const hit = open.find(p => [p.title, ...Object.values(p.i18n || {}).map(x => x && x.title)].some(x => x && nlp.containsPhrase(text, x)));
+    if (hit) return showReg(conv, site, hit.id);
+    if (open.length && intentHit(text, String(R.hub?.keywords || '').split(/[,،\n]/).map(x => x.trim()).filter(k => k && nlp.normalize(k) !== 'التسجيل'))) return sendRegHub(conv, site); } // only while something is open; the bare word «التسجيل» is too broad
   if (intentHit(text, INTENTS.appointment) && db.prepare('SELECT 1 FROM appointments WHERE site_id=? LIMIT 1').get(site.id)) return startApptLookup(conv, site);
   // general eligibility words open the list of programs (when there is more than one); a program's own words open it directly
   const EL = site.settings.eligibility || {}, visibleProgs = (EL.programs || []).filter(p => p.enabled !== false && p.visible !== false && (p.questions || []).length);

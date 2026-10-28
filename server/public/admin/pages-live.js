@@ -6,8 +6,18 @@
   A.fmtBody = function (s) {
     return esc(s || '').replace(/\*([^*\n]+)\*/g, '<b>$1</b>').replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
   };
+  // Translation on request only: nothing is sent anywhere automatically. The employee clicks and the text opens
+  // in Google Translate in a new tab (their own browser), so visitors' messages never leave the system by themselves.
+  A.LANG_NAMES = { ar: 'العربية', en: 'English', ur: 'اردو' };
+  A.translateUrl = function (text, from, to) { return 'https://translate.google.com/?sl=' + (from || 'auto') + '&tl=' + to + '&text=' + encodeURIComponent(String(text || '').slice(0, 4500)) + '&op=translate'; };
+  // a message mostly in Latin letters, or with letters only Urdu uses, is not Arabic
+  A.isForeign = function (t) {
+    t = String(t || ''); if (/[ےۓںٹڈڑ]/.test(t)) return true;
+    var lat = (t.match(/[A-Za-z]/g) || []).length, ar = (t.match(/[\u0600-\u06FF]/g) || []).length;
+    return lat >= 3 && lat > ar;
+  };
   A.renderMsg = function (m) {
-    if (m.sender === 'system') return '<div class="sysm">' + A.fmtBody(m.body) + ' · <span class="tiny">' + A.fmtTime(m.created_at) + '</span></div>';
+    if (m.sender === 'system') return '<div class="sysm"><bdi>' + A.fmtBody(m.body) + '</bdi>' + ' · <span class="tiny">' + A.fmtTime(m.created_at) + '</span></div>';
     var side = m.sender === 'visitor' ? 'them' : 'me';
     var who = m.sender === 'visitor' ? 'المستفيد' : m.sender === 'bot' ? '🤖 البوت' : '👤 ' + (m.agent_name || 'موظف');
     var extra = '';
@@ -19,7 +29,8 @@
     if (m.link) extra += '<div class="att"><a class="file" href="' + esc(m.link) + '" target="_blank">🔗 ' + esc(m.link) + '</a></div>';
     if (m.form) extra += '<div class="att"><span class="file">📝 نموذج ' + esc(m.form.title || '') + (m.form.submitted ? ' — ✅ ' + esc(m.form.submitted) : ' — لم يُرسل') + '</span></div>';
     if (m.options && m.options.length) extra += '<div class="opts">' + m.options.map(function (o, i) { return '<span>' + (m.numbered ? (i + 1) + '. ' : '') + esc(o.label) + '</span>'; }).join('') + '</div>';
-    return '<div class="m ' + side + ' ' + m.sender + '"><div style="min-width:0"><div class="who">' + who + ' · ' + A.fmtTime(m.created_at) + '</div><div class="bb">' + A.fmtBody(m.body) + extra + '</div></div></div>';
+    if (m.sender === 'visitor' && m.body && A.isForeign(m.body)) extra += '<a class="trl" href="' + esc(A.translateUrl(m.body, 'auto', 'ar')) + '" target="_blank" rel="noopener noreferrer">🌐 ترجمة للعربية</a>';
+    return '<div class="m ' + side + ' ' + m.sender + '"><div style="min-width:0"><div class="who">' + who + ' · ' + A.fmtTime(m.created_at) + '</div><div class="bb"><div dir="auto">' + A.fmtBody(m.body) + '</div>' + extra + '</div></div></div>';
   };
 
   A.page('live', {
@@ -91,8 +102,9 @@
           '<div class="msgs" id="msgs">' + c.messages.map(A.renderMsg).join('') + '<div class="sysm hidden" id="vtyping">✍️ المستفيد يكتب…</div></div>' +
           (closed ? '<div class="composer"><div class="alert info">هذه المحادثة مغلقة' + (c.closed_by ? ' — أنهاها ' + A.BY[c.closed_by] : '') + (c.rating != null ? ' · التقييم: ' + A.stars(c.rating, c.rating_max) : '') + '</div></div>' :
             '<div class="composer">' + (c.pending && c.pending.length ? '<div class="pending">❓ <b>سؤال المستفيد:</b> ' + esc(c.pending[c.pending.length - 1]) + '<div class="tiny" style="margin-top:3px">ردّك القادم سيُحفظ كإجابة لهذا السؤال في قاعدة المعرفة ليجيب عنه البوت تلقائياً مستقبلاً.</div></div>' : '') +
+            (c.lang && c.lang !== 'ar' ? '<div class="langbar">🌐 المستفيد اختار <b>' + esc(A.LANG_NAMES[c.lang] || c.lang) + '</b> — ردّك يصله كما تكتبه. اكتب بالعربية ثم اضغط «ترجم ردّي» وانسخ الترجمة هنا.</div>' : '') +
             '<div class="chips" id="chips"></div><textarea id="ta" placeholder="' + (mineConv ? 'اكتب ردك… (Enter للإرسال، Shift+Enter لسطر جديد)' : 'اكتب ردك لاستلام المحادثة والرد مباشرة…') + '"></textarea>' +
-            '<div class="tools"><button class="btn sm ghost" id="att">📎 إرفاق</button><button class="btn sm ghost" id="qr">⚡ ردود جاهزة</button><label class="switch" title="حفظ الرد في قاعدة المعرفة"><input type="checkbox" id="learn"' + (S.site && S.site.settings.behavior.auto_learn !== false ? ' checked' : '') + '><span class="tr"></span><span class="lbl small">🧠 تعلّم من ردّي</span></label><span class="grow"></span><button class="btn" id="send">إرسال ➤</button></div></div>');
+            '<div class="tools"><button class="btn sm ghost" id="att">📎 إرفاق</button><button class="btn sm ghost" id="qr">⚡ ردود جاهزة</button>' + (c.lang && c.lang !== 'ar' ? '<button class="btn sm ghost" id="trr" title="يفتح الترجمة في نافذة جديدة">🌐 ترجم ردّي إلى ' + esc(A.LANG_NAMES[c.lang] || c.lang) + '</button>' : '') + '<label class="switch" title="حفظ الرد في قاعدة المعرفة"><input type="checkbox" id="learn"' + (S.site && S.site.settings.behavior.auto_learn !== false ? ' checked' : '') + '><span class="tr"></span><span class="lbl small">🧠 تعلّم من ردّي</span></label><span class="grow"></span><button class="btn" id="send">إرسال ➤</button></div></div>');
         var msgs = A.$('#msgs'); msgs.scrollTop = msgs.scrollHeight;
         A.$('#back').onclick = function () { location.hash = '#/live'; };
         var take = function () { A.socket.emit('take', { id: c.id }, function (r) { if (r && r.error) A.fail(new Error('تعذر الاستلام')); else open(c.id); }); };
@@ -108,6 +120,7 @@
         drawChips();
         A.$('#att').onclick = function () { A.pickFile('image/*,video/mp4,video/webm,application/pdf', true).then(function (fs) { fs.forEach(function (f) { A.upload(f).then(function (r) { attach.push(r); drawChips(); }, A.fail); }); }); };
         A.$('#qr').onclick = function (e) { quickReplies(e.target, ta); };
+        if (A.$('#trr')) A.$('#trr').onclick = function () { if (!ta.value.trim()) { A.toast('اكتب ردّك بالعربية أولاً', 'warn'); return ta.focus(); } window.open(A.translateUrl(ta.value, 'ar', c.lang), '_blank', 'noopener'); };
         var send = function () {
           var text = ta.value.trim(); if (!text && !attach.length) return;
           A.$('#send').disabled = true;

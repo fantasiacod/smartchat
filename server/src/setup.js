@@ -57,6 +57,7 @@ function storageFrom(body) {
   if (type === 'mysql' && !/^mysql2?:\/\//.test(url)) throw new Error('رابط MySQL يبدأ بـ mysql://');
   if (type === 'mssql' && !/^(mssql|sqlserver):\/\//.test(url)) throw new Error('رابط SQL Server يبدأ بـ mssql://');
   if (/\[YOUR-PASSWORD\]|YOUR_PASSWORD|<password>/i.test(url)) throw new Error('استبدل [YOUR-PASSWORD] في الرابط بكلمة مرور قاعدة البيانات');
+  if (/<[^>]*>/.test(url)) throw new Error('احذف علامات < > من الرابط — اكتب اسم المستخدم وكلمة المرور بدونها، مثل: mongodb+srv://user:pass@…');
   return { type, url };
 }
 
